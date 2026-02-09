@@ -17,9 +17,15 @@
     <meta name="msapplication-tap-highlight" content="no" />
     
     <title>RFE Foam Pro</title>
-    <link rel="manifest" href="manifest.json" />
+    <link rel="manifest" href="/manifest.json" />
     <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/10473/10473634.png" />
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/10473/10473634.png" />
+    
+    <!-- Additional PWA Meta Tags for Better Installation -->
+    <meta name="format-detection" content="telephone=no" />
+    <link rel="apple-touch-icon" sizes="180x180" href="https://cdn-icons-png.flaticon.com/512/10473/10473634.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="https://cdn-icons-png.flaticon.com/512/10473/10473634.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="https://cdn-icons-png.flaticon.com/512/10473/10473634.png" />
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -55,15 +61,41 @@
         background: #64748b;
       }
       
+      /* Enhanced body styles for PWA */
       body {
         overscroll-behavior-y: none;
+        overscroll-behavior-x: none;
         -webkit-tap-highlight-color: transparent;
         background-color: #f8fafc;
         user-select: none; /* App-like feel */
+        /* Better font rendering */
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        /* Prevent pull-to-refresh on mobile */
+        overflow-x: hidden;
       }
       
+      /* Editable elements should allow text selection */
       input, textarea, [contenteditable] {
         user-select: text;
+      }
+      
+      /* Prevent zoom on input focus (iOS Safari) */
+      input, select, textarea {
+        font-size: 16px;
+      }
+      
+      /* Smooth scrolling for better UX */
+      html {
+        scroll-behavior: smooth;
+      }
+      
+      /* Better touch targets for mobile */
+      @media (max-width: 768px) {
+        button, a, [role="button"] {
+          min-height: 44px;
+          min-width: 44px;
+        }
       }
 
       /* Support for Window Controls Overlay in Desktop PWA */
@@ -89,6 +121,15 @@
           background: #0F172A; /* Match RFE Dark Blue */
         }
       }
+      
+      /* Responsive improvements for mobile */
+      @media (max-width: 640px) {
+        /* Ensure proper spacing on small screens */
+        #root {
+          min-height: 100vh;
+          min-height: -webkit-fill-available;
+        }
+      }
     </style>
     <script type="importmap">
     {
@@ -105,7 +146,7 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js')
+          navigator.serviceWorker.register('/sw.js')
             .then(reg => {
               console.log('RFE App Service Worker registered');
               // Check for updates
