@@ -340,20 +340,20 @@ const SprayFoamCalculator: React.FC = () => {
       installPrompt={deferredPrompt}
       onInstall={handleInstallApp}
     >
-        {/* Persistent Floating Install Icon */}
+        {/* Persistent Floating Install Icon - positioned above bottom nav on mobile */}
         {deferredPrompt && (
-          <div className="fixed bottom-6 right-6 z-[100] animate-in slide-in-from-bottom-10 fade-in duration-500">
+          <div className="fixed bottom-24 md:bottom-6 right-4 md:right-6 z-[60]">
              <button 
                 onClick={handleInstallApp}
-                className="group flex items-center gap-3 bg-slate-900 text-white pl-4 pr-6 py-4 rounded-full shadow-2xl border-2 border-slate-700 hover:bg-brand hover:border-brand transition-all hover:scale-105 active:scale-95"
+                className="group flex items-center gap-2.5 bg-slate-900 text-white pl-3.5 pr-5 py-3 md:pl-4 md:pr-6 md:py-4 rounded-full shadow-2xl border-2 border-slate-700 hover:bg-brand hover:border-brand transition-all hover:scale-105 active:scale-95"
                 title="Install Desktop App"
              >
                 <div className="bg-white/10 p-1.5 rounded-full group-hover:bg-white/20 transition-colors">
-                    <Download className="w-5 h-5 animate-pulse" />
+                    <Download className="w-4 h-4 md:w-5 md:h-5 animate-pulse" />
                 </div>
                 <div className="flex flex-col items-start">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 group-hover:text-white/80 transition-colors leading-none mb-0.5">Desktop App</span>
-                    <span className="font-bold text-sm leading-none">Install Now</span>
+                    <span className="text-[8px] md:text-[9px] font-black uppercase tracking-widest text-slate-400 group-hover:text-white/80 transition-colors leading-none mb-0.5">Get the App</span>
+                    <span className="font-bold text-xs md:text-sm leading-none">Install Now</span>
                 </div>
              </button>
           </div>
