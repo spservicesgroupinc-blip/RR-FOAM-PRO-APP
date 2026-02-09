@@ -5,7 +5,7 @@ import { CalculatorProvider } from './context/CalculatorContext';
 
 function App() {
   return (
-    <div className="min-h-[100dvh] bg-slate-50 py-8">
+    <div className="min-h-screen min-h-[100dvh] bg-slate-50 py-8">
       <CalculatorProvider>
         <SprayFoamCalculator />
       </CalculatorProvider>
