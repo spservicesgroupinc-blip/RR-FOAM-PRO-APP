@@ -131,18 +131,7 @@
         }
       }
     </style>
-    <script type="importmap">
-    {
-      "imports": {
-        "lucide-react": "https://esm.sh/lucide-react@^0.561.0",
-        "react": "https://esm.sh/react@^19.2.3",
-        "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-        "react/": "https://esm.sh/react@^19.2.3/",
-        "jspdf": "https://esm.sh/jspdf@2.5.1",
-        "jspdf-autotable": "https://esm.sh/jspdf-autotable@3.8.2"
-      }
-    }
-    </script>
+    <!-- Import map removed: Vite resolves modules from node_modules -->
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
@@ -172,5 +161,6 @@
     <!-- Desktop PWA Title Bar -->
     <div class="title-bar-draggable hidden md:block"></div>
     <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>

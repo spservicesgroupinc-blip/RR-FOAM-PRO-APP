@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'rfe-foam-pro-v9-desktop';
+const CACHE_NAME = 'rfe-foam-pro-v11-desktop';
 const URLS_TO_CACHE = [
   './index.html',
   './manifest.json',
