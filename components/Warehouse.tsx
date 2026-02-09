@@ -40,43 +40,43 @@ export const Warehouse: React.FC<WarehouseProps> = ({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in zoom-in duration-200 pb-20">
-         <div className="flex flex-col md:flex-row md:justify-between md:items-end mb-4 gap-2">
+    <div className="max-w-4xl mx-auto space-y-4 md:space-y-6 animate-in fade-in zoom-in duration-200 pb-20">
+         <div className="flex flex-col md:flex-row md:justify-between md:items-end mb-2 md:mb-4 gap-2">
              <div>
-                <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Warehouse Inventory</h2>
-                <p className="text-slate-500 font-medium text-sm">Manage chemicals, supplies, and tracked equipment.</p>
+                <h2 className="text-xl md:text-2xl font-black text-slate-900 uppercase tracking-tight">Warehouse Inventory</h2>
+                <p className="text-slate-500 font-medium text-xs md:text-sm">Manage chemicals, supplies, and tracked equipment.</p>
              </div>
              
              {/* TABS */}
              <div className="flex gap-2">
                  <button 
                     onClick={() => setActiveTab('consumables')}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest flex items-center gap-2 transition-colors ${activeTab === 'consumables' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
+                    className={`px-3 md:px-4 py-2 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-widest flex items-center gap-1.5 md:gap-2 transition-colors ${activeTab === 'consumables' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
                  >
-                     <Box className="w-4 h-4" /> Consumables
+                     <Box className="w-3.5 h-3.5 md:w-4 md:h-4" /> Consumables
                  </button>
                  <button 
                     onClick={() => setActiveTab('equipment')}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest flex items-center gap-2 transition-colors ${activeTab === 'equipment' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
+                    className={`px-3 md:px-4 py-2 rounded-xl text-[10px] md:text-xs font-bold uppercase tracking-widest flex items-center gap-1.5 md:gap-2 transition-colors ${activeTab === 'equipment' ? 'bg-slate-900 text-white shadow-lg' : 'bg-white text-slate-500 hover:bg-slate-50'}`}
                  >
-                     <Wrench className="w-4 h-4" /> Equipment
+                     <Wrench className="w-3.5 h-3.5 md:w-4 md:h-4" /> Equipment
                  </button>
              </div>
          </div>
          
          {activeTab === 'consumables' && (
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in slide-in-from-left-4 duration-300">
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 animate-in slide-in-from-left-4 duration-300">
                  {/* ... EXISTING FOAM SECTION ... */}
-                 <div className="bg-white p-5 md:p-8 rounded-3xl border shadow-sm border-slate-200 md:col-span-2">
-                     <h3 className="font-black text-slate-900 mb-6 flex items-center gap-2 uppercase text-sm tracking-widest">
-                        <Fuel className="w-5 h-5 text-brand"/> Chemical Sets (Foam)
+                 <div className="bg-white p-4 md:p-8 rounded-2xl md:rounded-3xl border shadow-sm border-slate-200 md:col-span-2">
+                     <h3 className="font-black text-slate-900 mb-4 md:mb-6 flex items-center gap-2 uppercase text-xs md:text-sm tracking-widest">
+                        <Fuel className="w-4 h-4 md:w-5 md:h-5 text-brand"/> Chemical Sets (Foam)
                      </h3>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 md:gap-12">
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-12">
                          {/* Open Cell Control */}
-                         <div className="bg-red-50 rounded-2xl p-4 md:bg-transparent md:p-0 border border-red-100 md:border-none">
-                             <div className="flex justify-between mb-3 items-center"> 
+                         <div className="bg-red-50 rounded-2xl p-3 md:p-4 md:bg-transparent md:p-0 border border-red-100 md:border-none">
+                             <div className="flex justify-between mb-2 md:mb-3 items-center"> 
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Open Cell Stock</label> 
-                                <span className={`text-[10px] font-black px-3 py-1 rounded-full flex items-center gap-1 ${
+                                <span className={`text-[10px] font-black px-2 md:px-3 py-1 rounded-full flex items-center gap-1 shrink-0 ${
                                     state.warehouse.openCellSets < 0 ? 'bg-red-600 text-white shadow-md' :
                                     state.warehouse.openCellSets < 5 ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'
                                 }`}>
@@ -84,23 +84,23 @@ export const Warehouse: React.FC<WarehouseProps> = ({
                                     {Number(state.warehouse.openCellSets || 0).toFixed(2)} Sets
                                 </span> 
                              </div>
-                             <div className="flex items-center gap-2">
-                                <button onClick={() => onStockChange('openCellSets', (state.warehouse.openCellSets || 0) - 0.25)} className="w-12 h-12 flex items-center justify-center bg-white md:bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors font-bold text-slate-500 shadow-sm active:scale-95 touch-manipulation">-</button>
+                             <div className="flex items-center gap-1.5 md:gap-2">
+                                <button onClick={() => onStockChange('openCellSets', (state.warehouse.openCellSets || 0) - 0.25)} className="w-10 h-10 md:w-12 md:h-12 shrink-0 flex items-center justify-center bg-white md:bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors font-bold text-lg text-slate-500 shadow-sm active:scale-95 touch-manipulation">-</button>
                                 <input 
                                     type="number" 
                                     step="0.25"
                                     value={Number(state.warehouse.openCellSets || 0).toFixed(2)} 
                                     onChange={(e) => onStockChange('openCellSets', parseFloat(e.target.value))} 
-                                    className={`flex-1 h-12 bg-white md:bg-slate-50 border border-slate-200 rounded-xl text-center font-black text-xl md:text-2xl outline-none focus:ring-2 focus:ring-brand ${state.warehouse.openCellSets < 0 ? 'text-red-600' : 'text-slate-800'}`} 
+                                    className={`flex-1 min-w-0 h-10 md:h-12 bg-white md:bg-slate-50 border border-slate-200 rounded-xl text-center font-black text-lg md:text-2xl outline-none focus:ring-2 focus:ring-brand ${state.warehouse.openCellSets < 0 ? 'text-red-600' : 'text-slate-800'}`} 
                                 />
-                                <button onClick={() => onStockChange('openCellSets', (state.warehouse.openCellSets || 0) + 0.25)} className="w-12 h-12 flex items-center justify-center bg-white md:bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors font-bold text-slate-500 shadow-sm active:scale-95 touch-manipulation">+</button>
+                                <button onClick={() => onStockChange('openCellSets', (state.warehouse.openCellSets || 0) + 0.25)} className="w-10 h-10 md:w-12 md:h-12 shrink-0 flex items-center justify-center bg-white md:bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors font-bold text-lg text-slate-500 shadow-sm active:scale-95 touch-manipulation">+</button>
                              </div>
                          </div>
                          {/* Closed Cell Control */}
-                         <div className="bg-red-50 rounded-2xl p-4 md:bg-transparent md:p-0 border border-red-100 md:border-none">
-                             <div className="flex justify-between mb-3 items-center"> 
+                         <div className="bg-red-50 rounded-2xl p-3 md:p-4 md:bg-transparent md:p-0 border border-red-100 md:border-none">
+                             <div className="flex justify-between mb-2 md:mb-3 items-center"> 
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Closed Cell Stock</label> 
-                                <span className={`text-[10px] font-black px-3 py-1 rounded-full flex items-center gap-1 ${
+                                <span className={`text-[10px] font-black px-2 md:px-3 py-1 rounded-full flex items-center gap-1 shrink-0 ${
                                     state.warehouse.closedCellSets < 0 ? 'bg-red-600 text-white shadow-md' :
                                     state.warehouse.closedCellSets < 5 ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'
                                 }`}>
@@ -108,16 +108,16 @@ export const Warehouse: React.FC<WarehouseProps> = ({
                                     {Number(state.warehouse.closedCellSets || 0).toFixed(2)} Sets
                                 </span> 
                              </div>
-                             <div className="flex items-center gap-2">
-                                <button onClick={() => onStockChange('closedCellSets', (state.warehouse.closedCellSets || 0) - 0.25)} className="w-12 h-12 flex items-center justify-center bg-white md:bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors font-bold text-slate-500 shadow-sm active:scale-95 touch-manipulation">-</button>
+                             <div className="flex items-center gap-1.5 md:gap-2">
+                                <button onClick={() => onStockChange('closedCellSets', (state.warehouse.closedCellSets || 0) - 0.25)} className="w-10 h-10 md:w-12 md:h-12 shrink-0 flex items-center justify-center bg-white md:bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors font-bold text-lg text-slate-500 shadow-sm active:scale-95 touch-manipulation">-</button>
                                 <input 
                                     type="number" 
                                     step="0.25"
                                     value={Number(state.warehouse.closedCellSets || 0).toFixed(2)} 
                                     onChange={(e) => onStockChange('closedCellSets', parseFloat(e.target.value))} 
-                                    className={`flex-1 h-12 bg-white md:bg-slate-50 border border-slate-200 rounded-xl text-center font-black text-xl md:text-2xl outline-none focus:ring-2 focus:ring-brand ${state.warehouse.closedCellSets < 0 ? 'text-red-600' : 'text-slate-800'}`} 
+                                    className={`flex-1 min-w-0 h-10 md:h-12 bg-white md:bg-slate-50 border border-slate-200 rounded-xl text-center font-black text-lg md:text-2xl outline-none focus:ring-2 focus:ring-brand ${state.warehouse.closedCellSets < 0 ? 'text-red-600' : 'text-slate-800'}`} 
                                 />
-                                <button onClick={() => onStockChange('closedCellSets', (state.warehouse.closedCellSets || 0) + 0.25)} className="w-12 h-12 flex items-center justify-center bg-white md:bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors font-bold text-slate-500 shadow-sm active:scale-95 touch-manipulation">+</button>
+                                <button onClick={() => onStockChange('closedCellSets', (state.warehouse.closedCellSets || 0) + 0.25)} className="w-10 h-10 md:w-12 md:h-12 shrink-0 flex items-center justify-center bg-white md:bg-slate-50 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors font-bold text-lg text-slate-500 shadow-sm active:scale-95 touch-manipulation">+</button>
                              </div>
                          </div>
                      </div>
@@ -131,12 +131,12 @@ export const Warehouse: React.FC<WarehouseProps> = ({
                  </div>
 
                  {/* ... EXISTING INVENTORY SECTION ... */}
-                 <div ref={miscRef} className="bg-white p-5 md:p-8 rounded-3xl border shadow-sm border-slate-200 md:col-span-2">
-                     <div className="flex justify-between items-center mb-6">
-                        <h3 className="font-black text-slate-900 flex items-center gap-2 uppercase text-sm tracking-widest">
-                            <Box className="w-5 h-5 text-slate-600"/> General Inventory
+                 <div ref={miscRef} className="bg-white p-4 md:p-8 rounded-2xl md:rounded-3xl border shadow-sm border-slate-200 md:col-span-2">
+                     <div className="flex justify-between items-center mb-4 md:mb-6">
+                        <h3 className="font-black text-slate-900 flex items-center gap-2 uppercase text-xs md:text-sm tracking-widest">
+                            <Box className="w-4 h-4 md:w-5 md:h-5 text-slate-600"/> General Inventory
                         </h3>
-                        <button onClick={onAddItem} className="bg-red-50 hover:bg-red-100 text-brand px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-colors">
+                        <button onClick={onAddItem} className="bg-red-50 hover:bg-red-100 text-brand px-3 md:px-4 py-2 rounded-xl text-[10px] md:text-xs font-black uppercase tracking-widest transition-colors shrink-0">
                             + Add Item
                         </button>
                      </div>
@@ -157,52 +157,95 @@ export const Warehouse: React.FC<WarehouseProps> = ({
                             </div>
                         ) : (
                             state.warehouse.items.map(item => (
-                                <div key={item.id} className="bg-slate-50 md:bg-transparent p-4 md:p-0 rounded-2xl md:rounded-none border border-slate-100 md:border-none grid grid-cols-1 md:grid-cols-12 gap-3 md:items-center">
-                                    <div className="md:hidden text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Item Description</div>
-                                    <div className="md:col-span-5">
-                                         <input 
-                                            type="text" 
-                                            value={item.name} 
-                                            onChange={(e) => onUpdateItem(item.id, 'name', e.target.value)} 
-                                            className="w-full bg-white md:bg-slate-50 border border-slate-200 rounded-xl p-3 md:p-3 text-sm font-bold text-slate-900 placeholder-slate-300 focus:ring-2 focus:ring-brand outline-none" 
-                                            placeholder="Item Name" 
-                                         />
+                                <div key={item.id} className="bg-slate-50 md:bg-transparent p-3 md:p-0 rounded-2xl md:rounded-none border border-slate-100 md:border-none">
+                                    {/* Mobile: stacked card layout */}
+                                    <div className="md:hidden space-y-2">
+                                        <div className="flex items-center gap-2">
+                                            <input 
+                                                type="text" 
+                                                value={item.name} 
+                                                onChange={(e) => onUpdateItem(item.id, 'name', e.target.value)} 
+                                                className="flex-1 min-w-0 bg-white border border-slate-200 rounded-xl p-2.5 text-sm font-bold text-slate-900 placeholder-slate-300 focus:ring-2 focus:ring-brand outline-none" 
+                                                placeholder="Item Name" 
+                                            />
+                                            <button onClick={() => onRemoveItem(item.id)} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors shrink-0" title="Remove Item">
+                                                <Trash2 className="w-4 h-4"/>
+                                            </button>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <div>
+                                                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 px-1">Qty</div>
+                                                <input 
+                                                    type="number" 
+                                                    value={item.quantity} 
+                                                    onChange={(e) => onUpdateItem(item.id, 'quantity', parseFloat(e.target.value))} 
+                                                    className={`w-full bg-white border border-slate-200 rounded-xl p-2.5 text-center text-sm font-bold outline-none focus:ring-2 focus:ring-brand ${item.quantity < 0 ? 'text-red-600' : 'text-slate-900'}`}
+                                                />
+                                            </div>
+                                            <div>
+                                                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 px-1">Unit</div>
+                                                <input 
+                                                    type="text" 
+                                                    value={item.unit} 
+                                                    onChange={(e) => onUpdateItem(item.id, 'unit', e.target.value)} 
+                                                    className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-center text-sm font-bold text-slate-500 placeholder-slate-300 focus:ring-2 focus:ring-brand outline-none" 
+                                                    placeholder="Unit" 
+                                                />
+                                            </div>
+                                            <div>
+                                                <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wide mb-1 px-1">$/Unit</div>
+                                                <input 
+                                                    type="number"
+                                                    placeholder="0.00" 
+                                                    value={item.unitCost || ''} 
+                                                    onChange={(e) => onUpdateItem(item.id, 'unitCost', parseFloat(e.target.value))} 
+                                                    className="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-center text-sm font-bold text-slate-900 focus:ring-2 focus:ring-brand outline-none" 
+                                                />
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="grid grid-cols-2 md:grid-cols-6 gap-3 md:contents md:col-span-6">
-                                        <div className="md:col-span-2">
-                                            <div className="md:hidden text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Quantity</div>
+                                    {/* Desktop: grid row layout */}
+                                    <div className="hidden md:grid md:grid-cols-12 gap-3 items-center">
+                                        <div className="col-span-5">
+                                            <input 
+                                                type="text" 
+                                                value={item.name} 
+                                                onChange={(e) => onUpdateItem(item.id, 'name', e.target.value)} 
+                                                className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold text-slate-900 placeholder-slate-300 focus:ring-2 focus:ring-brand outline-none" 
+                                                placeholder="Item Name" 
+                                            />
+                                        </div>
+                                        <div className="col-span-2">
                                             <input 
                                                 type="number" 
                                                 value={item.quantity} 
                                                 onChange={(e) => onUpdateItem(item.id, 'quantity', parseFloat(e.target.value))} 
-                                                className={`w-full bg-white md:bg-white border border-slate-200 rounded-xl p-3 text-center font-bold outline-none focus:ring-2 focus:ring-brand ${item.quantity < 0 ? 'text-red-600' : 'text-slate-900'}`}
+                                                className={`w-full bg-white border border-slate-200 rounded-xl p-3 text-center font-bold outline-none focus:ring-2 focus:ring-brand ${item.quantity < 0 ? 'text-red-600' : 'text-slate-900'}`}
                                             />
                                         </div>
-                                        <div className="md:col-span-2">
-                                            <div className="md:hidden text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Unit</div>
+                                        <div className="col-span-2">
                                             <input 
                                                 type="text" 
                                                 value={item.unit} 
                                                 onChange={(e) => onUpdateItem(item.id, 'unit', e.target.value)} 
-                                                className="w-full bg-white md:bg-transparent border border-slate-200 md:border-none rounded-xl p-3 md:p-0 font-bold text-slate-500 placeholder-slate-300 focus:ring-2 focus:ring-brand outline-none" 
+                                                className="w-full bg-transparent font-bold text-slate-500 placeholder-slate-300 outline-none" 
                                                 placeholder="Unit" 
                                             />
                                         </div>
-                                        <div className="md:col-span-2">
-                                            <div className="md:hidden text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Cost/Unit</div>
+                                        <div className="col-span-2">
                                             <input 
                                                 type="number"
                                                 placeholder="0.00" 
                                                 value={item.unitCost || ''} 
                                                 onChange={(e) => onUpdateItem(item.id, 'unitCost', parseFloat(e.target.value))} 
-                                                className="w-full bg-white md:bg-white border border-slate-200 rounded-xl p-3 text-center font-bold text-slate-900 focus:ring-2 focus:ring-brand outline-none" 
+                                                className="w-full bg-white border border-slate-200 rounded-xl p-3 text-center font-bold text-slate-900 focus:ring-2 focus:ring-brand outline-none" 
                                             />
                                         </div>
-                                    </div>
-                                    <div className="md:col-span-1 text-right flex justify-end">
-                                         <button onClick={() => onRemoveItem(item.id)} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Remove Item">
-                                            <Trash2 className="w-5 h-5"/>
-                                         </button>
+                                        <div className="col-span-1 text-right">
+                                            <button onClick={() => onRemoveItem(item.id)} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Remove Item">
+                                                <Trash2 className="w-5 h-5"/>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
                             ))

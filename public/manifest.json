@@ -7,38 +7,32 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "display_override": ["window-controls-overlay", "minimal-ui", "standalone"],
+  "display_override": ["window-controls-overlay", "standalone"],
   "background_color": "#0F172A",
   "theme_color": "#E30613",
   "orientation": "any",
   "categories": ["business", "productivity", "utilities", "finance"],
+  "prefer_related_applications": false,
   "launch_handler": {
     "client_mode": "focus-existing"
   },
-  "prefer_related_applications": false,
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/10473/10473634.png",
+      "src": "/icons/icon-192.svg",
       "sizes": "192x192",
-      "type": "image/png",
+      "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/10473/10473634.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "maskable"
-    },
-    {
-      "src": "https://cdn-icons-png.flaticon.com/512/10473/10473634.png",
+      "src": "/icons/icon-512.svg",
       "sizes": "512x512",
-      "type": "image/png",
+      "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/10473/10473634.png",
+      "src": "/icons/icon-maskable.svg",
       "sizes": "512x512",
-      "type": "image/png",
+      "type": "image/svg+xml",
       "purpose": "maskable"
     }
   ],
@@ -47,15 +41,13 @@
       "name": "New Estimate",
       "short_name": "New Job",
       "description": "Start a new spray foam calculation",
-      "url": "/?action=new_estimate",
-      "icons": [{ "src": "https://cdn-icons-png.flaticon.com/512/10473/10473634.png", "sizes": "192x192" }]
+      "url": "/?action=new_estimate"
     },
     {
       "name": "Inventory",
       "short_name": "Stock",
       "description": "Check chemical sets and supplies",
-      "url": "/?action=warehouse",
-      "icons": [{ "src": "https://cdn-icons-png.flaticon.com/512/10473/10473634.png", "sizes": "192x192" }]
+      "url": "/?action=warehouse"
     }
   ],
   "screenshots": [
