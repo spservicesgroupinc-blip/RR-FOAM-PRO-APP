@@ -48,13 +48,13 @@ function validateToken(token) {
         const parts = decoded.split("::");
         if (parts.length !== 2) return null;
         const [data, signature] = parts;
-        
+
         const expectedSig = Utilities.base64Encode(Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_256, data, SECRET_SALT));
         if (signature !== expectedSig) return null;
-        
+
         const [user, role, expiry] = data.split(":");
         if (new Date().getTime() > parseInt(expiry)) return null; // Expired
-        
+
         return { username: user, role: role };
     } catch (e) { return null; }
 }
@@ -65,25 +65,26 @@ function doPost(e) {
     const lock = LockService.getScriptLock();
     // Reduced timeout to 30s to fail faster if deadlocked
     if (!lock.tryLock(30000)) return sendResponse('error', 'Server busy. Please try again.');
-    
+
     try {
         if (!e?.postData) throw new Error("No payload.");
         const req = JSON.parse(e.postData.contents);
         const { action, payload } = req;
-        
+
         let result;
-        
+
         // Unauthenticated Actions
         if (action === 'LOGIN') result = handleLogin(payload);
         else if (action === 'SIGNUP') result = handleSignup(payload);
         else if (action === 'CREW_LOGIN') result = handleCrewLogin(payload);
         else if (action === 'SUBMIT_TRIAL') result = handleSubmitTrial(payload);
         else if (action === 'UPDATE_PASSWORD') result = handleUpdatePassword(payload);
+        else if (action === 'UPDATE_CREW_PIN') result = handleUpdateCrewPin(payload);
         else {
             // Authenticated Actions requiring Sheet ID
             if (!payload.spreadsheetId) throw new Error("Auth Error: Missing Sheet ID");
             const userSS = SpreadsheetApp.openById(payload.spreadsheetId);
-            
+
             switch (action) {
                 case 'SYNC_DOWN': result = handleSyncDown(userSS, payload.lastSyncTimestamp); break; // Updated Sig
                 case 'SYNC_UP': result = handleSyncUp(userSS, payload); break;
@@ -103,16 +104,16 @@ function doPost(e) {
         console.error("API Error", error);
         // Special error for size limits
         if (error.toString().includes("limit")) {
-             return sendResponse('error', 'Request too large. Reduce image quality or batch size.');
+            return sendResponse('error', 'Request too large. Reduce image quality or batch size.');
         }
         return sendResponse('error', error.toString());
     } finally { lock.releaseLock(); }
 }
 
 function sendResponse(status, data) {
-    return ContentService.createTextOutput(JSON.stringify({ 
-        status, 
-        [status === 'success' ? 'data' : 'message']: data 
+    return ContentService.createTextOutput(JSON.stringify({
+        status,
+        [status === 'success' ? 'data' : 'message']: data
     })).setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -123,7 +124,7 @@ function handleSyncDown(ss, lastSyncTimestamp = 0) {
     const getChangedData = (name, jsonCol) => {
         const s = ss.getSheetByName(name);
         if (!s || s.getLastRow() <= 1) return [];
-        
+
         // Grab values. Note: We assume the JSON column contains a "lastModified" key
         const range = s.getRange(2, jsonCol + 1, s.getLastRow() - 1, 1);
         const values = range.getValues();
@@ -149,7 +150,7 @@ function handleSyncDown(ss, lastSyncTimestamp = 0) {
 
     const foamCounts = settings['warehouse_counts'] || { openCellSets: 0, closedCellSets: 0 };
     const lifetimeUsage = settings['lifetime_usage'] || { openCell: 0, closedCell: 0 };
-    
+
     // 2. Fetch Deltas
     const inventoryItems = getChangedData(CONSTANTS.TAB_INVENTORY, COL_MAPS.INVENTORY.JSON);
     const equipmentItems = getChangedData(CONSTANTS.TAB_EQUIPMENT, COL_MAPS.EQUIPMENT.JSON);
@@ -157,18 +158,18 @@ function handleSyncDown(ss, lastSyncTimestamp = 0) {
     const customers = getChangedData(CONSTANTS.TAB_CUSTOMERS, COL_MAPS.CUSTOMERS.JSON);
 
     // 3. Assemble
-    const assembledWarehouse = { 
-        openCellSets: foamCounts.openCellSets || 0, 
-        closedCellSets: foamCounts.closedCellSets || 0, 
-        items: inventoryItems || [] 
+    const assembledWarehouse = {
+        openCellSets: foamCounts.openCellSets || 0,
+        closedCellSets: foamCounts.closedCellSets || 0,
+        items: inventoryItems || []
     };
 
-    return { 
-        ...settings, 
-        warehouse: assembledWarehouse, 
-        lifetimeUsage, 
-        equipment: equipmentItems, 
-        savedEstimates, 
+    return {
+        ...settings,
+        warehouse: assembledWarehouse,
+        lifetimeUsage,
+        equipment: equipmentItems,
+        savedEstimates,
         customers,
         serverTimestamp: new Date().getTime() // Tell client current server time
     };
@@ -176,17 +177,17 @@ function handleSyncDown(ss, lastSyncTimestamp = 0) {
 
 function handleSyncUp(ss, payload) {
     const { state } = payload;
-    
+
     // Safeguard: Sanitize large Logo URLs
     if (state.companyProfile?.logoUrl?.length > 40000) {
         console.warn("Logo URL too long, sanitized.");
-        state.companyProfile.logoUrl = ""; 
+        state.companyProfile.logoUrl = "";
     }
 
     // Optimization: Use HashMap logic instead of Loops
     reconcileCompletedJobs(ss, state);
     setupUserSheetSchema(ss, null);
-    
+
     // 1. Settings Save
     const sSheet = ss.getSheetByName(CONSTANTS.TAB_SETTINGS);
     const settingsMap = new Map();
@@ -194,16 +195,16 @@ function handleSyncUp(ss, payload) {
     if (sSheet.getLastRow() > 1) {
         sSheet.getDataRange().getValues().forEach(r => settingsMap.set(r[0], r[1]));
     }
-    
+
     // Update simple keys
     ['companyProfile', 'yields', 'costs', 'expenses', 'jobNotes', 'purchaseOrders', 'sqFtRates', 'pricingMode', 'lifetimeUsage'].forEach(key => {
         if (state[key] !== undefined) settingsMap.set(key, JSON.stringify(state[key]));
     });
 
     if (state.warehouse) {
-        settingsMap.set('warehouse_counts', JSON.stringify({ 
-            openCellSets: state.warehouse.openCellSets, 
-            closedCellSets: state.warehouse.closedCellSets 
+        settingsMap.set('warehouse_counts', JSON.stringify({
+            openCellSets: state.warehouse.openCellSets,
+            closedCellSets: state.warehouse.closedCellSets
         }));
     }
 
@@ -247,7 +248,7 @@ function handleSyncUp(ss, payload) {
 // Helper: Generic Sheet Updater to reduce code duplication
 function updateSheetWithData(sheet, items, map, rowMapper) {
     if (!items || !Array.isArray(items) || items.length === 0) return;
-    
+
     if (sheet.getLastRow() > 1) {
         sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).clearContent();
     }
@@ -260,7 +261,7 @@ function updateSheetWithData(sheet, items, map, rowMapper) {
 // Optimization: HashMap-based Reconciliation
 function reconcileCompletedJobs(ss, incomingState) {
     if (!incomingState.savedEstimates || incomingState.savedEstimates.length === 0) return;
-    
+
     const sheet = ss.getSheetByName(CONSTANTS.TAB_ESTIMATES);
     const data = sheet.getDataRange().getValues();
     const dbIndex = {};
@@ -289,7 +290,7 @@ function reconcileCompletedJobs(ss, incomingState) {
 function syncEstimatesWithLogic(ss, payloadEstimates) {
     const sheet = ss.getSheetByName(CONSTANTS.TAB_ESTIMATES);
     const data = sheet.getDataRange().getValues();
-    
+
     // Map existing DB for merging
     const dbMap = new Map();
     for (let i = 1; i < data.length; i++) {
@@ -322,14 +323,14 @@ function syncEstimatesWithLogic(ss, payloadEstimates) {
     const output = [];
     dbMap.forEach(e => {
         output.push([
-            e.id, 
-            e.date, 
-            e.customer?.name || "Unknown", 
-            e.totalValue || 0, 
-            e.status || "Draft", 
-            e.invoiceNumber || "", 
-            e.results?.materialCost || 0, 
-            e.pdfLink || "", 
+            e.id,
+            e.date,
+            e.customer?.name || "Unknown",
+            e.totalValue || 0,
+            e.status || "Draft",
+            e.invoiceNumber || "",
+            e.results?.materialCost || 0,
+            e.pdfLink || "",
             JSON.stringify(e)
         ]);
     });
@@ -344,7 +345,7 @@ function syncEstimatesWithLogic(ss, payloadEstimates) {
 function handleCompleteJob(ss, payload) {
     const { estimateId, actuals } = payload;
     const estSheet = ss.getSheetByName(CONSTANTS.TAB_ESTIMATES);
-    
+
     // Optimized Find: Index Map is better, but for single lookup TextFinder is okay.
     // However, let's just loop data array for safety vs column index issues.
     const estData = estSheet.getDataRange().getValues();
@@ -360,7 +361,7 @@ function handleCompleteJob(ss, payload) {
     }
 
     if (!est) throw new Error("Estimate not found");
-    
+
     // SAFETY CHECK 1: Flag
     if (est.executionStatus === 'Completed' && est.inventoryProcessed) {
         return { success: true, message: "Job already finalized." };
@@ -369,12 +370,12 @@ function handleCompleteJob(ss, payload) {
     // SAFETY CHECK 2: Logs (Prevent Double Deduction)
     const logSheet = ss.getSheetByName(CONSTANTS.TAB_LOGS);
     if (logSheet.getLastRow() > 1) {
-        const logs = logSheet.getRange(2, 2, logSheet.getLastRow()-1, 1).getValues().flat();
+        const logs = logSheet.getRange(2, 2, logSheet.getLastRow() - 1, 1).getValues().flat();
         // If we find more than 5 logs for this ID, it likely already processed
         const existingCount = logs.filter(id => id === estimateId).length;
-        if (existingCount > 2) { 
-             // Allow it to proceed only if the flag wasn't set (retry), but warn
-             console.warn(`Job ${estimateId} has logs but flag false. Retrying.`);
+        if (existingCount > 2) {
+            // Allow it to proceed only if the flag wasn't set (retry), but warn
+            console.warn(`Job ${estimateId} has logs but flag false. Retrying.`);
         }
     }
 
@@ -413,10 +414,10 @@ function handleCompleteJob(ss, payload) {
     if (actuals.inventory && actuals.inventory.length > 0) {
         const invSheet = ss.getSheetByName(CONSTANTS.TAB_INVENTORY);
         const invData = invSheet.getDataRange().getValues();
-        const invIndex = {}; 
-        
+        const invIndex = {};
+
         // Build Index
-        for(let i=1; i<invData.length; i++) {
+        for (let i = 1; i < invData.length; i++) {
             invIndex[invData[i][COL_MAPS.INVENTORY.ID]] = i + 1;
         }
 
@@ -450,18 +451,18 @@ function handleCompleteJob(ss, payload) {
         pushLog("Open Cell Foam", ocUsed, "Sets");
         pushLog("Closed Cell Foam", ccUsed, "Sets");
         if (actuals.inventory) actuals.inventory.forEach(i => pushLog(i.name, i.quantity, i.unit));
-        
+
         if (newLogs.length > 0) logSheet.getRange(logSheet.getLastRow() + 1, 1, newLogs.length, newLogs[0].length).setValues(newLogs);
     }
 
     // 7. Update Estimate (FINAL COMMIT)
     est.executionStatus = 'Completed';
     est.actuals = actuals;
-    est.inventoryProcessed = true; 
+    est.inventoryProcessed = true;
     est.lastModified = new Date().toISOString();
-    
+
     estSheet.getRange(rowIdx, COL_MAPS.ESTIMATES.JSON + 1).setValue(JSON.stringify(est));
-    
+
     SpreadsheetApp.flush();
     return { success: true };
 }
@@ -470,7 +471,7 @@ function handleMarkJobPaid(ss, payload) {
     const { estimateId } = payload;
     const estSheet = ss.getSheetByName(CONSTANTS.TAB_ESTIMATES);
     const data = estSheet.getDataRange().getValues();
-    
+
     for (let i = 1; i < data.length; i++) {
         if (data[i][COL_MAPS.ESTIMATES.ID] == estimateId) {
             const row = i + 1;
@@ -485,11 +486,11 @@ function handleMarkJobPaid(ss, payload) {
             const act = est.actuals || est.materials || {};
             const oc = Number(act.openCellSets || 0);
             const cc = Number(act.closedCellSets || 0);
-            
+
             const chemCost = (oc * costs.openCell) + (cc * costs.closedCell);
             const labHrs = Number(act.laborHours || est.expenses?.manHours || 0);
             const labCost = labHrs * (est.expenses?.laborRate || costs.laborRate || 0);
-            
+
             let invCost = 0;
             (act.inventory || est.materials.inventory || []).forEach(item => {
                 invCost += (Number(item.quantity) * Number(item.unitCost || 0));
@@ -498,18 +499,18 @@ function handleMarkJobPaid(ss, payload) {
             const misc = (est.expenses?.tripCharge || 0) + (est.expenses?.fuelSurcharge || 0);
             const revenue = Number(est.totalValue) || 0;
             const totalCOGS = chemCost + labCost + invCost + misc;
-            
+
             est.status = 'Paid';
             est.lastModified = new Date().toISOString();
-            est.financials = { 
-                revenue, 
-                chemicalCost: chemCost, 
-                laborCost: labCost, 
-                inventoryCost: invCost, 
-                miscCost: misc, 
-                totalCOGS, 
-                netProfit: revenue - totalCOGS, 
-                margin: revenue ? (revenue - totalCOGS) / revenue : 0 
+            est.financials = {
+                revenue,
+                chemicalCost: chemCost,
+                laborCost: labCost,
+                inventoryCost: invCost,
+                miscCost: misc,
+                totalCOGS,
+                netProfit: revenue - totalCOGS,
+                margin: revenue ? (revenue - totalCOGS) / revenue : 0
             };
 
             // Write updates
@@ -518,8 +519,8 @@ function handleMarkJobPaid(ss, payload) {
 
             // Append to P&L
             ss.getSheetByName(CONSTANTS.TAB_PNL).appendRow([
-                new Date(), est.id, est.customer?.name, est.invoiceNumber, 
-                revenue, chemCost, labCost, invCost, misc, totalCOGS, 
+                new Date(), est.id, est.customer?.name, est.invoiceNumber,
+                revenue, chemCost, labCost, invCost, misc, totalCOGS,
                 est.financials.netProfit, est.financials.margin
             ]);
 
@@ -534,16 +535,16 @@ function handleStartJob(ss, payload) {
     const sheet = ss.getSheetByName(CONSTANTS.TAB_ESTIMATES);
     const data = sheet.getDataRange().getValues();
 
-    for(let i = 1; i < data.length; i++) {
-        if(data[i][COL_MAPS.ESTIMATES.ID] == estimateId) {
+    for (let i = 1; i < data.length; i++) {
+        if (data[i][COL_MAPS.ESTIMATES.ID] == estimateId) {
             const row = i + 1;
             const est = safeParse(data[i][COL_MAPS.ESTIMATES.JSON]);
-            if(est) {
+            if (est) {
                 est.executionStatus = 'In Progress';
                 est.actuals = est.actuals || {};
                 est.actuals.lastStartedAt = new Date().toISOString();
                 est.lastModified = new Date().toISOString();
-                
+
                 sheet.getRange(row, COL_MAPS.ESTIMATES.JSON + 1).setValue(JSON.stringify(est));
                 return { success: true, status: 'In Progress' };
             }
@@ -582,8 +583,8 @@ function ensureSheet(ss, n, h) {
     return s;
 }
 
-function hashPassword(p) { 
-    return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, p + SECRET_SALT)); 
+function hashPassword(p) {
+    return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, p + SECRET_SALT));
 }
 
 function handleSignup(p) {
@@ -615,7 +616,7 @@ function setupUserSheetSchema(ss, initialProfile) {
     ensureSheet(ss, CONSTANTS.TAB_EQUIPMENT, ["ID", "Name", "Status", "JSON_DATA"]);
     ensureSheet(ss, CONSTANTS.TAB_PNL, ["Date Paid", "Job ID", "Customer", "Invoice #", "Revenue", "Chem Cost", "Labor Cost", "Inv Cost", "Misc Cost", "Total COGS", "Net Profit", "Margin %"]);
     ensureSheet(ss, CONSTANTS.TAB_LOGS, ["Date", "Job ID", "Customer", "Material Name", "Quantity", "Unit", "Logged By", "JSON_DATA"]);
-    
+
     const settingsSheet = ensureSheet(ss, CONSTANTS.TAB_SETTINGS, ["Config_Key", "JSON_Value"]);
     if (initialProfile && settingsSheet.getLastRow() === 1) {
         settingsSheet.appendRow(['companyProfile', JSON.stringify(initialProfile)]);
@@ -662,17 +663,52 @@ function handleUpdatePassword(p) {
     return { success: true };
 }
 
+function handleUpdateCrewPin(p) {
+    const ss = getMasterSpreadsheet();
+    const sh = ss.getSheetByName("Users_DB");
+    const f = sh.getRange("A:A").createTextFinder(p.username.trim()).matchEntireCell(true).findNext();
+    if (!f) throw new Error("User not found.");
+
+    // 1. Update Master DB (Auth Source)
+    const r = f.getRow();
+    sh.getRange(r, 7).setValue(String(p.newPin).trim()); // Column G is CrewPin
+
+    // 2. Update Company Settings (App State Source)
+    const d = sh.getRange(r, 1, 1, 7).getValues()[0];
+    const userSSId = d[3];
+
+    if (userSSId) {
+        const userSS = SpreadsheetApp.openById(userSSId);
+        const setSheet = userSS.getSheetByName(CONSTANTS.TAB_SETTINGS);
+        if (setSheet) {
+            const data = setSheet.getDataRange().getValues();
+            for (let i = 0; i < data.length; i++) {
+                if (data[i][0] === 'companyProfile') {
+                    const profile = safeParse(data[i][1]);
+                    if (profile) {
+                        profile.crewAccessPin = p.newPin;
+                        setSheet.getRange(i + 1, 2).setValue(JSON.stringify(profile));
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    return { success: true };
+}
+
 // Simple Helpers (PDF/Image) - Kept brief
 function handleUploadImage(ss, payload) {
     // Note: If you have massive images, client-side resizing is mandatory before sending to GAS.
     const { base64Data, folderId, fileName } = payload;
     let targetFolder;
-    try { targetFolder = folderId ? DriveApp.getFolderById(folderId) : DriveApp.getRootFolder(); } catch(e) {}
-    if(!targetFolder) {
+    try { targetFolder = folderId ? DriveApp.getFolderById(folderId) : DriveApp.getRootFolder(); } catch (e) { }
+    if (!targetFolder) {
         // Fallback: try finding a "Job Photos" folder near the SS
-        try { targetFolder = DriveApp.getFileById(ss.getId()).getParents().next(); } catch(e) { targetFolder = DriveApp.getRootFolder(); }
+        try { targetFolder = DriveApp.getFileById(ss.getId()).getParents().next(); } catch (e) { targetFolder = DriveApp.getRootFolder(); }
     }
-    
+
     // Create Folder structure if needed
     const sub = targetFolder.getFoldersByName("Job Photos");
     const photoFolder = sub.hasNext() ? sub.next() : targetFolder.createFolder("Job Photos");
@@ -681,7 +717,7 @@ function handleUploadImage(ss, payload) {
     const blob = Utilities.newBlob(Utilities.base64Decode(encoded), MimeType.JPEG, fileName || "photo.jpg");
     const file = photoFolder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    
+
     return { url: `https://drive.google.com/thumbnail?id=${file.getId()}&sz=w1000`, fileId: file.getId() };
 }
 
@@ -690,18 +726,18 @@ function handleSavePdf(ss, p) {
     const blob = Utilities.newBlob(Utilities.base64Decode(p.base64Data.split(',')[1]), MimeType.PDF, p.fileName);
     const file = parentFolder.createFile(blob);
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    
+
     // Optional: Auto-attach to Estimate
     if (p.estimateId) {
         const s = ss.getSheetByName(CONSTANTS.TAB_ESTIMATES);
         const data = s.getDataRange().getValues();
-        for(let i=1; i<data.length; i++){
-            if(data[i][COL_MAPS.ESTIMATES.ID] == p.estimateId) {
+        for (let i = 1; i < data.length; i++) {
+            if (data[i][COL_MAPS.ESTIMATES.ID] == p.estimateId) {
                 const j = safeParse(data[i][COL_MAPS.ESTIMATES.JSON]);
-                if(j) {
+                if (j) {
                     j.pdfLink = file.getUrl();
-                    s.getRange(i+1, COL_MAPS.ESTIMATES.PDF + 1).setValue(file.getUrl());
-                    s.getRange(i+1, COL_MAPS.ESTIMATES.JSON + 1).setValue(JSON.stringify(j));
+                    s.getRange(i + 1, COL_MAPS.ESTIMATES.PDF + 1).setValue(file.getUrl());
+                    s.getRange(i + 1, COL_MAPS.ESTIMATES.JSON + 1).setValue(JSON.stringify(j));
                 }
                 break;
             }
@@ -710,22 +746,22 @@ function handleSavePdf(ss, p) {
     return { success: true, url: file.getUrl() };
 }
 
-function handleDeleteEstimate(ss, p) { 
-    const s = ss.getSheetByName(CONSTANTS.TAB_ESTIMATES); 
-    const f = s.getRange("A:A").createTextFinder(p.estimateId).matchEntireCell(true).findNext(); 
-    if (f) s.deleteRow(f.getRow()); 
-    return { success: true }; 
+function handleDeleteEstimate(ss, p) {
+    const s = ss.getSheetByName(CONSTANTS.TAB_ESTIMATES);
+    const f = s.getRange("A:A").createTextFinder(p.estimateId).matchEntireCell(true).findNext();
+    if (f) s.deleteRow(f.getRow());
+    return { success: true };
 }
 
 function handleCreateWorkOrder(ss, p) {
     let parentFolder;
     try { parentFolder = p.folderId ? DriveApp.getFolderById(p.folderId) : DriveApp.getRootFolder(); } catch (e) { parentFolder = DriveApp.getRootFolder(); }
-    
+
     const est = p.estimateData;
     const safeName = est.customer?.name ? est.customer.name.replace(/[^a-zA-Z0-9 ]/g, "") : "Unknown";
     const name = `WO-${est.id.slice(0, 8).toUpperCase()} - ${safeName}`;
     const newSheet = SpreadsheetApp.create(name);
-    
+
     try { DriveApp.getFileById(newSheet.getId()).moveTo(parentFolder); } catch (e) { }
 
     const infoSheet = newSheet.getSheetByName("Sheet1") || newSheet.insertSheet("Job Details");
@@ -737,23 +773,23 @@ function handleCreateWorkOrder(ss, p) {
     };
 
     infoSheet.getRange("A1").setValue("JOB SHEET").setFontSize(14).setFontWeight("bold").setBackground("#E30613").setFontColor("white");
-    
+
     addKV(3, "Customer", est.customer?.name);
     addKV(4, "Address", `${est.customer?.address || ""} ${est.customer?.city || ""}`);
     addKV(6, "Scope", "Material Requirements");
-    
+
     let r = 7;
-    if(est.materials?.openCellSets) { addKV(r++, "Open Cell Sets", Number(est.materials.openCellSets).toFixed(1)); }
-    if(est.materials?.closedCellSets) { addKV(r++, "Closed Cell Sets", Number(est.materials.closedCellSets).toFixed(1)); }
-    
-    if(est.materials?.inventory) {
+    if (est.materials?.openCellSets) { addKV(r++, "Open Cell Sets", Number(est.materials.openCellSets).toFixed(1)); }
+    if (est.materials?.closedCellSets) { addKV(r++, "Closed Cell Sets", Number(est.materials.closedCellSets).toFixed(1)); }
+
+    if (est.materials?.inventory) {
         r++; infoSheet.getRange(r++, 1).setValue("ADDITIONAL ITEMS").setFontWeight("bold");
         est.materials.inventory.forEach(i => addKV(r++, i.name, `${i.quantity} ${i.unit}`));
     }
 
     r++; infoSheet.getRange(r++, 1).setValue("NOTES").setFontWeight("bold");
     infoSheet.getRange(r, 1).setValue(est.notes || "No notes.");
-    
+
     // Daily Log Tab
     const logTab = newSheet.insertSheet("Daily Crew Log");
     logTab.appendRow(["Date", "Tech Name", "Start", "End", "Duration", "Sets Used", "Notes"]);
@@ -762,22 +798,22 @@ function handleCreateWorkOrder(ss, p) {
     return { url: newSheet.getUrl() };
 }
 
-function handleSubmitTrial(p) { 
-    getMasterSpreadsheet().getSheetByName("Trial_Memberships").appendRow([p.name, p.email, p.phone, new Date()]); 
-    return { success: true }; 
+function handleSubmitTrial(p) {
+    getMasterSpreadsheet().getSheetByName("Trial_Memberships").appendRow([p.name, p.email, p.phone, new Date()]);
+    return { success: true };
 }
 
-function handleLogTime(p) { 
-    const ss = SpreadsheetApp.openByUrl(p.workOrderUrl); 
-    const s = ss.getSheetByName("Daily Crew Log"); 
+function handleLogTime(p) {
+    const ss = SpreadsheetApp.openByUrl(p.workOrderUrl);
+    const s = ss.getSheetByName("Daily Crew Log");
     s.appendRow([
-        new Date().toLocaleDateString(), 
-        p.user, 
-        p.startTime, 
-        p.endTime || "", 
-        "", 
-        "", 
+        new Date().toLocaleDateString(),
+        p.user,
+        p.startTime,
+        p.endTime || "",
+        "",
+        "",
         ""
-    ]); 
-    return { success: true }; 
+    ]);
+    return { success: true };
 }
