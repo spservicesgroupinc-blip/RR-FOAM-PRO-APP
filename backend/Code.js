@@ -165,14 +165,6 @@ function handleSyncDown(ss, lastSyncTimestamp = 0) {
         items: inventoryItems || []
     };
 
-<<<<<<< HEAD
-    return {
-        ...settings,
-        warehouse: assembledWarehouse,
-        lifetimeUsage,
-        equipment: equipmentItems,
-        savedEstimates,
-=======
     // Fetch material usage logs
     const logSheet = ss.getSheetByName(CONSTANTS.TAB_LOGS);
     let materialLogs = [];
@@ -182,13 +174,12 @@ function handleSyncDown(ss, lastSyncTimestamp = 0) {
         materialLogs = logData.map(r => safeParse(r[0])).filter(Boolean);
     }
 
-    return { 
-        ...settings, 
-        warehouse: assembledWarehouse, 
-        lifetimeUsage, 
-        equipment: equipmentItems, 
-        savedEstimates, 
->>>>>>> 110957a67a1cf125048dd2bc470e086ead74c644
+    return {
+        ...settings,
+        warehouse: assembledWarehouse,
+        lifetimeUsage,
+        equipment: equipmentItems,
+        savedEstimates,
         customers,
         materialLogs,
         serverTimestamp: new Date().getTime() // Tell client current server time
@@ -837,56 +828,50 @@ function handleSubmitTrial(p) {
     return { success: true };
 }
 
-<<<<<<< HEAD
-function handleLogTime(p) {
-    const ss = SpreadsheetApp.openByUrl(p.workOrderUrl);
-    const s = ss.getSheetByName("Daily Crew Log");
-=======
 // --- MATERIAL USAGE LOGGING ---
 
 function handleLogMaterialUsage(ss, payload) {
     const { estimateId, customerName, materials, loggedBy, logType } = payload;
     const logSheet = ss.getSheetByName(CONSTANTS.TAB_LOGS);
     if (!logSheet) throw new Error("Material_Log_DB sheet not found");
-    
+
     const date = new Date().toISOString();
     const entryType = logType || 'estimated';
     const newLogs = [];
-    
+
     const pushLog = (name, qty, unit) => {
         if (Number(qty) > 0) {
-            const entry = { 
-                id: Utilities.getUuid(), 
-                date, 
-                jobId: estimateId, 
-                customerName: customerName, 
-                materialName: name, 
-                quantity: Number(qty), 
-                unit, 
+            const entry = {
+                id: Utilities.getUuid(),
+                date,
+                jobId: estimateId,
+                customerName: customerName,
+                materialName: name,
+                quantity: Number(qty),
+                unit,
                 loggedBy: loggedBy || 'Admin',
                 logType: entryType
             };
             newLogs.push([new Date(date), estimateId, customerName, name, Number(qty), unit, loggedBy || 'Admin', JSON.stringify(entry)]);
         }
     };
-    
+
     if (materials.openCellSets > 0) pushLog("Open Cell Foam", materials.openCellSets, "Sets");
     if (materials.closedCellSets > 0) pushLog("Closed Cell Foam", materials.closedCellSets, "Sets");
     if (materials.inventory && materials.inventory.length > 0) {
         materials.inventory.forEach(item => pushLog(item.name, item.quantity, item.unit));
     }
-    
+
     if (newLogs.length > 0) {
         logSheet.getRange(logSheet.getLastRow() + 1, 1, newLogs.length, newLogs[0].length).setValues(newLogs);
     }
-    
+
     return { success: true, logsCreated: newLogs.length };
 }
 
-function handleLogTime(p) { 
-    const ss = SpreadsheetApp.openByUrl(p.workOrderUrl); 
-    const s = ss.getSheetByName("Daily Crew Log"); 
->>>>>>> 110957a67a1cf125048dd2bc470e086ead74c644
+function handleLogTime(p) {
+    const ss = SpreadsheetApp.openByUrl(p.workOrderUrl);
+    const s = ss.getSheetByName("Daily Crew Log");
     s.appendRow([
         new Date().toLocaleDateString(),
         p.user,
