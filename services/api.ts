@@ -101,6 +101,32 @@ export const logCrewTime = async (workOrderUrl: string, startTime: string, endTi
 };
 
 /**
+ * Notifies backend that crew has started a job
+ */
+export const startJob = async (estimateId: string, spreadsheetId: string): Promise<{success: boolean, estimate?: any}> => {
+    const result = await apiRequest({ action: 'START_JOB', payload: { estimateId, spreadsheetId } });
+    return { success: result.status === 'success', estimate: result.data?.estimate };
+};
+
+/**
+ * Logs material usage (estimated on work order creation, actual on completion)
+ */
+export const logMaterialUsage = async (
+    estimateId: string, 
+    customerName: string, 
+    materials: { openCellSets: number; closedCellSets: number; inventory: any[] }, 
+    loggedBy: string, 
+    spreadsheetId: string,
+    logType: 'estimated' | 'actual' = 'estimated'
+): Promise<boolean> => {
+    const result = await apiRequest({ 
+        action: 'LOG_MATERIAL_USAGE', 
+        payload: { estimateId, customerName, materials, loggedBy, spreadsheetId, logType } 
+    });
+    return result.status === 'success';
+};
+
+/**
  * Marks job as complete and syncs inventory
  */
 export const completeJob = async (estimateId: string, actuals: any, spreadsheetId: string): Promise<boolean> => {

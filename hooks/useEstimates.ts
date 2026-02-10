@@ -2,7 +2,7 @@
 import React from 'react';
 import { useCalculator, DEFAULT_STATE } from '../context/CalculatorContext';
 import { EstimateRecord, CalculationResults, CustomerProfile, PurchaseOrder, InvoiceLineItem } from '../types';
-import { deleteEstimate, markJobPaid, createWorkOrderSheet, syncUp } from '../services/api';
+import { deleteEstimate, markJobPaid, createWorkOrderSheet, syncUp, logMaterialUsage } from '../services/api';
 import { generateWorkOrderPDF, generateDocumentPDF } from '../utils/pdfGenerator';
 
 export const useEstimates = () => {
@@ -185,9 +185,13 @@ export const useEstimates = () => {
     newWarehouse.openCellSets = newWarehouse.openCellSets - requiredOpen;
     newWarehouse.closedCellSets = newWarehouse.closedCellSets - requiredClosed;
     
+    // Deduct non-chemical inventory items from warehouse (case-insensitive matching)
     if (appData.inventory.length > 0) {
         newWarehouse.items = newWarehouse.items.map(item => {
-            const used = appData.inventory.find(i => i.name === item.name);
+            const used = appData.inventory.find(i => 
+                i.id === item.id || 
+                (i.name && item.name && i.name.trim().toLowerCase() === item.name.trim().toLowerCase())
+            );
             if (used) {
                 return { ...item, quantity: item.quantity - (Number(used.quantity) || 0) };
             }
@@ -207,6 +211,26 @@ export const useEstimates = () => {
         dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
         dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Work Order Created. Processing in background...' } });
         
+        // 3a. Create preliminary usage log entries (estimated)
+        if (session?.spreadsheetId) {
+            try {
+                await logMaterialUsage(
+                    record.id,
+                    record.customer?.name || 'Unknown',
+                    {
+                        openCellSets: results.openCellSets || 0,
+                        closedCellSets: results.closedCellSets || 0,
+                        inventory: appData.inventory || []
+                    },
+                    session.username || 'Admin',
+                    session.spreadsheetId,
+                    'estimated'
+                );
+            } catch (e) {
+                console.warn('Failed to create preliminary usage logs:', e);
+            }
+        }
+
         // 4. Generate PDF Locally
         generateWorkOrderPDF(appData, record!);
 

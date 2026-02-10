@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { DollarSign, HardHat, Receipt, Filter, Plus, Trash, CheckCircle2, AlertCircle, Clock, TrendingUp, TrendingDown, Wallet, PieChart, Fuel, ArrowRight, AlertTriangle, BarChart3, RefreshCw, Droplet } from 'lucide-react';
+import { DollarSign, HardHat, Receipt, Filter, Plus, Trash, CheckCircle2, AlertCircle, Clock, TrendingUp, TrendingDown, Wallet, PieChart, Fuel, ArrowRight, AlertTriangle, BarChart3, RefreshCw, Droplet, Zap } from 'lucide-react';
 import { CalculatorState, EstimateRecord } from '../types';
 
 interface DashboardProps {
