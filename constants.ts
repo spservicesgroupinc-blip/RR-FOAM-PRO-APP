@@ -1,3 +1,2 @@
-
 // Web App URL from Google Apps Script Deployment
-export const GOOGLE_SCRIPT_URL: string = 'https://script.google.com/macros/s/AKfycbxpfSjqTtlIP5rf9Oakj6Z64SNN1ptuLG3ATRQF5fs64bzCX-r1fDH0MaHMRaUJA2oKKQ/exec'
+export const GOOGLE_SCRIPT_URL: string = 'https://script.google.com/macros/s/AKfycbzHiSq8Ke9d6NG5r_fm5WTfyo7Sn5JDekOLJ7ixAcMleKaATIYZjIvGGR_O_7vzYT78OA/exec'
