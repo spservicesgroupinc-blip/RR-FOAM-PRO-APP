@@ -425,7 +425,6 @@ function handleCompleteJob(ss, payload) {
     if (actuals.inventory && actuals.inventory.length > 0) {
         const invSheet = ss.getSheetByName(CONSTANTS.TAB_INVENTORY);
         const invData = invSheet.getDataRange().getValues();
-<<<<<<< HEAD
         const invIndex = {}; 
         const invNameIndex = {};
         const normalizeName = (name) => (name || '').toString().trim().toLowerCase();
@@ -436,13 +435,6 @@ function handleCompleteJob(ss, payload) {
             const invName = invData[i][COL_MAPS.INVENTORY.NAME];
             invIndex[invId] = i + 1;
             if (invName) invNameIndex[normalizeName(invName)] = i + 1;
-=======
-        const invIndex = {};
-
-        // Build Index
-        for (let i = 1; i < invData.length; i++) {
-            invIndex[invData[i][COL_MAPS.INVENTORY.ID]] = i + 1;
->>>>>>> ef9817cce1731fd106dd2ab033583ab60a2f938f
         }
 
         actuals.inventory.forEach(actItem => {
@@ -605,7 +597,6 @@ function handleStartJob(ss, payload) {
     const sheet = ss.getSheetByName(CONSTANTS.TAB_ESTIMATES);
     if (!sheet) throw new Error("Estimates sheet not found");
 
-<<<<<<< HEAD
     const finder = sheet.getRange(2, COL_MAPS.ESTIMATES.ID + 1, Math.max(0, sheet.getLastRow() - 1), 1)
         .createTextFinder(String(estimateId))
         .matchEntireCell(true)
@@ -613,22 +604,6 @@ function handleStartJob(ss, payload) {
 
     if (!finder) {
         return { success: false, message: 'Estimate not found' };
-=======
-    for (let i = 1; i < data.length; i++) {
-        if (data[i][COL_MAPS.ESTIMATES.ID] == estimateId) {
-            const row = i + 1;
-            const est = safeParse(data[i][COL_MAPS.ESTIMATES.JSON]);
-            if (est) {
-                est.executionStatus = 'In Progress';
-                est.actuals = est.actuals || {};
-                est.actuals.lastStartedAt = new Date().toISOString();
-                est.lastModified = new Date().toISOString();
-
-                sheet.getRange(row, COL_MAPS.ESTIMATES.JSON + 1).setValue(JSON.stringify(est));
-                return { success: true, status: 'In Progress', estimate: est };
-            }
-        }
->>>>>>> ef9817cce1731fd106dd2ab033583ab60a2f938f
     }
 
     const row = finder.getRow();
