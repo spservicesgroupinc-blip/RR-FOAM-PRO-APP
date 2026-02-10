@@ -47,7 +47,7 @@ interface CalculatorProps {
   onStageEstimate: () => void; // New Handler
   onAddNewCustomer: () => void;
   onMarkPaid?: (id: string) => void; 
-  onCreateWarehouseItem?: (name: string, unit: string, cost: number) => void;
+    onCreateWarehouseItem?: (name: string, unit: string, cost: number) => string | null;
 }
 
 export const Calculator: React.FC<CalculatorProps> = ({
@@ -121,16 +121,19 @@ export const Calculator: React.FC<CalculatorProps> = ({
           const cost = parseFloat(costStr || "0") || 0;
 
           if (onCreateWarehouseItem) {
-              onCreateWarehouseItem(name, unit, cost);
-              // We also want to update the current line item immediately to this new item
-              // Since the new item is async added to state, we might need to manually set the fields on the current item
+              const createdId = onCreateWarehouseItem(name, unit, cost);
+              // Update the current line item immediately to this new item
               onInventoryUpdate(itemId, 'name', name);
               onInventoryUpdate(itemId, 'unit', unit);
               onInventoryUpdate(itemId, 'unitCost', cost);
+              if (createdId) {
+                  onInventoryUpdate(itemId, 'warehouseItemId', createdId);
+              }
           }
       } else {
           const warehouseItem = state.warehouse.items.find(w => w.id === warehouseItemId);
           if (warehouseItem) {
+              onInventoryUpdate(itemId, 'warehouseItemId', warehouseItem.id);
               onInventoryUpdate(itemId, 'name', warehouseItem.name);
               onInventoryUpdate(itemId, 'unit', warehouseItem.unit);
               onInventoryUpdate(itemId, 'unitCost', warehouseItem.unitCost); 

@@ -138,6 +138,7 @@ const SprayFoamCalculator: React.FC = () => {
           name, unit, unitCost: cost, quantity: 0
       };
       dispatch({ type: 'UPDATE_DATA', payload: { warehouse: { ...appData.warehouse, items: [...appData.warehouse.items, newItem] } } });
+      return newItem.id;
   };
 
   const handleCustomerSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {

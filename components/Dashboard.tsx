@@ -252,6 +252,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
         {/* OPERATIONS VIEW */}
         {activeTab === 'overview' && (
             <>
+                {state.savedEstimates.some(e => e.status === 'Work Order' && e.executionStatus === 'In Progress') && (
+                    <div className="bg-brand text-white p-4 rounded-2xl shadow-lg shadow-red-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                            <div className="bg-white/15 p-2.5 rounded-xl">
+                                <Clock className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <div className="text-[10px] font-black uppercase tracking-widest text-white/80">Crew In Progress</div>
+                                <div className="font-black text-sm">A crew has started a job. Review active work orders for details.</div>
+                            </div>
+                        </div>
+                        <button onClick={() => setDashboardFilter('work_orders')} className="bg-white text-brand px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest shadow-sm">
+                            View Work Orders
+                        </button>
+                    </div>
+                )}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <button onClick={() => setDashboardFilter('all')} className={`text-left p-6 rounded-2xl shadow-lg relative overflow-hidden transition-all transform hover:scale-[1.01] ring-2 ${dashboardFilter === 'all' ? 'ring-brand bg-slate-900 text-white' : 'ring-transparent bg-white text-slate-900 border border-slate-200'}`}>
                         {dashboardFilter === 'all' && <div className="absolute top-0 right-0 p-4 opacity-10 text-white"><DollarSign className="w-24 h-24" /></div>}
@@ -321,6 +337,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                                     <span className="flex items-center gap-1 bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter w-fit">
                                                         <CheckCircle2 className="w-3 h-3" /> Review Needed
                                                     </span>
+                                                ) : est.status === 'Work Order' && est.executionStatus === 'In Progress' ? (
+                                                    <div className="space-y-1">
+                                                        <span className="flex items-center gap-1 bg-brand text-white px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter w-fit">
+                                                            <Clock className="w-3 h-3" /> Crew Started
+                                                        </span>
+                                                        <div className="text-[10px] text-slate-400 font-bold">
+                                                            {est.actuals?.startedBy || 'Crew'} • {est.actuals?.lastStartedAt ? new Date(est.actuals.lastStartedAt).toLocaleString() : 'Just now'}
+                                                        </div>
+                                                    </div>
                                                 ) : est.status === 'Work Order' ? (
                                                     <span className="flex items-center gap-1 bg-amber-100 text-amber-700 px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter w-fit">
                                                         <Clock className="w-3 h-3" /> In Progress

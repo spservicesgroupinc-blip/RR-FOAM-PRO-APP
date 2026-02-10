@@ -109,7 +109,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, onLogout, s
           if (sessionStr && selectedJobId) {
               const session = JSON.parse(sessionStr);
               if (session.spreadsheetId) {
-                  const result = await startJob(selectedJobId, session.spreadsheetId);
+                  const result = await startJob(selectedJobId, session.spreadsheetId, session.username);
                   if (result.success) {
                       console.log('Backend notified: job started');
                   }

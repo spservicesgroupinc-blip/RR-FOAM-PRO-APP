@@ -420,23 +420,30 @@ function handleCompleteJob(ss, payload) {
     if (lifeRow !== -1) setSheet.getRange(lifeRow, 2).setValue(JSON.stringify(lifeStats));
     else setSheet.appendRow(['lifetime_usage', JSON.stringify(lifeStats)]);
 
-    // 5. Update Inventory Items (Optimized HashMap)
+    // 5. Update Inventory Items (Optimized HashMap + Name Fallback)
     if (actuals.inventory && actuals.inventory.length > 0) {
         const invSheet = ss.getSheetByName(CONSTANTS.TAB_INVENTORY);
         const invData = invSheet.getDataRange().getValues();
         const invIndex = {}; 
-        
+        const invNameIndex = {};
+        const normalizeName = (name) => (name || '').toString().trim().toLowerCase();
+
         // Build Index
-        for(let i=1; i<invData.length; i++) {
-            invIndex[invData[i][COL_MAPS.INVENTORY.ID]] = i + 1;
+        for (let i = 1; i < invData.length; i++) {
+            const invId = invData[i][COL_MAPS.INVENTORY.ID];
+            const invName = invData[i][COL_MAPS.INVENTORY.NAME];
+            invIndex[invId] = i + 1;
+            if (invName) invNameIndex[normalizeName(invName)] = i + 1;
         }
 
         actuals.inventory.forEach(actItem => {
-            const rIdx = invIndex[actItem.id];
+            const targetId = actItem.warehouseItemId || actItem.id;
+            const rIdx = invIndex[targetId] || invNameIndex[normalizeName(actItem.name)];
             if (rIdx) {
                 const currentJson = safeParse(invSheet.getRange(rIdx, COL_MAPS.INVENTORY.JSON + 1).getValue());
                 if (currentJson) {
                     currentJson.quantity = (currentJson.quantity || 0) - (Number(actItem.quantity) || 0);
+                    currentJson.lastModified = new Date().toISOString();
                     // Update Cell and JSON
                     invSheet.getRange(rIdx, COL_MAPS.INVENTORY.QTY + 1).setValue(currentJson.quantity);
                     invSheet.getRange(rIdx, COL_MAPS.INVENTORY.JSON + 1).setValue(JSON.stringify(currentJson));
@@ -479,7 +486,37 @@ function handleCompleteJob(ss, payload) {
         if (newLogs.length > 0) logSheet.getRange(logSheet.getLastRow() + 1, 1, newLogs.length, newLogs[0].length).setValues(newLogs);
     }
 
-    // 7. Update Estimate (FINAL COMMIT)
+    // 7. Update Equipment Last Seen (if any tracked tools were assigned)
+    if (est.materials && est.materials.equipment && est.materials.equipment.length > 0) {
+        const eqSheet = ss.getSheetByName(CONSTANTS.TAB_EQUIPMENT);
+        if (eqSheet && eqSheet.getLastRow() > 1) {
+            const eqData = eqSheet.getDataRange().getValues();
+            const eqIndex = {};
+            for (let i = 1; i < eqData.length; i++) {
+                eqIndex[eqData[i][COL_MAPS.EQUIPMENT.ID]] = i + 1;
+            }
+
+            const lastSeen = {
+                customerName: est.customer?.name || "Unknown",
+                date: actuals.completionDate || new Date().toISOString(),
+                crewMember: actuals.completedBy || "Crew",
+                jobId: estimateId
+            };
+
+            est.materials.equipment.forEach(tool => {
+                const eqRow = eqIndex[tool.id];
+                if (!eqRow) return;
+                const currentJson = safeParse(eqSheet.getRange(eqRow, COL_MAPS.EQUIPMENT.JSON + 1).getValue()) || {};
+                currentJson.lastSeen = lastSeen;
+                currentJson.status = 'Available';
+                currentJson.lastModified = new Date().toISOString();
+                eqSheet.getRange(eqRow, COL_MAPS.EQUIPMENT.STATUS + 1).setValue(currentJson.status);
+                eqSheet.getRange(eqRow, COL_MAPS.EQUIPMENT.JSON + 1).setValue(JSON.stringify(currentJson));
+            });
+        }
+    }
+
+    // 8. Update Estimate (FINAL COMMIT)
     est.executionStatus = 'Completed';
     est.actuals = actuals;
     est.inventoryProcessed = true; 
@@ -555,26 +592,33 @@ function handleMarkJobPaid(ss, payload) {
 }
 
 function handleStartJob(ss, payload) {
-    const { estimateId } = payload;
+    const { estimateId, startedBy } = payload;
     const sheet = ss.getSheetByName(CONSTANTS.TAB_ESTIMATES);
-    const data = sheet.getDataRange().getValues();
+    if (!sheet) throw new Error("Estimates sheet not found");
 
-    for(let i = 1; i < data.length; i++) {
-        if(data[i][COL_MAPS.ESTIMATES.ID] == estimateId) {
-            const row = i + 1;
-            const est = safeParse(data[i][COL_MAPS.ESTIMATES.JSON]);
-            if(est) {
-                est.executionStatus = 'In Progress';
-                est.actuals = est.actuals || {};
-                est.actuals.lastStartedAt = new Date().toISOString();
-                est.lastModified = new Date().toISOString();
-                
-                sheet.getRange(row, COL_MAPS.ESTIMATES.JSON + 1).setValue(JSON.stringify(est));
-                return { success: true, status: 'In Progress', estimate: est };
-            }
-        }
+    const finder = sheet.getRange(2, COL_MAPS.ESTIMATES.ID + 1, Math.max(0, sheet.getLastRow() - 1), 1)
+        .createTextFinder(String(estimateId))
+        .matchEntireCell(true)
+        .findNext();
+
+    if (!finder) {
+        return { success: false, message: 'Estimate not found' };
     }
-    return { success: false, message: 'Estimate not found' };
+
+    const row = finder.getRow();
+    const est = safeParse(sheet.getRange(row, COL_MAPS.ESTIMATES.JSON + 1).getValue());
+    if (!est) throw new Error("Estimate record is corrupted or empty");
+
+    if (est.executionStatus !== 'Completed') {
+        est.executionStatus = 'In Progress';
+    }
+    est.actuals = est.actuals || {};
+    est.actuals.lastStartedAt = new Date().toISOString();
+    est.actuals.startedBy = startedBy || est.actuals.startedBy || "Crew";
+    est.lastModified = new Date().toISOString();
+
+    sheet.getRange(row, COL_MAPS.ESTIMATES.JSON + 1).setValue(JSON.stringify(est));
+    return { success: true, status: 'In Progress', estimate: est };
 }
 
 // --- 6. INFRASTRUCTURE & HELPERS (Unchanged mostly) ---

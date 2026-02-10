@@ -103,8 +103,8 @@ export const logCrewTime = async (workOrderUrl: string, startTime: string, endTi
 /**
  * Notifies backend that crew has started a job
  */
-export const startJob = async (estimateId: string, spreadsheetId: string): Promise<{success: boolean, estimate?: any}> => {
-    const result = await apiRequest({ action: 'START_JOB', payload: { estimateId, spreadsheetId } });
+export const startJob = async (estimateId: string, spreadsheetId: string, startedBy?: string): Promise<{success: boolean, estimate?: any}> => {
+    const result = await apiRequest({ action: 'START_JOB', payload: { estimateId, spreadsheetId, startedBy } });
     return { success: result.status === 'success', estimate: result.data?.estimate };
 };
 

@@ -185,13 +185,18 @@ export const useEstimates = () => {
     newWarehouse.openCellSets = newWarehouse.openCellSets - requiredOpen;
     newWarehouse.closedCellSets = newWarehouse.closedCellSets - requiredClosed;
     
-    // Deduct non-chemical inventory items from warehouse (case-insensitive matching)
+    // Deduct non-chemical inventory items from warehouse (id-first, name fallback)
     if (appData.inventory.length > 0) {
+        const normalizeName = (name?: string) => (name || '').trim().toLowerCase();
+        const usageById = new Map<string, typeof appData.inventory[number]>();
+
+        appData.inventory.forEach(item => {
+            const key = item.warehouseItemId || item.id;
+            if (key) usageById.set(key, item);
+        });
+
         newWarehouse.items = newWarehouse.items.map(item => {
-            const used = appData.inventory.find(i => 
-                i.id === item.id || 
-                (i.name && item.name && i.name.trim().toLowerCase() === item.name.trim().toLowerCase())
-            );
+            const used = usageById.get(item.id) || appData.inventory.find(i => normalizeName(i.name) === normalizeName(item.name));
             if (used) {
                 return { ...item, quantity: item.quantity - (Number(used.quantity) || 0) };
             }
@@ -207,6 +212,24 @@ export const useEstimates = () => {
     const record = await saveEstimate(results, 'Work Order', { workOrderLines }, false);
     
     if (record) {
+        let updatedEquipment = appData.equipment;
+        if (appData.jobEquipment.length > 0) {
+            const assignedAt = new Date().toISOString();
+            const lastSeen = {
+                customerName: record.customer?.name || 'Unknown',
+                date: assignedAt,
+                crewMember: session?.username || 'Admin',
+                jobId: record.id
+            };
+            updatedEquipment = appData.equipment.map(eq => {
+                if (appData.jobEquipment.find(tool => tool.id === eq.id)) {
+                    return { ...eq, status: 'In Use', lastSeen };
+                }
+                return eq;
+            });
+            dispatch({ type: 'UPDATE_DATA', payload: { equipment: updatedEquipment } });
+        }
+
         // 3. OPTIMISTIC UPDATE: Navigate Immediately
         dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
         dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Work Order Created. Processing in background...' } });
@@ -237,11 +260,11 @@ export const useEstimates = () => {
         // 5. Background Sync & Sheet Creation
         // We do NOT await this here, allowing the UI to remain responsive.
         // We launch a fire-and-forget logic that updates state later.
-        handleBackgroundWorkOrderGeneration(record, newWarehouse);
+                handleBackgroundWorkOrderGeneration(record, newWarehouse, updatedEquipment);
     }
   };
 
-  const handleBackgroundWorkOrderGeneration = async (record: EstimateRecord, currentWarehouse: any) => {
+    const handleBackgroundWorkOrderGeneration = async (record: EstimateRecord, currentWarehouse: any, currentEquipment: any) => {
       if (!session?.spreadsheetId) return;
       
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
@@ -276,6 +299,7 @@ export const useEstimates = () => {
               ...appData, 
               customers: currentCustomers, 
               warehouse: currentWarehouse,
+              equipment: currentEquipment,
               savedEstimates: freshEstimates
           };
 

@@ -30,6 +30,7 @@ export interface AdditionalArea {
 
 export interface InventoryItem {
   id: string;
+  warehouseItemId?: string;
   name: string;
   quantity: number;
   unit: string;
@@ -229,6 +230,7 @@ export interface EstimateRecord {
     completedBy?: string;
     completionDate?: string;
     lastStartedAt?: string;
+    startedBy?: string;
   };
   
   financials?: {
