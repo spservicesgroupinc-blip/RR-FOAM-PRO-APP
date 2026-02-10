@@ -111,6 +111,7 @@ export interface MaterialUsageLogEntry {
   quantity: number;
   unit: string;
   loggedBy: string;
+  logType?: 'estimated' | 'actual';
 }
 
 export interface PurchaseOrderItem {

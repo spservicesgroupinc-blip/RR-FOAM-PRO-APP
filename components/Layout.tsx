@@ -135,43 +135,47 @@ export const Layout: React.FC<LayoutProps> = ({
         </div>
       )}
 
-      {/* QUICK ACTION MODAL */}
+      {/* QUICK ACTION MODAL - slides up from bottom on mobile */}
       {isActionMenuOpen && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setIsActionMenuOpen(false)}>
-            <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl scale-100 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">Create New</h3>
-                    <button onClick={() => setIsActionMenuOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-400 hover:bg-slate-200"><X className="w-5 h-5"/></button>
+        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex md:items-center items-end justify-center md:p-4" onClick={() => setIsActionMenuOpen(false)}>
+            <div className="bg-white md:rounded-3xl rounded-t-3xl p-6 w-full md:max-w-sm shadow-2xl scale-100" onClick={e => e.stopPropagation()}>
+                {/* Drag handle on mobile */}
+                <div className="md:hidden w-10 h-1 bg-slate-200 rounded-full mx-auto mb-4" />
+                <div className="flex justify-between items-center mb-5">
+                    <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Create New</h3>
+                    <button onClick={() => setIsActionMenuOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-400 hover:bg-slate-200 active:scale-90 transition-all"><X className="w-5 h-5"/></button>
                 </div>
-                <div className="space-y-3">
-                    <button onClick={() => handleAction('new_customer')} className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-slate-50 border border-slate-100 group transition-all active:scale-95">
-                        <div className="w-12 h-12 rounded-xl bg-red-100 text-brand flex items-center justify-center group-hover:bg-brand group-hover:text-white transition-colors">
-                            <UserPlus className="w-6 h-6" />
+                <div className="space-y-2">
+                    <button onClick={() => handleAction('new_customer')} className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-slate-50 active:bg-slate-100 border border-slate-100 group transition-all active:scale-[0.98]">
+                        <div className="w-12 h-12 rounded-2xl bg-red-50 text-brand flex items-center justify-center group-active:bg-brand group-active:text-white transition-colors">
+                            <UserPlus className="w-5 h-5" />
                         </div>
                         <div className="text-left">
-                            <div className="font-bold text-slate-900">New Customer</div>
+                            <div className="font-bold text-slate-900 text-[15px]">New Customer</div>
                             <div className="text-xs text-slate-400 font-medium">Add a new lead to CRM</div>
                         </div>
                     </button>
-                    <button onClick={() => handleAction('new_estimate')} className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-slate-50 border border-slate-100 group transition-all active:scale-95">
-                        <div className="w-12 h-12 rounded-xl bg-sky-100 text-sky-600 flex items-center justify-center group-hover:bg-sky-600 group-hover:text-white transition-colors">
-                            <Calculator className="w-6 h-6" />
+                    <button onClick={() => handleAction('new_estimate')} className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-slate-50 active:bg-slate-100 border border-slate-100 group transition-all active:scale-[0.98]">
+                        <div className="w-12 h-12 rounded-2xl bg-sky-50 text-sky-600 flex items-center justify-center group-active:bg-sky-600 group-active:text-white transition-colors">
+                            <Calculator className="w-5 h-5" />
                         </div>
                         <div className="text-left">
-                            <div className="font-bold text-slate-900">New Estimate</div>
+                            <div className="font-bold text-slate-900 text-[15px]">New Estimate</div>
                             <div className="text-xs text-slate-400 font-medium">Start a blank calculation</div>
                         </div>
                     </button>
-                    <button onClick={() => handleAction('new_invoice')} className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-slate-50 border border-slate-100 group transition-all active:scale-95">
-                        <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-                            <Receipt className="w-6 h-6" />
+                    <button onClick={() => handleAction('new_invoice')} className="w-full flex items-center gap-4 p-4 rounded-2xl hover:bg-slate-50 active:bg-slate-100 border border-slate-100 group transition-all active:scale-[0.98]">
+                        <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-active:bg-emerald-600 group-active:text-white transition-colors">
+                            <Receipt className="w-5 h-5" />
                         </div>
                         <div className="text-left">
-                            <div className="font-bold text-slate-900">Generate Invoice</div>
+                            <div className="font-bold text-slate-900 text-[15px]">Generate Invoice</div>
                             <div className="text-xs text-slate-400 font-medium">Convert a sold job to invoice</div>
                         </div>
                     </button>
                 </div>
+                {/* Safe area padding on mobile */}
+                <div className="md:hidden h-[env(safe-area-inset-bottom)]" />
             </div>
         </div>
       )}
@@ -235,57 +239,115 @@ export const Layout: React.FC<LayoutProps> = ({
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 min-w-0 md:p-8 p-4 overflow-x-hidden pt-6 md:pt-8">
-        {/* Mobile Header */}
-        <div className="md:hidden flex items-center justify-between mb-6">
-           <div className="flex items-center gap-2" onClick={() => setView('dashboard')}>
-              <div className="scale-75 origin-left">
+      <main className="flex-1 min-w-0 md:p-8 p-3 sm:p-4 overflow-x-hidden pt-0 md:pt-8 pb-28 md:pb-8">
+        {/* Mobile Header - sticky, glassmorphism */}
+        <div className="md:hidden sticky top-0 z-30 -mx-3 sm:-mx-4 px-3 sm:px-4 pt-[env(safe-area-inset-top)] mb-4">
+          <div className="flex items-center justify-between py-3 bg-white/80 backdrop-blur-xl border-b border-slate-100">
+            <div className="flex items-center gap-2 min-w-0" onClick={() => setView('dashboard')}>
+              <div className="shrink-0">
                 <RFESmallLogo />
               </div>
-              <span className="text-[9px] font-medium text-slate-400 leading-none block -ml-2 mt-1">ID: {userSession.username}</span>
-           </div>
-           <div className="flex items-center gap-2">
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
               {installPrompt && (
-                <button onClick={onInstall} className="p-2 text-brand bg-red-50 rounded-full animate-pulse border border-red-100">
-                  <Download className="w-5 h-5" />
+                <button onClick={onInstall} className="p-2 text-brand bg-red-50 rounded-xl border border-red-100 transition-all active:scale-90">
+                  <Download className="w-4 h-4" />
                 </button>
               )}
-              {syncStatus === 'syncing' && <RefreshCw className="w-4 h-4 text-brand animate-spin"/>}
-              {syncStatus === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-500"/>}
-              {syncStatus === 'error' && <AlertCircle className="w-4 h-4 text-red-500"/>}
-              {/* RESTORED LOGOUT BUTTON */}
-              <button onClick={onLogout} className="p-2 text-slate-400 hover:text-red-500 bg-slate-50 rounded-full transition-colors ml-2">
+              <div className="p-2">
+                {syncStatus === 'syncing' && <RefreshCw className="w-4 h-4 text-brand animate-spin"/>}
+                {syncStatus === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-500"/>}
+                {syncStatus === 'error' && <AlertCircle className="w-4 h-4 text-amber-500"/>}
+                {syncStatus === 'idle' && <div className="w-2 h-2 rounded-full bg-emerald-400" />}
+              </div>
+              <button onClick={onLogout} className="p-2 text-slate-400 hover:text-red-500 rounded-xl transition-all active:scale-90">
                 <LogOut className="w-4 h-4" />
               </button>
-           </div>
+            </div>
+          </div>
         </div>
 
         {children}
       </main>
 
-      {/* Mobile Bottom Nav */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex justify-around p-2 pb-[calc(1rem+env(safe-area-inset-bottom))] z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
-         <button onClick={() => setView('dashboard')} className={`flex flex-col items-center p-2 rounded-lg flex-1 ${view === 'dashboard' ? 'text-brand' : 'text-slate-400'}`}>
-           <LayoutDashboard className="w-5 h-5" />
-           <span className="text-[9px] font-bold mt-1">Dash</span>
-         </button>
-         <button onClick={() => setIsActionMenuOpen(true)} className={`flex flex-col items-center p-2 rounded-lg flex-1 ${view === 'calculator' ? 'text-brand' : 'text-slate-400'}`}>
-           <Plus className="w-5 h-5" />
-           <span className="text-[9px] font-bold mt-1">Create</span>
-         </button>
-         <button onClick={() => setView('customers')} className={`flex flex-col items-center p-2 rounded-lg flex-1 ${view === 'customers' || view === 'customer_detail' ? 'text-brand' : 'text-slate-400'}`}>
-           <Users className="w-5 h-5" />
-           <span className="text-[9px] font-bold mt-1">Leads</span>
-         </button>
-         <button onClick={() => setView('warehouse')} className={`flex flex-col items-center p-2 rounded-lg flex-1 ${view === 'warehouse' ? 'text-brand' : 'text-slate-400'}`}>
-           <Warehouse className="w-5 h-5" />
-           <span className="text-[9px] font-bold mt-1">Stock</span>
-         </button>
-         <button onClick={() => setView('profile')} className={`flex flex-col items-center p-2 rounded-lg flex-1 ${view === 'profile' ? 'text-brand' : 'text-slate-400'}`}>
-           <User className="w-5 h-5" />
-           <span className="text-[9px] font-bold mt-1">Profile</span>
-         </button>
+      {/* Mobile Bottom Nav - Modern with raised center FAB */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50">
+        {/* Curved background with notch effect */}
+        <div className="relative">
+          {/* Center FAB Button - raised above the bar */}
+          <div className="absolute left-1/2 -translate-x-1/2 -top-7 z-10">
+            <button 
+              onClick={() => setIsActionMenuOpen(true)}
+              className={`w-[60px] h-[60px] rounded-full flex items-center justify-center shadow-xl transition-all duration-300 active:scale-90 ${
+                view === 'calculator' || isActionMenuOpen
+                  ? 'bg-brand shadow-red-300/50 scale-105' 
+                  : 'bg-slate-900 shadow-slate-900/30 hover:bg-brand'
+              }`}
+              style={{ boxShadow: '0 4px 24px rgba(227,6,19,0.35)' }}
+            >
+              <Plus className={`w-7 h-7 text-white transition-transform duration-300 ${isActionMenuOpen ? 'rotate-45' : ''}`} />
+            </button>
+          </div>
+
+          {/* Nav bar body */}
+          <div className="bg-white/95 backdrop-blur-xl border-t border-slate-100 px-2 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))]" 
+               style={{ boxShadow: '0 -8px 32px rgba(0,0,0,0.06)' }}>
+            <div className="flex items-end justify-around max-w-md mx-auto">
+              {/* Left items */}
+              <MobileNavItem 
+                icon={LayoutDashboard} 
+                label="Home" 
+                isActive={view === 'dashboard'} 
+                onClick={() => setView('dashboard')} 
+              />
+              <MobileNavItem 
+                icon={Users} 
+                label="Leads" 
+                isActive={view === 'customers' || view === 'customer_detail'} 
+                onClick={() => setView('customers')} 
+              />
+              
+              {/* Center spacer for FAB */}
+              <div className="w-[72px] flex flex-col items-center pt-1 pb-0.5">
+                <span className={`text-[9px] font-bold mt-5 transition-colors ${view === 'calculator' || isActionMenuOpen ? 'text-brand' : 'text-slate-400'}`}>Create</span>
+              </div>
+
+              {/* Right items */}
+              <MobileNavItem 
+                icon={Warehouse} 
+                label="Stock" 
+                isActive={view === 'warehouse'} 
+                onClick={() => setView('warehouse')} 
+              />
+              <MobileNavItem 
+                icon={User} 
+                label="Profile" 
+                isActive={view === 'profile' || view === 'settings'} 
+                onClick={() => setView('profile')} 
+              />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
 };
+
+/* Mobile Nav Item sub-component */
+const MobileNavItem: React.FC<{ icon: any; label: string; isActive: boolean; onClick: () => void }> = ({ icon: Icon, label, isActive, onClick }) => (
+  <button 
+    onClick={onClick} 
+    className={`flex flex-col items-center justify-end min-w-[56px] py-1.5 px-1 rounded-xl transition-all duration-200 active:scale-90 ${
+      isActive 
+        ? 'text-brand' 
+        : 'text-slate-400 active:text-slate-600'
+    }`}
+  >
+    <div className={`p-1.5 rounded-xl transition-all duration-200 ${isActive ? 'bg-red-50' : ''}`}>
+      <Icon className={`w-5 h-5 transition-all duration-200 ${isActive ? 'scale-110' : ''}`} />
+    </div>
+    <span className={`text-[9px] font-bold mt-0.5 transition-colors ${isActive ? 'text-brand' : 'text-slate-400'}`}>{label}</span>
+    {/* Active indicator dot */}
+    {isActive && <div className="w-1 h-1 rounded-full bg-brand mt-0.5" />}
+  </button>
+);

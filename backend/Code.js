@@ -96,6 +96,7 @@ function doPost(e) {
                 case 'UPLOAD_IMAGE': result = handleUploadImage(userSS, payload); break;
                 case 'CREATE_WORK_ORDER': result = handleCreateWorkOrder(userSS, payload); break;
                 case 'LOG_TIME': result = handleLogTime(payload); break;
+                case 'LOG_MATERIAL_USAGE': result = handleLogMaterialUsage(userSS, payload); break;
                 default: throw new Error(`Unknown Action: ${action}`);
             }
         }
@@ -164,13 +165,32 @@ function handleSyncDown(ss, lastSyncTimestamp = 0) {
         items: inventoryItems || []
     };
 
+<<<<<<< HEAD
     return {
         ...settings,
         warehouse: assembledWarehouse,
         lifetimeUsage,
         equipment: equipmentItems,
         savedEstimates,
+=======
+    // Fetch material usage logs
+    const logSheet = ss.getSheetByName(CONSTANTS.TAB_LOGS);
+    let materialLogs = [];
+    if (logSheet && logSheet.getLastRow() > 1) {
+        const logJsonCol = 8; // JSON_DATA column (1-based)
+        const logData = logSheet.getRange(2, logJsonCol, logSheet.getLastRow() - 1, 1).getValues();
+        materialLogs = logData.map(r => safeParse(r[0])).filter(Boolean);
+    }
+
+    return { 
+        ...settings, 
+        warehouse: assembledWarehouse, 
+        lifetimeUsage, 
+        equipment: equipmentItems, 
+        savedEstimates, 
+>>>>>>> 110957a67a1cf125048dd2bc470e086ead74c644
         customers,
+        materialLogs,
         serverTimestamp: new Date().getTime() // Tell client current server time
     };
 }
@@ -435,8 +455,22 @@ function handleCompleteJob(ss, payload) {
         });
     }
 
-    // 6. Logs
+    // 6. Logs - Remove estimated entries, write actual entries
     if (logSheet) {
+        // Remove any preliminary 'estimated' logs for this job
+        if (logSheet.getLastRow() > 1) {
+            const allLogData = logSheet.getDataRange().getValues();
+            const rowsToDelete = [];
+            for (let i = allLogData.length - 1; i >= 1; i--) {
+                const logJson = safeParse(allLogData[i][7]); // JSON_DATA column (0-based index 7)
+                if (logJson && logJson.jobId === estimateId && logJson.logType === 'estimated') {
+                    rowsToDelete.push(i + 1); // 1-based row
+                }
+            }
+            // Delete from bottom to top to preserve row indices
+            rowsToDelete.forEach(row => logSheet.deleteRow(row));
+        }
+
         const newLogs = [];
         const date = actuals.completionDate || new Date().toISOString();
         const tech = actuals.completedBy || "Crew";
@@ -444,7 +478,7 @@ function handleCompleteJob(ss, payload) {
 
         const pushLog = (name, qty, unit) => {
             if (Number(qty) > 0) {
-                const entry = { id: Utilities.getUuid(), date, jobId: estimateId, materialName: name, quantity: qty, unit, loggedBy: tech };
+                const entry = { id: Utilities.getUuid(), date, jobId: estimateId, customerName: cust, materialName: name, quantity: qty, unit, loggedBy: tech, logType: 'actual' };
                 newLogs.push([new Date(date), estimateId, cust, name, qty, unit, tech, JSON.stringify(entry)]);
             }
         };
@@ -546,7 +580,7 @@ function handleStartJob(ss, payload) {
                 est.lastModified = new Date().toISOString();
 
                 sheet.getRange(row, COL_MAPS.ESTIMATES.JSON + 1).setValue(JSON.stringify(est));
-                return { success: true, status: 'In Progress' };
+                return { success: true, status: 'In Progress', estimate: est };
             }
         }
     }
@@ -803,9 +837,56 @@ function handleSubmitTrial(p) {
     return { success: true };
 }
 
+<<<<<<< HEAD
 function handleLogTime(p) {
     const ss = SpreadsheetApp.openByUrl(p.workOrderUrl);
     const s = ss.getSheetByName("Daily Crew Log");
+=======
+// --- MATERIAL USAGE LOGGING ---
+
+function handleLogMaterialUsage(ss, payload) {
+    const { estimateId, customerName, materials, loggedBy, logType } = payload;
+    const logSheet = ss.getSheetByName(CONSTANTS.TAB_LOGS);
+    if (!logSheet) throw new Error("Material_Log_DB sheet not found");
+    
+    const date = new Date().toISOString();
+    const entryType = logType || 'estimated';
+    const newLogs = [];
+    
+    const pushLog = (name, qty, unit) => {
+        if (Number(qty) > 0) {
+            const entry = { 
+                id: Utilities.getUuid(), 
+                date, 
+                jobId: estimateId, 
+                customerName: customerName, 
+                materialName: name, 
+                quantity: Number(qty), 
+                unit, 
+                loggedBy: loggedBy || 'Admin',
+                logType: entryType
+            };
+            newLogs.push([new Date(date), estimateId, customerName, name, Number(qty), unit, loggedBy || 'Admin', JSON.stringify(entry)]);
+        }
+    };
+    
+    if (materials.openCellSets > 0) pushLog("Open Cell Foam", materials.openCellSets, "Sets");
+    if (materials.closedCellSets > 0) pushLog("Closed Cell Foam", materials.closedCellSets, "Sets");
+    if (materials.inventory && materials.inventory.length > 0) {
+        materials.inventory.forEach(item => pushLog(item.name, item.quantity, item.unit));
+    }
+    
+    if (newLogs.length > 0) {
+        logSheet.getRange(logSheet.getLastRow() + 1, 1, newLogs.length, newLogs[0].length).setValues(newLogs);
+    }
+    
+    return { success: true, logsCreated: newLogs.length };
+}
+
+function handleLogTime(p) { 
+    const ss = SpreadsheetApp.openByUrl(p.workOrderUrl); 
+    const s = ss.getSheetByName("Daily Crew Log"); 
+>>>>>>> 110957a67a1cf125048dd2bc470e086ead74c644
     s.appendRow([
         new Date().toLocaleDateString(),
         p.user,

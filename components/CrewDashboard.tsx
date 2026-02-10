@@ -7,7 +7,7 @@ import {
     MessageSquare, History
 } from 'lucide-react';
 import { CalculatorState, EstimateRecord } from '../types';
-import { logCrewTime, completeJob } from '../services/api';
+import { logCrewTime, completeJob, startJob } from '../services/api';
 
 interface CrewDashboardProps {
   state: CalculatorState;
@@ -96,12 +96,28 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, onLogout, s
   const displayedJobs = showHistory ? completedWorkOrders : activeWorkOrders;
   const selectedJob = selectedJobId ? state.savedEstimates.find(j => j.id === selectedJobId) : null;
 
-  const handleStartTimer = () => {
+  const handleStartTimer = async () => {
       const now = new Date().toISOString();
       setJobStartTime(now);
       setIsTimerRunning(true);
       localStorage.setItem('foamPro_crewStartTime', now);
       if (selectedJobId) localStorage.setItem('foamPro_crewActiveJob', selectedJobId);
+
+      // Notify backend that crew started the job
+      try {
+          const sessionStr = localStorage.getItem('foamProSession');
+          if (sessionStr && selectedJobId) {
+              const session = JSON.parse(sessionStr);
+              if (session.spreadsheetId) {
+                  const result = await startJob(selectedJobId, session.spreadsheetId);
+                  if (result.success) {
+                      console.log('Backend notified: job started');
+                  }
+              }
+          }
+      } catch (e) {
+          console.warn('Failed to notify backend of job start:', e);
+      }
   };
 
   const handleStopTimer = async (isCompletion: boolean) => {
