@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo:*)",
+      "Bash(npm run build:*)",
+      "Bash(where:*)",
+      "Bash(/c/Program Files/nodejs/npm.cmd install)",
+      "Bash(/c/Program Files/nodejs/npm.cmd run dev)",
+      "Bash(export PATH=\"/c/Program Files/nodejs:$PATH\")",
+      "Bash(npm run dev:*)"
+    ]
+  }
+}

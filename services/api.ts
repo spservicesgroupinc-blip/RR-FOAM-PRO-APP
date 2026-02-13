@@ -54,10 +54,11 @@ const apiRequest = async (payload: any, retries = 2): Promise<ApiResponse> => {
 
 /**
  * Fetches the full application state from Google Sheets
+ * @deprecated Use Supabase services instead
  */
 export const syncDown = async (spreadsheetId: string): Promise<Partial<CalculatorState> | null> => {
   // All Google Apps Script logic removed. Use Supabase services instead.
   // (Stub file for legacy imports)
-  if (result.status === 'success') {
-
-    return result.data;
+  console.warn('syncDown is deprecated. Use Supabase services instead.');
+  return null;
+};
