@@ -1,7 +1,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useCalculator, DEFAULT_STATE } from '../context/CalculatorContext';
-import { syncUp, syncDown } from '../services/api';
+// Legacy syncUp/syncDown removed. Use Supabase hooks/services instead.
 
 export const useSync = () => {
   const { state, dispatch } = useCalculator();
@@ -28,61 +28,16 @@ export const useSync = () => {
       
       try {
           // Attempt Fetch from Cloud (Source of Truth)
-          const cloudData = await syncDown(session.spreadsheetId);
-          
-          if (cloudData) {
-            // Deep merge cloud data over default state
-            const mergedState = {
-                ...DEFAULT_STATE,
-                ...cloudData,
-                // Ensure deeply nested objects are merged correctly if partial
-                companyProfile: { ...DEFAULT_STATE.companyProfile, ...(cloudData.companyProfile || {}) },
-                warehouse: { ...DEFAULT_STATE.warehouse, ...(cloudData.warehouse || {}) },
-                costs: { ...DEFAULT_STATE.costs, ...(cloudData.costs || {}) },
-                yields: { ...DEFAULT_STATE.yields, ...(cloudData.yields || {}) },
-                expenses: { ...DEFAULT_STATE.expenses, ...(cloudData.expenses || {}) },
-                // Merge lifetime usage
-                lifetimeUsage: { ...DEFAULT_STATE.lifetimeUsage, ...(cloudData.lifetimeUsage || {}) }
-            };
-
-            dispatch({ type: 'LOAD_DATA', payload: mergedState });
-            dispatch({ type: 'SET_INITIALIZED', payload: true }); 
-            lastSyncedStateRef.current = JSON.stringify(mergedState);
-            dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
-            
-            // Clear successful sync status after delay
-            setTimeout(() => {
-                dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' });
-            }, 3000);
-            
-            // Check if PIN is missing and warn
-            if (!mergedState.companyProfile.crewAccessPin) {
-                console.warn("Crew PIN missing from cloud data");
-                dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Warning: Crew PIN not configured.' } });
-            }
-
-          } else {
-             throw new Error("Empty response from cloud");
-          }
+            // TODO: Replace with Supabase data fetch/merge logic
+            // dispatch({ type: 'LOAD_DATA', payload: ... });
+            // dispatch({ type: 'SET_INITIALIZED', payload: true });
+            // lastSyncedStateRef.current = ...;
+            // dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
       } catch (e) {
           console.error("Cloud sync failed:", e);
           
           // Fallback: If cloud fails (offline), try Local Storage
-          const localSaved = localStorage.getItem(`foamProState_${session.username}`);
-          
-          if (localSaved) {
-              const localState = JSON.parse(localSaved);
-              dispatch({ type: 'LOAD_DATA', payload: localState });
-              dispatch({ type: 'SET_INITIALIZED', payload: true });
-              dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' }); // Warning state
-              dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Offline Mode: Using local backup.' } });
-          } else {
-              // Critical Error: No Cloud and No Local Backup.
-              dispatch({ type: 'LOAD_DATA', payload: DEFAULT_STATE });
-              dispatch({ type: 'SET_INITIALIZED', payload: true });
-              dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
-              dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Sync Failed. Check Internet Connection.' } });
-          }
+            // TODO: Add Supabase error fallback logic if needed
       } finally {
           dispatch({ type: 'SET_LOADING', payload: false });
       }
@@ -111,15 +66,9 @@ export const useSync = () => {
     syncTimerRef.current = setTimeout(async () => {
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
       
-      const success = await syncUp(appData, session.spreadsheetId);
-      
-      if (success) {
-        lastSyncedStateRef.current = currentStateStr;
-        dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
-        setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 3000);
-      } else {
-        dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
-      }
+      // TODO: Replace with Supabase sync logic
+      // lastSyncedStateRef.current = currentStateStr;
+      // dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
     }, 3000); 
 
     return () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current); };

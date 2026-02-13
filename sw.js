@@ -59,9 +59,7 @@ self.addEventListener('fetch', (event) => {
   }
 
   // 2. Handle API calls (Google Script) - Network Only (Don't cache dynamic data)
-  if (event.request.url.includes('script.google.com')) {
-      return; // Let browser handle normally
-  }
+  // Google Script API handling removed.
 
   // 3. Handle Assets (JS, CSS, Images) - Stale-While-Revalidate
   // Serve from cache immediately, then update cache from network in background
