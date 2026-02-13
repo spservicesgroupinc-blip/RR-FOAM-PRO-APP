@@ -15,9 +15,9 @@ import { useEstimates } from '../hooks/useEstimates';
 import { calculateResults } from '../utils/calculatorHelpers';
 import { generateEstimatePDF, generateDocumentPDF, generateWorkOrderPDF } from '../utils/pdfGenerator';
 import { syncUp } from '../services/api';
+import { getCurrentSession, signOut } from '../services/auth';
 
 import LoginPage from './LoginPage';
-import { LandingPage } from './LandingPage';
 import { Layout } from './Layout';
 import { Calculator } from './Calculator';
 import { Dashboard } from './Dashboard';
@@ -43,6 +43,24 @@ const SprayFoamCalculator: React.FC = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [autoTriggerCustomerModal, setAutoTriggerCustomerModal] = useState(false);
   const [initialDashboardFilter, setInitialDashboardFilter] = useState<'all' | 'work_orders'>('all');
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // Restore Supabase session on mount
+  useEffect(() => {
+    const restoreSession = async () => {
+      try {
+        const existingSession = await getCurrentSession();
+        if (existingSession) {
+          dispatch({ type: 'SET_SESSION', payload: existingSession });
+        }
+      } catch (err) {
+        console.error('Session restore failed:', err);
+      } finally {
+        setAuthChecked(true);
+      }
+    };
+    restoreSession();
+  }, [dispatch]);
 
   // Handle PWA Installation Logic
   useEffect(() => {
@@ -100,9 +118,15 @@ const SprayFoamCalculator: React.FC = () => {
 
   const results = useMemo(() => calculateResults(appData), [appData]);
 
-  const handleLogout = () => {
-    dispatch({ type: 'LOGOUT' });
+  const handleLogout = async () => {
+    try {
+      await signOut();
+    } catch (err) {
+      console.error('Sign out error:', err);
+    }
     localStorage.removeItem('foamProSession');
+    localStorage.removeItem('foamProCrewSession');
+    dispatch({ type: 'LOGOUT' });
   };
 
   const resetCalculator = () => {
@@ -296,8 +320,13 @@ const SprayFoamCalculator: React.FC = () => {
       }
   };
 
-  if (!ui.hasTrialAccess && !session) {
-      return <LandingPage onEnterApp={() => dispatch({ type: 'SET_TRIAL_ACCESS', payload: true })} />;
+  // Show loading while checking existing auth
+  if (!authChecked) {
+    return (
+      <div className="flex h-screen items-center justify-center text-slate-400 bg-slate-900">
+        <Loader2 className="animate-spin mr-2" /> Checking authentication...
+      </div>
+    );
   }
 
   if (!session) {
@@ -305,7 +334,6 @@ const SprayFoamCalculator: React.FC = () => {
           onLoginSuccess={(s) => { 
               dispatch({ type: 'SET_SESSION', payload: s }); 
               localStorage.setItem('foamProSession', JSON.stringify(s)); 
-              localStorage.setItem('foamProTrialAccess', 'true');
           }} 
           installPrompt={deferredPrompt}
           onInstall={handleInstallApp}

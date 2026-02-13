@@ -9,22 +9,14 @@ export const useSync = () => {
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSyncedStateRef = useRef<string>("");
 
-  // 1. SESSION RECOVERY
+  // 1. SESSION RECOVERY (handled by SprayFoamCalculator via Supabase auth)
+  // Legacy localStorage fallback removed — Supabase handles session persistence.
   useEffect(() => {
-    const savedSession = localStorage.getItem('foamProSession');
-    if (savedSession) {
-      try {
-        const parsedSession = JSON.parse(savedSession);
-        dispatch({ type: 'SET_SESSION', payload: parsedSession });
-        dispatch({ type: 'SET_TRIAL_ACCESS', payload: true });
-      } catch (e) {
-        localStorage.removeItem('foamProSession');
-      }
-    } else {
-        // If no session, ensure loading stops
-        dispatch({ type: 'SET_LOADING', payload: false });
+    if (!session) {
+      // If no session is set yet, stop loading spinner
+      dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, [dispatch]);
+  }, [session, dispatch]);
 
   // 2. CLOUD-FIRST INITIALIZATION
   useEffect(() => {
