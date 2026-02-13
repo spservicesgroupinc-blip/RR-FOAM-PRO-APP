@@ -63,6 +63,7 @@ Once deployed or running locally, you can install the app:
 - **Styling**: Tailwind CSS (CDN)
 - **Icons**: Lucide React
 - **PDF Generation**: jsPDF
+- **Backend**: Supabase (Postgres, Auth, Storage)
 - **Deployment**: Netlify (optimized)
 
 ## Development

@@ -312,9 +312,12 @@ export interface CalculatorState {
 }
 
 export interface UserSession {
+  id: string;
+  email?: string;
   username: string;
   companyName: string;
-  spreadsheetId: string;
+  organizationId: string;
+  spreadsheetId: string; // backward compat — maps to organizationId
   folderId?: string;
   token?: string;
   role: 'admin' | 'crew'; 
