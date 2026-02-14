@@ -79,6 +79,7 @@ After deploying to Cloud Run, you **must** configure the deployment URL in your 
 
 ### Current Production URL
 
+The production deployment is currently running at:
 ```
 https://rr-foam-pro-app-737284866566.us-east5.run.app
 ```
@@ -87,19 +88,23 @@ https://rr-foam-pro-app-737284866566.us-east5.run.app
 
 1. Go to your Supabase project dashboard: https://app.supabase.com
 2. Navigate to **Authentication** → **URL Configuration**
-3. Add the following URLs:
+3. Add your deployment URL to the following fields:
 
    **Site URL:**
    ```
    https://rr-foam-pro-app-737284866566.us-east5.run.app
    ```
+   
+   For other deployments, use your Cloud Run service URL (format: `https://SERVICE-NAME-PROJECT-ID.REGION.run.app`)
 
-   **Redirect URLs:** (add these to the allowed list)
+   **Redirect URLs:** (add to the allowed list)
    ```
    https://rr-foam-pro-app-737284866566.us-east5.run.app/**
    ```
    
    > The `**` is Supabase's wildcard pattern that matches all paths under your domain (e.g., `/auth/callback`, `/dashboard`, etc.)
+   
+   For other deployments, use: `https://YOUR-SERVICE-URL/**`
 
 4. Click **Save** to apply the changes
 
