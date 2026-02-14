@@ -3,3 +3,8 @@ dist
 .git
 .gitignore
 *.log
+*.md
+.env*
+.vscode
+*.code-workspace
+cloudbuild.yaml
