@@ -687,6 +687,140 @@ export const syncAppDataToSupabase = async (
   }
 };
 
+// ─── CREW-SPECIFIC FUNCTIONS (bypass RLS via SECURITY DEFINER RPCs) ─────────
+
+/**
+ * Helper: Build crew result from raw org/customers/estimates data.
+ */
+const buildCrewResult = (
+  org: any,
+  rawCustomers: any[],
+  rawEstimates: any[]
+): Partial<CalculatorState> => {
+  const customers = rawCustomers.map(dbCustomerToProfile);
+  const estimates = rawEstimates.map((e: any) => dbEstimateToRecord(e, customers));
+
+  const addr = (typeof org.address === 'string' ? JSON.parse(org.address) : org.address) || {};
+  const settings = (typeof org.settings === 'string' ? JSON.parse(org.settings) : org.settings) || {};
+
+  const companyProfile: CompanyProfile = {
+    companyName: org.name || '',
+    addressLine1: addr.line1 || settings.addressLine1 || '',
+    addressLine2: addr.line2 || settings.addressLine2 || '',
+    city: addr.city || settings.city || '',
+    state: addr.state || settings.state || '',
+    zip: addr.zip || settings.zip || '',
+    phone: org.phone || settings.phone || '',
+    email: org.email || settings.email || '',
+    website: settings.website || '',
+    logoUrl: org.logo_url || settings.logoUrl || '',
+    crewAccessPin: org.crew_pin || '',
+  };
+
+  return {
+    companyProfile,
+    customers,
+    savedEstimates: estimates,
+  };
+};
+
+/**
+ * Fetch work orders for crew dashboard.
+ * 
+ * Strategy:
+ *   1. Try the SECURITY DEFINER RPC (preferred — bypasses RLS)
+ *   2. Fallback: direct table queries (works if RLS has anon/crew policies)
+ * 
+ * Crew has no auth.uid() — uses org_id from PIN login session.
+ */
+export const fetchCrewWorkOrders = async (orgId: string): Promise<Partial<CalculatorState> | null> => {
+  // ── Attempt 1: RPC call (preferred) ──
+  try {
+    const { data, error } = await supabase.rpc('get_crew_work_orders', { p_org_id: orgId });
+
+    if (!error && data) {
+      const result = data as any;
+      console.log('[Crew Sync] RPC success — estimates:', (result.estimates || []).length);
+      return buildCrewResult(
+        result.organization || {},
+        result.customers || [],
+        result.estimates || []
+      );
+    }
+
+    // RPC failed — log detail and fall through to fallback
+    console.warn('[Crew Sync] RPC get_crew_work_orders failed:', error?.message || 'No data returned');
+    console.warn('[Crew Sync] Hint: Run supabase_functions.sql in the Supabase SQL Editor to create missing RPCs.');
+  } catch (err) {
+    console.warn('[Crew Sync] RPC exception:', err);
+  }
+
+  // ── Attempt 2: Direct queries as fallback ──
+  console.log('[Crew Sync] Trying direct query fallback...');
+  try {
+    const [orgRes, custRes, estRes] = await Promise.all([
+      supabase.from('organizations').select('*').eq('id', orgId).single(),
+      supabase.from('customers').select('*').eq('organization_id', orgId),
+      supabase.from('estimates').select('*').eq('organization_id', orgId).eq('status', 'Work Order'),
+    ]);
+
+    if (orgRes.error) console.error('[Crew Sync] Fallback org query error:', orgRes.error.message);
+    if (custRes.error) console.error('[Crew Sync] Fallback customers query error:', custRes.error.message);
+    if (estRes.error) console.error('[Crew Sync] Fallback estimates query error:', estRes.error.message);
+
+    // Even if some queries fail (RLS), return whatever we got
+    const org = orgRes.data || {};
+    const rawCustomers = custRes.data || [];
+    const rawEstimates = estRes.data || [];
+
+    console.log(`[Crew Sync] Fallback results — org: ${org.name || 'N/A'}, customers: ${rawCustomers.length}, estimates: ${rawEstimates.length}`);
+
+    if (rawEstimates.length === 0 && estRes.error) {
+      // Both RPC and direct query failed — likely RLS blocking everything
+      console.error(
+        '[Crew Sync] CRITICAL: Both RPC and direct queries returned 0 estimates. ' +
+        'This usually means the get_crew_work_orders RPC function is missing in Supabase. ' +
+        'Run supabase_functions.sql in the Supabase SQL Editor to fix this.'
+      );
+      return null;
+    }
+
+    return buildCrewResult(org, rawCustomers, rawEstimates);
+  } catch (err) {
+    console.error('[Crew Sync] Direct query fallback exception:', err);
+    return null;
+  }
+};
+
+/**
+ * Crew updates job actuals + execution status via RPC (no auth.uid() needed).
+ */
+export const crewUpdateJob = async (
+  orgId: string,
+  estimateId: string,
+  actuals: any,
+  executionStatus: string
+): Promise<boolean> => {
+  try {
+    const { data, error } = await supabase.rpc('crew_update_job', {
+      p_org_id: orgId,
+      p_estimate_id: estimateId,
+      p_actuals: actuals,
+      p_execution_status: executionStatus,
+    });
+
+    if (error) {
+      console.error('crewUpdateJob RPC error:', error);
+      return false;
+    }
+
+    return data === true;
+  } catch (err) {
+    console.error('crewUpdateJob exception:', err);
+    return false;
+  }
+};
+
 // ─── REALTIME SUBSCRIPTIONS ─────────────────────────────────────────────────
 
 /**

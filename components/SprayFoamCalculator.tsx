@@ -346,6 +346,7 @@ const SprayFoamCalculator: React.FC = () => {
       return (
           <CrewDashboard 
             state={appData} 
+            organizationId={session.organizationId}
             onLogout={handleLogout} 
             syncStatus={ui.syncStatus}
             onSync={forceRefresh} 

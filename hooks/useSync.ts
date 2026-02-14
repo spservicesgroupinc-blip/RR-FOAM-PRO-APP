@@ -3,6 +3,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useCalculator, DEFAULT_STATE } from '../context/CalculatorContext';
 import {
   fetchOrgData,
+  fetchCrewWorkOrders,
   syncAppDataToSupabase,
   subscribeToOrgChanges,
   updateOrgSettings,
@@ -50,7 +51,11 @@ export const useSync = () => {
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
 
       try {
-        const cloudData = await fetchOrgData(session.organizationId);
+        // Use crew-specific RPC if crew role (no auth.uid() available)
+        console.log(`[Sync] Initializing for role=${session.role}, org=${session.organizationId}`);
+        const cloudData = session.role === 'crew'
+          ? await fetchCrewWorkOrders(session.organizationId)
+          : await fetchOrgData(session.organizationId);
 
         if (cloudData) {
           // Merge cloud data with defaults (cloud wins for persisted fields)
@@ -60,15 +65,27 @@ export const useSync = () => {
               (merged as any)[key] = cloudData[key];
             }
           }
+          const estimateCount = merged.savedEstimates?.length || 0;
+          console.log(`[Sync] Loaded ${estimateCount} estimates from cloud`);
+          
           dispatch({ type: 'LOAD_DATA', payload: merged });
           dispatch({ type: 'SET_INITIALIZED', payload: true });
           lastSyncedHashRef.current = computeHash(merged);
           dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
           setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 2000);
+
+          // Warn crew if zero work orders came back
+          if (session.role === 'crew' && estimateCount === 0) {
+            dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'No work orders found. If jobs exist, ask admin to check Supabase RPC setup.' } });
+          }
         } else {
-          // No cloud data yet — first time or empty org. Use defaults.
+          // No cloud data — either first time, empty org, or RPC missing
+          console.warn('[Sync] Cloud data returned null');
           dispatch({ type: 'SET_INITIALIZED', payload: true });
-          dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' });
+          dispatch({ type: 'SET_SYNC_STATUS', payload: session.role === 'crew' ? 'error' : 'idle' });
+          if (session.role === 'crew') {
+            dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Failed to load work orders. Check connection or ask admin to run database setup.' } });
+          }
         }
       } catch (e) {
         console.error('Cloud sync failed:', e);
@@ -92,6 +109,8 @@ export const useSync = () => {
   // 3. REALTIME SUBSCRIPTIONS — live updates from admin↔crew
   useEffect(() => {
     if (!session?.organizationId || !ui.isInitialized) return;
+    // Crew uses polling (45s interval in CrewDashboard) — skip realtime subscriptions
+    if (session.role === 'crew') return;
 
     // Clean up previous subscription
     if (unsubscribeRef.current) {
@@ -218,18 +237,26 @@ export const useSync = () => {
     dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
 
     try {
-      const cloudData = await fetchOrgData(session.organizationId);
+      // Use crew-specific RPC if crew role
+      console.log(`[Refresh] Pulling data for role=${session.role}...`);
+      const cloudData = session.role === 'crew'
+        ? await fetchCrewWorkOrders(session.organizationId)
+        : await fetchOrgData(session.organizationId);
       if (cloudData) {
         const mergedState = { ...appData, ...cloudData };
+        const estimateCount = mergedState.savedEstimates?.length || 0;
+        console.log(`[Refresh] Got ${estimateCount} estimates`);
         dispatch({ type: 'LOAD_DATA', payload: mergedState });
         lastSyncedHashRef.current = computeHash(mergedState);
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
         setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 3000);
       } else {
-        throw new Error('Failed to fetch data');
+        console.warn('[Refresh] No data returned');
+        dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
+        dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Refresh failed — no data returned. Check Supabase connection.' } });
       }
     } catch (e) {
-      console.error(e);
+      console.error('[Refresh] Error:', e);
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
       dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Refresh Failed.' } });
     }

@@ -7,10 +7,11 @@ import {
     MessageSquare, History
 } from 'lucide-react';
 import { CalculatorState, EstimateRecord } from '../types';
-import { updateEstimateActuals } from '../services/supabaseService';
+import { crewUpdateJob } from '../services/supabaseService';
 
 interface CrewDashboardProps {
   state: CalculatorState;
+  organizationId: string;
   onLogout: () => void;
   syncStatus: string;
   onSync: () => Promise<void>; // This is forceRefresh (Sync Down) now passed from parent
@@ -18,7 +19,7 @@ interface CrewDashboardProps {
   onInstall: () => void;
 }
 
-export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, onLogout, syncStatus, onSync, installPrompt, onInstall }) => {
+export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizationId, onLogout, syncStatus, onSync, installPrompt, onInstall }) => {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   
@@ -106,7 +107,8 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, onLogout, s
       // Notify backend that crew started the job
       try {
           if (selectedJobId) {
-              const success = await updateEstimateActuals(
+              const success = await crewUpdateJob(
+                  organizationId,
                   selectedJobId,
                   { startedAt: now, startedBy: 'Crew' },
                   'In Progress'
@@ -139,7 +141,8 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, onLogout, s
                 console.warn("Could not retrieve session user for timer log");
             }
             
-            await updateEstimateActuals(
+            await crewUpdateJob(
+              organizationId,
               selectedJob.id,
               { 
                 ...selectedJob.actuals, 
@@ -186,11 +189,11 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, onLogout, s
       setIsCompleting(true);
       
       try {
-        const sessionStr = localStorage.getItem('foamProSession');
+        const sessionStr = localStorage.getItem('foamProCrewSession');
         if (!sessionStr) throw new Error("Session expired. Please log out and back in.");
         
         const session = JSON.parse(sessionStr);
-        if (!session.spreadsheetId) throw new Error("Invalid session data. Please log out and back in.");
+        if (!session.organizationId) throw new Error("Invalid session data. Please log out and back in.");
 
         const finalData = {
             ...actuals,
@@ -198,7 +201,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, onLogout, s
             completedBy: session.username || "Crew"
         };
 
-        const success = await updateEstimateActuals(selectedJob.id, finalData, 'Completed');
+        const success = await crewUpdateJob(organizationId, selectedJob.id, finalData, 'Completed');
         
         if (success) {
             setShowCompletionModal(false);
