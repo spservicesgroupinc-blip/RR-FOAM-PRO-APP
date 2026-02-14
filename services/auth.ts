@@ -31,7 +31,7 @@ export const signUpAdmin = async (
   // Fetch the created profile to get company_id
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('*, companies(*)')
+    .select('*, organizations(*)')
     .eq('id', data.user.id)
     .single();
 
@@ -44,8 +44,8 @@ export const signUpAdmin = async (
     email: data.user.email || email,
     username: email,
     companyName: companyName,
-    organizationId: profile.company_id || '',
-    spreadsheetId: profile.company_id || '', // backward compat
+    organizationId: profile.organization_id || '',
+    spreadsheetId: profile.organization_id || '', // backward compat
     role: 'admin',
     token: data.session?.access_token,
   };
@@ -69,7 +69,7 @@ export const signInAdmin = async (
   // Fetch profile with company
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('*, companies(*)')
+    .select('*, organizations(*)')
     .eq('id', data.user.id)
     .single();
 
@@ -77,15 +77,15 @@ export const signInAdmin = async (
     throw new Error('Profile not found. Contact support.');
   }
 
-  const company = (profile as any).companies;
+  const company = (profile as any).organizations;
 
   return {
     id: data.user.id,
     email: data.user.email || email,
     username: email,
     companyName: company?.name || '',
-    organizationId: profile.company_id || '',
-    spreadsheetId: profile.company_id || '',
+    organizationId: profile.organization_id || '',
+    spreadsheetId: profile.organization_id || '',
     role: (profile.role as 'admin' | 'crew') || 'admin',
     token: data.session?.access_token,
   };
@@ -152,21 +152,21 @@ export const getCurrentSession = async (): Promise<UserSession | null> => {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('*, companies(*)')
+    .select('*, organizations(*)')
     .eq('id', session.user.id)
     .single();
 
   if (!profile) return null;
 
-  const company = (profile as any).companies;
+  const company = (profile as any).organizations;
 
   return {
     id: session.user.id,
     email: session.user.email,
     username: session.user.email || '',
     companyName: company?.name || '',
-    organizationId: profile.company_id || '',
-    spreadsheetId: profile.company_id || '',
+    organizationId: profile.organization_id || '',
+    spreadsheetId: profile.organization_id || '',
     role: (profile.role as 'admin' | 'crew') || 'crew',
     token: session.access_token,
   };
@@ -187,19 +187,19 @@ export const onAuthStateChange = (
     if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('*, companies(*)')
+        .select('*, organizations(*)')
         .eq('id', session.user.id)
         .single();
 
       if (profile) {
-        const company = (profile as any).companies;
+        const company = (profile as any).organizations;
         callback({
           id: session.user.id,
           email: session.user.email,
           username: session.user.email || '',
           companyName: company?.name || '',
-          organizationId: profile.company_id || '',
-          spreadsheetId: profile.company_id || '',
+          organizationId: profile.organization_id || '',
+          spreadsheetId: profile.organization_id || '',
           role: (profile.role as 'admin' | 'crew') || 'crew',
           token: session.access_token,
         });

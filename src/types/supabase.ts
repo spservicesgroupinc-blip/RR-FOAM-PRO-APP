@@ -43,6 +43,7 @@ export interface Database {
           address?: Json
           created_at?: string
         }
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -66,6 +67,14 @@ export interface Database {
           full_name?: string | null
           created_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: 'profiles_organization_id_fkey'
+            columns: ['organization_id']
+            referencedRelation: 'organizations'
+            referencedColumns: ['id']
+          }
+        ]
       }
       customers: {
         Row: {
@@ -110,6 +119,14 @@ export interface Database {
           notes?: string | null
           created_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: 'customers_organization_id_fkey'
+            columns: ['organization_id']
+            referencedRelation: 'organizations'
+            referencedColumns: ['id']
+          }
+        ]
       }
       estimates: {
         Row: {
@@ -217,6 +234,20 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: 'estimates_organization_id_fkey'
+            columns: ['organization_id']
+            referencedRelation: 'organizations'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'estimates_customer_id_fkey'
+            columns: ['customer_id']
+            referencedRelation: 'customers'
+            referencedColumns: ['id']
+          }
+        ]
       }
       inventory_items: {
         Row: {
@@ -249,6 +280,14 @@ export interface Database {
           category?: string | null
           created_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: 'inventory_items_organization_id_fkey'
+            columns: ['organization_id']
+            referencedRelation: 'organizations'
+            referencedColumns: ['id']
+          }
+        ]
       }
       equipment: {
         Row: {
@@ -278,6 +317,14 @@ export interface Database {
           created_at?: string
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: 'equipment_organization_id_fkey'
+            columns: ['organization_id']
+            referencedRelation: 'organizations'
+            referencedColumns: ['id']
+          }
+        ]
       }
       material_logs: {
         Row: {
@@ -319,6 +366,14 @@ export interface Database {
           log_type?: string
           created_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: 'material_logs_organization_id_fkey'
+            columns: ['organization_id']
+            referencedRelation: 'organizations'
+            referencedColumns: ['id']
+          }
+        ]
       }
       purchase_orders: {
         Row: {
@@ -354,6 +409,14 @@ export interface Database {
           notes?: string | null
           created_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: 'purchase_orders_organization_id_fkey'
+            columns: ['organization_id']
+            referencedRelation: 'organizations'
+            referencedColumns: ['id']
+          }
+        ]
       }
       warehouse_stock: {
         Row: {
@@ -377,7 +440,18 @@ export interface Database {
           closed_cell_sets?: number
           updated_at?: string
         }
+        Relationships: [
+          {
+            foreignKeyName: 'warehouse_stock_organization_id_fkey'
+            columns: ['organization_id']
+            referencedRelation: 'organizations'
+            referencedColumns: ['id']
+          }
+        ]
       }
+    }
+    Views: {
+      [_ in never]: never
     }
     Functions: {
       verify_crew_pin: {
@@ -388,6 +462,12 @@ export interface Database {
         Args: { org_id: string }
         Returns: Json
       }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
     }
   }
 }

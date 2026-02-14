@@ -101,22 +101,22 @@ const recordToDbEstimate = (record: EstimateRecord, orgId: string) => ({
   inputs: record.inputs as any,
   results: record.results as any,
   materials: record.materials as any,
-  financials: record.financials || null,
+  financials: (record.financials || null) as any,
   settings_snapshot: {
     wallSettings: record.wallSettings,
     roofSettings: record.roofSettings,
-  },
+  } as any,
   wall_settings: record.wallSettings as any,
   roof_settings: record.roofSettings as any,
   expenses: record.expenses as any,
-  actuals: record.actuals || null,
-  sq_ft_rates: record.sqFtRates || { wall: 0, roof: 0 },
-  estimate_lines: record.estimateLines || null,
-  invoice_lines: record.invoiceLines || null,
-  work_order_lines: record.workOrderLines || null,
+  actuals: (record.actuals || null) as any,
+  sq_ft_rates: (record.sqFtRates || { wall: 0, roof: 0 }) as any,
+  estimate_lines: (record.estimateLines || null) as any,
+  invoice_lines: (record.invoiceLines || null) as any,
+  work_order_lines: (record.workOrderLines || null) as any,
   work_order_sheet_url: record.workOrderSheetUrl || null,
   pdf_link: record.pdfLink || null,
-  site_photos: record.sitePhotos || [],
+  site_photos: (record.sitePhotos || []) as any,
   inventory_processed: record.inventoryProcessed || false,
   last_modified: new Date().toISOString(),
 });
@@ -562,12 +562,12 @@ export const updateOrgSettings = async (
     .eq('id', orgId)
     .single();
 
-  if (fetchErr) {
+  if (fetchErr || !org) {
     console.error('fetchOrgSettings error:', fetchErr);
     return false;
   }
 
-  const existing = (typeof org?.settings === 'string' ? JSON.parse(org.settings) : org?.settings) || {};
+  const existing = (typeof org.settings === 'string' ? JSON.parse(org.settings as string) : org.settings) || {};
   const merged = { ...existing, ...settings };
 
   const { error } = await supabase

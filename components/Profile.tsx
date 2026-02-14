@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Upload, Save, Loader2, Users, KeyRound, ShieldCheck, Copy, Lock } from 'lucide-react';
 import { CalculatorState } from '../types';
-import { uploadImage, updateCrewPin, updatePassword } from '../services/api';
+import { uploadImage, updateCrewPinDb, updatePassword } from '../services/supabaseService';
 
 interface ProfileProps {
     state: CalculatorState;
@@ -37,10 +37,14 @@ export const Profile: React.FC<ProfileProps> = ({ state, onUpdateProfile, onManu
         try {
             const reader = new FileReader();
             reader.onloadend = async () => {
+                // Convert base64 to File for Supabase upload
                 const base64 = reader.result as string;
+                const response = await fetch(base64);
+                const blob = await response.blob();
+                const uploadFile = new File([blob], file.name, { type: file.type });
 
                 if (spreadsheetId) {
-                    const url = await uploadImage(base64, spreadsheetId, "company_logo.jpg");
+                    const url = await uploadImage(uploadFile, spreadsheetId);
                     if (url) {
                         onUpdateProfile('logoUrl', url);
                     } else {
@@ -60,10 +64,10 @@ export const Profile: React.FC<ProfileProps> = ({ state, onUpdateProfile, onManu
     };
 
     const handleUpdatePin = async () => {
-        if (!username || !spreadsheetId) return alert("You must be logged in to update PIN.");
+        if (!spreadsheetId) return alert("You must be logged in to update PIN.");
         setPinLoading(true);
         try {
-            await updateCrewPin(username, state.companyProfile.crewAccessPin, spreadsheetId);
+            await updateCrewPinDb(spreadsheetId, state.companyProfile.crewAccessPin);
             alert("Crew PIN Updated Successfully!");
         } catch (e: any) {
             alert("Error: " + e.message);
@@ -73,11 +77,10 @@ export const Profile: React.FC<ProfileProps> = ({ state, onUpdateProfile, onManu
     };
 
     const handlePasswordChange = async () => {
-        if (!username) return;
         if (!passForm.current || !passForm.new) return alert("Please fill in both fields.");
         setPassLoading(true);
         try {
-            await updatePassword(username, passForm.current, passForm.new);
+            await updatePassword(passForm.new);
             alert("Password Updated Successfully!");
             setPassForm({ current: '', new: '' });
         } catch (e: any) {

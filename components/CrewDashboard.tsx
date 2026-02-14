@@ -7,7 +7,7 @@ import {
     MessageSquare, History
 } from 'lucide-react';
 import { CalculatorState, EstimateRecord } from '../types';
-import { logCrewTime, completeJob, startJob } from '../services/api';
+import { updateEstimateActuals } from '../services/supabaseService';
 
 interface CrewDashboardProps {
   state: CalculatorState;
@@ -105,14 +105,14 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, onLogout, s
 
       // Notify backend that crew started the job
       try {
-          const sessionStr = localStorage.getItem('foamProSession');
-          if (sessionStr && selectedJobId) {
-              const session = JSON.parse(sessionStr);
-              if (session.spreadsheetId) {
-                  const result = await startJob(selectedJobId, session.spreadsheetId, session.username);
-                  if (result.success) {
-                      console.log('Backend notified: job started');
-                  }
+          if (selectedJobId) {
+              const success = await updateEstimateActuals(
+                  selectedJobId,
+                  { startedAt: now, startedBy: 'Crew' },
+                  'In Progress'
+              );
+              if (success) {
+                  console.log('Backend notified: job started');
               }
           }
       } catch (e) {
@@ -127,8 +127,10 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, onLogout, s
           const endTime = new Date().toISOString();
           setIsSyncingTime(true);
           
-          // Log to backend
-          if (selectedJob.workOrderSheetUrl) {
+          const sessionDurationHours = (new Date(endTime).getTime() - new Date(jobStartTime).getTime()) / (1000 * 60 * 60);
+
+          // Log crew time to estimate actuals
+          if (selectedJob.id) {
             let user = "Crew";
             try {
                 const s = localStorage.getItem('foamProSession');
@@ -137,10 +139,15 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, onLogout, s
                 console.warn("Could not retrieve session user for timer log");
             }
             
-            await logCrewTime(selectedJob.workOrderSheetUrl, jobStartTime, endTime, user);
+            await updateEstimateActuals(
+              selectedJob.id,
+              { 
+                ...selectedJob.actuals, 
+                lastTimeLog: { start: jobStartTime, end: endTime, user, hours: sessionDurationHours } 
+              },
+              selectedJob.executionStatus || 'In Progress'
+            );
           }
-
-          const sessionDurationHours = (new Date(endTime).getTime() - new Date(jobStartTime).getTime()) / (1000 * 60 * 60);
 
           // Clear local state
           setIsTimerRunning(false);
@@ -191,7 +198,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, onLogout, s
             completedBy: session.username || "Crew"
         };
 
-        const success = await completeJob(selectedJob.id, finalData, session.spreadsheetId);
+        const success = await updateEstimateActuals(selectedJob.id, finalData, 'Completed');
         
         if (success) {
             setShowCompletionModal(false);

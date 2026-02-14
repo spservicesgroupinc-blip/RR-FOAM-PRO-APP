@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { UserSession } from '../types';
+import { UserSession } from '../../types';
 
 // Constants for the simplified Crew Login (PIN as Password strategy)
 const CREW_EMAIL_DOMAIN = 'crew.foampro.app';
@@ -35,10 +35,10 @@ export const authService = {
 
             return {
                 user: data.user.email || '',
-                role: profile.role || 'admin',
-                spreadsheetId: profile.company_id || '', // Mapping company_id to legacy field
+                role: profile?.role || 'admin',
+                spreadsheetId: profile?.organization_id || '', // Mapping organization_id to legacy field
                 token: data.session?.access_token
-            };
+            } as any;
         }
         return null;
     },
@@ -77,9 +77,9 @@ export const authService = {
             return {
                 user: 'Crew',
                 role: 'crew',
-                spreadsheetId: profile?.company_id || '',
+                spreadsheetId: profile?.organization_id || '',
                 token: data.session?.access_token
-            };
+            } as any;
         }
         return null;
     },
