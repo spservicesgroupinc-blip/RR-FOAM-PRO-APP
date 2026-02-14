@@ -27,12 +27,14 @@ import { Settings } from './Settings';
 import { Profile } from './Profile';
 import { WorkOrderStage } from './WorkOrderStage';
 import { InvoiceStage } from './InvoiceStage';
-import { EstimateStage } from './EstimateStage'; // NEW IMPORT
+import { EstimateStage } from './EstimateStage';
 import { CrewDashboard } from './CrewDashboard';
 import { MaterialOrder } from './MaterialOrder';
 import { MaterialReport } from './MaterialReport';
 import { EstimateDetail } from './EstimateDetail';
 import { EquipmentTracker } from './EquipmentTracker';
+import { WalkthroughProvider, useWalkthrough } from '../context/WalkthroughContext';
+import { WalkthroughOverlay } from './Walkthrough';
 
 const SprayFoamCalculator: React.FC = () => {
   const { state, dispatch } = useCalculator();
@@ -357,6 +359,8 @@ const SprayFoamCalculator: React.FC = () => {
   }
 
   return (
+    <WalkthroughProvider>
+    <WalkthroughAutoTrigger />
     <Layout 
       userSession={session} 
       view={ui.view} 
@@ -370,6 +374,7 @@ const SprayFoamCalculator: React.FC = () => {
       installPrompt={deferredPrompt}
       onInstall={handleInstallApp}
     >
+        <WalkthroughOverlay onNavigate={(v) => dispatch({ type: 'SET_VIEW', payload: v as any })} />
         {/* Persistent Floating Install Icon - positioned above bottom nav on mobile */}
         {deferredPrompt && (
           <div className="fixed bottom-24 md:bottom-6 right-4 md:right-6 z-[60]">
@@ -400,6 +405,7 @@ const SprayFoamCalculator: React.FC = () => {
                 onGoToWarehouse={() => dispatch({ type: 'SET_VIEW', payload: 'warehouse' })}
                 onViewInvoice={async (rec) => await generateDocumentPDF(appData, rec.results, 'INVOICE', rec)}
                 onSync={forceRefresh}
+                subscription={state.subscription}
             />
         )}
 
@@ -557,7 +563,25 @@ const SprayFoamCalculator: React.FC = () => {
             />
         )}
     </Layout>
+    </WalkthroughProvider>
   );
+};
+
+/** Auto-trigger walkthrough for first-time users */
+const WalkthroughAutoTrigger: React.FC = () => {
+  const { startWalkthrough, hasCompletedWalkthrough, isActive } = useWalkthrough();
+
+  useEffect(() => {
+    if (!hasCompletedWalkthrough && !isActive) {
+      // Small delay to let the dashboard render first
+      const timer = setTimeout(() => {
+        startWalkthrough();
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [hasCompletedWalkthrough, isActive, startWalkthrough]);
+
+  return null;
 };
 
 export default SprayFoamCalculator;

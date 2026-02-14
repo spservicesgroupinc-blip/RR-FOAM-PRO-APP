@@ -13,6 +13,7 @@ import {
   insertMaterialLogs,
   markEstimateInventoryProcessed,
 } from '../services/supabaseService';
+import { fetchSubscriptionStatus } from '../services/subscriptionService';
 
 export const useSync = () => {
   const { state, dispatch } = useCalculator();
@@ -176,6 +177,13 @@ export const useSync = () => {
         const cloudData = session.role === 'crew'
           ? await fetchCrewWorkOrders(session.organizationId)
           : await fetchOrgData(session.organizationId);
+
+        // Fetch subscription status for admin users
+        if (session.role === 'admin') {
+          fetchSubscriptionStatus(session.organizationId).then(sub => {
+            if (sub) dispatch({ type: 'SET_SUBSCRIPTION', payload: sub });
+          }).catch(err => console.warn('[Sync] Subscription fetch failed:', err));
+        }
 
         if (cloudData) {
           // Merge cloud data with defaults (cloud wins for persisted fields)
@@ -392,5 +400,12 @@ export const useSync = () => {
     }
   };
 
-  return { handleManualSync, forceRefresh };
+  // 7. REFRESH SUBSCRIPTION STATUS
+  const refreshSubscription = async () => {
+    if (!session?.organizationId || session.role !== 'admin') return;
+    const sub = await fetchSubscriptionStatus(session.organizationId);
+    if (sub) dispatch({ type: 'SET_SUBSCRIPTION', payload: sub });
+  };
+
+  return { handleManualSync, forceRefresh, refreshSubscription };
 };

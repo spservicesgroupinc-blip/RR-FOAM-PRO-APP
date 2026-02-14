@@ -1,7 +1,10 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { DollarSign, HardHat, Receipt, Filter, Plus, Trash, CheckCircle2, AlertCircle, Clock, TrendingUp, TrendingDown, Wallet, PieChart, Fuel, ArrowRight, AlertTriangle, BarChart3, RefreshCw, Droplet, Zap } from 'lucide-react';
-import { CalculatorState, EstimateRecord } from '../types';
+import { DollarSign, HardHat, Receipt, Filter, Plus, Trash, CheckCircle2, AlertCircle, Clock, TrendingUp, TrendingDown, Wallet, PieChart, Fuel, ArrowRight, AlertTriangle, BarChart3, RefreshCw, Droplet, Zap, Crown } from 'lucide-react';
+import { CalculatorState, EstimateRecord, SubscriptionInfo } from '../types';
+import { getTrialDaysRemaining } from '../services/subscriptionService';
+import { usePagination } from '../hooks/usePagination';
+import { PaginationControls } from './PaginationControls';
 
 interface DashboardProps {
   state: CalculatorState;
@@ -13,6 +16,7 @@ interface DashboardProps {
   onGoToWarehouse: () => void;
   onViewInvoice?: (record: EstimateRecord) => Promise<void> | void;
   onSync: () => void;
+  subscription?: SubscriptionInfo | null;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({ 
@@ -24,7 +28,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
   initialFilter = 'all',
   onGoToWarehouse,
   onViewInvoice,
-  onSync
+  onSync,
+  subscription
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'financials'>('overview');
   const [dashboardFilter, setDashboardFilter] = useState<'all' | 'review' | 'work_orders' | 'invoices'>('all');
@@ -121,6 +126,14 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return filtered;
   }, [state.savedEstimates, dashboardFilter]);
 
+  // Paginate filtered estimates
+  const estimatesPagination = usePagination(filteredEstimates, 10);
+
+  // Reset to page 1 when filter changes
+  useEffect(() => {
+    estimatesPagination.goToPage(1);
+  }, [dashboardFilter]);
+
   const handlePaidClick = (id: string, e: React.MouseEvent) => {
       e.stopPropagation();
       e.preventDefault();
@@ -142,8 +155,48 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </button>
   );
 
+  const trialDays = subscription ? getTrialDaysRemaining(subscription) : null;
+
   return (
     <div className="space-y-6 animate-in fade-in zoom-in duration-200">
+
+        {/* SUBSCRIPTION / TRIAL BANNER */}
+        {subscription && (subscription.isTrialExpired || subscription.plan === 'trial' || subscription.status === 'past_due') && (
+          <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+            subscription.isTrialExpired
+              ? 'bg-red-50 border-red-200 text-red-800'
+              : subscription.status === 'past_due'
+              ? 'bg-amber-50 border-amber-200 text-amber-800'
+              : 'bg-blue-50 border-blue-200 text-blue-800'
+          }`}>
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-xl ${
+                subscription.isTrialExpired ? 'bg-red-100' : subscription.status === 'past_due' ? 'bg-amber-100' : 'bg-blue-100'
+              }`}>
+                <Crown className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-bold text-sm">
+                  {subscription.isTrialExpired
+                    ? 'Your free trial has expired'
+                    : subscription.status === 'past_due'
+                    ? 'Payment past due — update your billing'
+                    : `Free Trial — ${trialDays ?? '?'} day${trialDays === 1 ? '' : 's'} remaining`
+                  }
+                </p>
+                <p className="text-xs opacity-75 mt-0.5">
+                  {subscription.isTrialExpired
+                    ? 'Upgrade to keep using RR Foam Pro. Your data is safe.'
+                    : `${subscription.usage.estimatesThisMonth}/${subscription.usage.maxEstimates} estimates this month · ${subscription.usage.customers}/${subscription.usage.maxCustomers} customers`
+                  }
+                </p>
+              </div>
+            </div>
+            <button className="px-5 py-2 bg-slate-900 text-white font-bold text-xs uppercase tracking-widest rounded-full hover:bg-brand transition-colors whitespace-nowrap">
+              Upgrade Plan
+            </button>
+          </div>
+        )}
         
         {/* TOP METRICS ROW */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -322,7 +375,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 {filteredEstimates.length === 0 ? (
                                     <tr><td colSpan={4} className="px-6 py-12 text-center text-slate-400 italic">No matching records found.</td></tr>
                                 ) : (
-                                    filteredEstimates.map(est => (
+                                    estimatesPagination.currentItems.map(est => (
                                         <tr key={est.id} className="hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => onEditEstimate(est)}>
                                             <td className="px-6 py-4">
                                                 <div className="font-bold text-slate-800 flex items-center gap-2">
@@ -386,6 +439,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             </tbody>
                         </table>
                     </div>
+                    <PaginationControls
+                      currentPage={estimatesPagination.currentPage}
+                      totalPages={estimatesPagination.totalPages}
+                      totalItems={estimatesPagination.totalItems}
+                      pageSize={estimatesPagination.pageSize}
+                      hasNextPage={estimatesPagination.hasNextPage}
+                      hasPreviousPage={estimatesPagination.hasPreviousPage}
+                      onNextPage={estimatesPagination.nextPage}
+                      onPreviousPage={estimatesPagination.previousPage}
+                      onGoToPage={estimatesPagination.goToPage}
+                      onPageSizeChange={estimatesPagination.setPageSize}
+                    />
                 </div>
             </>
         )}

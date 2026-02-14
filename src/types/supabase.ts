@@ -48,14 +48,14 @@ export interface Database {
       profiles: {
         Row: {
           id: string
-          organization_id: string | null
+          organization_id: string
           role: 'admin' | 'crew'
           full_name: string | null
           created_at: string
         }
         Insert: {
           id: string
-          organization_id?: string | null
+          organization_id: string
           role?: 'admin' | 'crew'
           full_name?: string | null
           created_at?: string
@@ -453,6 +453,120 @@ export interface Database {
     Views: {
       [_ in never]: never
     }
+      subscriptions: {
+        Row: {
+          id: string
+          organization_id: string
+          plan: 'trial' | 'starter' | 'pro' | 'enterprise'
+          status: 'active' | 'past_due' | 'cancelled' | 'suspended'
+          max_users: number
+          max_estimates_per_month: number
+          max_customers: number
+          max_storage_mb: number
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          current_period_start: string | null
+          current_period_end: string | null
+          trial_started_at: string | null
+          trial_ends_at: string | null
+          estimates_this_month: number
+          last_usage_reset: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          plan?: 'trial' | 'starter' | 'pro' | 'enterprise'
+          status?: 'active' | 'past_due' | 'cancelled' | 'suspended'
+          max_users?: number
+          max_estimates_per_month?: number
+          max_customers?: number
+          max_storage_mb?: number
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          current_period_start?: string | null
+          current_period_end?: string | null
+          trial_started_at?: string | null
+          trial_ends_at?: string | null
+          estimates_this_month?: number
+          last_usage_reset?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          plan?: 'trial' | 'starter' | 'pro' | 'enterprise'
+          status?: 'active' | 'past_due' | 'cancelled' | 'suspended'
+          max_users?: number
+          max_estimates_per_month?: number
+          max_customers?: number
+          max_storage_mb?: number
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          current_period_start?: string | null
+          current_period_end?: string | null
+          trial_started_at?: string | null
+          trial_ends_at?: string | null
+          estimates_this_month?: number
+          last_usage_reset?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'subscriptions_organization_id_fkey'
+            columns: ['organization_id']
+            referencedRelation: 'organizations'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+      audit_log: {
+        Row: {
+          id: string
+          organization_id: string | null
+          user_id: string | null
+          action: string
+          resource_type: string | null
+          resource_id: string | null
+          details: Json
+          ip_address: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id?: string | null
+          user_id?: string | null
+          action: string
+          resource_type?: string | null
+          resource_id?: string | null
+          details?: Json
+          ip_address?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string | null
+          user_id?: string | null
+          action?: string
+          resource_type?: string | null
+          resource_id?: string | null
+          details?: Json
+          ip_address?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'audit_log_organization_id_fkey'
+            columns: ['organization_id']
+            referencedRelation: 'organizations'
+            referencedColumns: ['id']
+          }
+        ]
+      }
+    }
     Functions: {
       verify_crew_pin: {
         Args: { org_name: string; pin: string }
@@ -460,6 +574,18 @@ export interface Database {
       }
       get_org_data: {
         Args: { org_id: string }
+        Returns: Json
+      }
+      get_crew_work_orders: {
+        Args: { p_org_id: string }
+        Returns: Json
+      }
+      crew_update_job: {
+        Args: { p_org_id: string; p_estimate_id: string; p_actuals: Json; p_execution_status: string }
+        Returns: boolean
+      }
+      get_subscription_status: {
+        Args: { p_org_id: string }
         Returns: Json
       }
     }

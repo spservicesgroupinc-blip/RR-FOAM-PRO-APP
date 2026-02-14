@@ -5,7 +5,8 @@ import {
   UserSession, 
   CalculationMode, 
   FoamType,
-  EstimateRecord
+  EstimateRecord,
+  SubscriptionInfo
 } from '../types';
 
 // --- INITIAL STATE ---
@@ -122,6 +123,7 @@ interface UIState {
 interface ContextState {
   appData: CalculatorState;
   session: UserSession | null;
+  subscription: SubscriptionInfo | null;
   ui: UIState;
 }
 
@@ -138,6 +140,7 @@ type Action =
   | { type: 'SET_EDITING_ESTIMATE'; payload: string | null }
   | { type: 'SET_VIEWING_CUSTOMER'; payload: string | null }
   | { type: 'UPDATE_SAVED_ESTIMATE'; payload: EstimateRecord }
+  | { type: 'SET_SUBSCRIPTION'; payload: SubscriptionInfo | null }
   | { type: 'RESET_CALCULATOR' }
   | { type: 'LOGOUT' };
 
@@ -145,6 +148,7 @@ type Action =
 const initialState: ContextState = {
   appData: DEFAULT_STATE,
   session: null,
+  subscription: null,
   ui: {
     view: 'dashboard',
     isLoading: true,
@@ -160,6 +164,8 @@ const calculatorReducer = (state: ContextState, action: Action): ContextState =>
   switch (action.type) {
     case 'SET_SESSION':
       return { ...state, session: action.payload };
+    case 'SET_SUBSCRIPTION':
+      return { ...state, subscription: action.payload };
     case 'LOAD_DATA':
       return { ...state, appData: { ...state.appData, ...action.payload }, ui: { ...state.ui, isLoading: false } };
     case 'UPDATE_DATA':

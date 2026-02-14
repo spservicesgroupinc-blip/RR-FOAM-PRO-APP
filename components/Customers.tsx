@@ -1,7 +1,9 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Archive, Phone, Mail, MapPin, ArrowLeft } from 'lucide-react';
 import { CalculatorState, CustomerProfile, EstimateRecord } from '../types';
+import { usePagination } from '../hooks/usePagination';
+import { PaginationControls } from './PaginationControls';
 
 interface CustomersProps {
   state: CalculatorState;
@@ -56,6 +58,13 @@ export const Customers: React.FC<CustomersProps> = ({
     onSaveCustomer(formData);
     setIsModalOpen(false);
   };
+
+  // Filter and paginate active customers
+  const activeCustomers = useMemo(
+    () => state.customers.filter(c => c.status !== 'Archived'),
+    [state.customers]
+  );
+  const customersPagination = usePagination(activeCustomers, 10);
 
   // Detail View
   if (viewingCustomerId) {
@@ -140,8 +149,8 @@ export const Customers: React.FC<CustomersProps> = ({
             <table className="w-full text-sm text-left">
                 <thead className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-widest"><tr><th className="px-6 py-5">Client Name</th><th className="px-6 py-5">Contact</th><th className="px-6 py-5">Job History</th><th className="px-6 py-5 text-right">Action</th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
-                    {state.customers.filter(c => c.status !== 'Archived').length === 0 ? (<tr><td colSpan={4} className="p-12 text-center text-slate-300 italic">No customers active.</td></tr>) : (
-                        state.customers.filter(c => c.status !== 'Archived').map(c => {
+                    {activeCustomers.length === 0 ? (<tr><td colSpan={4} className="p-12 text-center text-slate-300 italic">No customers active.</td></tr>) : (
+                        customersPagination.currentItems.map(c => {
                             const jobCount = state.savedEstimates.filter(e => e.customerId === c.id || e.customer?.id === c.id).length;
                             return (
                                 <tr 
@@ -167,6 +176,18 @@ export const Customers: React.FC<CustomersProps> = ({
                     )}
                 </tbody>
             </table>
+            <PaginationControls
+              currentPage={customersPagination.currentPage}
+              totalPages={customersPagination.totalPages}
+              totalItems={customersPagination.totalItems}
+              pageSize={customersPagination.pageSize}
+              hasNextPage={customersPagination.hasNextPage}
+              hasPreviousPage={customersPagination.hasPreviousPage}
+              onNextPage={customersPagination.nextPage}
+              onPreviousPage={customersPagination.previousPage}
+              onGoToPage={customersPagination.goToPage}
+              onPageSizeChange={customersPagination.setPageSize}
+            />
         </div>
         {isModalOpen && (
             <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">

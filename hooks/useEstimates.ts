@@ -2,6 +2,7 @@
 import React from 'react';
 import { useCalculator, DEFAULT_STATE } from '../context/CalculatorContext';
 import { EstimateRecord, CalculationResults, CustomerProfile, PurchaseOrder, InvoiceLineItem, MaterialUsageLogEntry } from '../types';
+import { checkPlanLimit } from '../services/subscriptionService';
 import {
   upsertEstimate,
   deleteEstimateDb,
@@ -20,6 +21,7 @@ import { generateWorkOrderPDF, generateDocumentPDF } from '../utils/pdfGenerator
 export const useEstimates = () => {
   const { state, dispatch } = useCalculator();
   const { appData, ui, session } = state;
+  const subscription = state.subscription;
 
   const loadEstimateForEditing = (record: EstimateRecord) => {
     dispatch({
@@ -56,6 +58,16 @@ export const useEstimates = () => {
     if (!appData.customerProfile.name) { 
         dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Customer Name Required to Save' } });
         return null; 
+    }
+
+    // Check subscription limits for new estimates (not existing edits)
+    const isNewEstimate = !ui.editingEstimateId;
+    if (isNewEstimate && subscription) {
+      const limitCheck = checkPlanLimit(subscription, 'create_estimate');
+      if (!limitCheck.allowed) {
+        dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: limitCheck.message || 'Plan limit reached.' } });
+        return null;
+      }
     }
 
     const estimateId = ui.editingEstimateId || Math.random().toString(36).substr(2, 9);
@@ -217,6 +229,16 @@ export const useEstimates = () => {
   };
 
   const saveCustomer = (customerData: CustomerProfile) => {
+    // Check subscription limits for new customers
+    const isNew = !appData.customers.find(c => c.id === customerData.id);
+    if (isNew && subscription) {
+      const limitCheck = checkPlanLimit(subscription, 'create_customer');
+      if (!limitCheck.allowed) {
+        dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: limitCheck.message || 'Customer limit reached.' } });
+        return;
+      }
+    }
+
     // Optimistic local update
     let updatedCustomers = [...appData.customers];
     const existingIndex = updatedCustomers.findIndex(c => c.id === customerData.id);

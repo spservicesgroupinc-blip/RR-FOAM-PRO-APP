@@ -322,3 +322,29 @@ export interface UserSession {
   token?: string;
   role: 'admin' | 'crew'; 
 }
+
+export type SubscriptionPlan = 'trial' | 'starter' | 'pro' | 'enterprise';
+export type SubscriptionStatus = 'active' | 'past_due' | 'cancelled' | 'suspended';
+
+export interface SubscriptionInfo {
+  plan: SubscriptionPlan;
+  status: SubscriptionStatus;
+  trialEndsAt?: string;
+  isTrialExpired: boolean;
+  currentPeriodEnd?: string;
+  usage: {
+    estimatesThisMonth: number;
+    maxEstimates: number;
+    customers: number;
+    maxCustomers: number;
+    users: number;
+    maxUsers: number;
+  };
+}
+
+export const PLAN_LIMITS: Record<SubscriptionPlan, { estimates: number; customers: number; users: number; storage: number; name: string; price: number }> = {
+  trial:      { estimates: 10,    customers: 25,    users: 2,  storage: 100,   name: 'Free Trial',  price: 0    },
+  starter:    { estimates: 50,    customers: 100,   users: 3,  storage: 500,   name: 'Starter',     price: 49   },
+  pro:        { estimates: 500,   customers: 500,   users: 10, storage: 2000,  name: 'Pro',         price: 99   },
+  enterprise: { estimates: 99999, customers: 99999, users: 50, storage: 10000, name: 'Enterprise',  price: 249  },
+};

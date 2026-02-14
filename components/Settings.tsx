@@ -2,6 +2,7 @@
 import React from 'react';
 import { Save, Loader2, ArrowRight } from 'lucide-react';
 import { CalculatorState } from '../types';
+import { ReplayWalkthroughButton } from './Walkthrough';
 
 interface SettingsProps {
   state: CalculatorState;
@@ -26,6 +27,7 @@ export const Settings: React.FC<SettingsProps> = ({ state, onUpdateState, onManu
                 <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">System Settings</h2>
                 <p className="text-slate-500 font-medium text-sm">Configure material yields, stroke counts, and baseline costs.</p>
              </div>
+             <ReplayWalkthroughButton />
          </div>
          <div className="bg-white p-8 rounded-3xl border shadow-sm space-y-8">
              
