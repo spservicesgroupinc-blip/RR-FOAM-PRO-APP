@@ -80,7 +80,7 @@ After deploying to Cloud Run, you **must** configure the deployment URL in your 
 ### Current Production URL
 
 ```
-https://rr-foam-pro-app-737284866566.us-east5.run.app/
+https://rr-foam-pro-app-737284866566.us-east5.run.app
 ```
 
 ### Steps to Configure Supabase
@@ -97,8 +97,9 @@ https://rr-foam-pro-app-737284866566.us-east5.run.app/
    **Redirect URLs:** (add these to the allowed list)
    ```
    https://rr-foam-pro-app-737284866566.us-east5.run.app/**
-   https://rr-foam-pro-app-737284866566.us-east5.run.app/auth/callback
    ```
+   
+   > The `**` is Supabase's wildcard pattern that matches all paths under your domain (e.g., `/auth/callback`, `/dashboard`, etc.)
 
 4. Click **Save** to apply the changes
 
