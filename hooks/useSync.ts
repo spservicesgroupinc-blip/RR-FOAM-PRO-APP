@@ -1,7 +1,7 @@
 
 import { useEffect, useRef } from 'react';
 import { useCalculator, DEFAULT_STATE } from '../context/CalculatorContext';
-// Legacy syncUp/syncDown removed. Use Supabase hooks/services instead.
+import { syncUp, syncDown } from '../services/api';
 
 export const useSync = () => {
   const { state, dispatch } = useCalculator();

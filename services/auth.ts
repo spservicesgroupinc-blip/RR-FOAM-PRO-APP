@@ -28,10 +28,10 @@ export const signUpAdmin = async (
   // Wait briefly for trigger to create profile + org
   await new Promise((r) => setTimeout(r, 500));
 
-  // Fetch the created profile to get organization_id
+  // Fetch the created profile to get company_id
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('*, organizations(*)')
+    .select('*, companies(*)')
     .eq('id', data.user.id)
     .single();
 
@@ -44,8 +44,8 @@ export const signUpAdmin = async (
     email: data.user.email || email,
     username: email,
     companyName: companyName,
-    organizationId: profile.organization_id || '',
-    spreadsheetId: profile.organization_id || '', // backward compat
+    organizationId: profile.company_id || '',
+    spreadsheetId: profile.company_id || '', // backward compat
     role: 'admin',
     token: data.session?.access_token,
   };
@@ -66,10 +66,10 @@ export const signInAdmin = async (
   if (error) throw new Error(error.message);
   if (!data.user) throw new Error('Login failed.');
 
-  // Fetch profile with org
+  // Fetch profile with company
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
-    .select('*, organizations(*)')
+    .select('*, companies(*)')
     .eq('id', data.user.id)
     .single();
 
@@ -77,15 +77,15 @@ export const signInAdmin = async (
     throw new Error('Profile not found. Contact support.');
   }
 
-  const org = profile.organizations as any;
+  const company = (profile as any).companies;
 
   return {
     id: data.user.id,
     email: data.user.email || email,
     username: email,
-    companyName: org?.name || '',
-    organizationId: profile.organization_id || '',
-    spreadsheetId: profile.organization_id || '',
+    companyName: company?.name || '',
+    organizationId: profile.company_id || '',
+    spreadsheetId: profile.company_id || '',
     role: (profile.role as 'admin' | 'crew') || 'admin',
     token: data.session?.access_token,
   };
@@ -152,21 +152,21 @@ export const getCurrentSession = async (): Promise<UserSession | null> => {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('*, organizations(*)')
+    .select('*, companies(*)')
     .eq('id', session.user.id)
     .single();
 
   if (!profile) return null;
 
-  const org = profile.organizations as any;
+  const company = (profile as any).companies;
 
   return {
     id: session.user.id,
     email: session.user.email,
     username: session.user.email || '',
-    companyName: org?.name || '',
-    organizationId: profile.organization_id || '',
-    spreadsheetId: profile.organization_id || '',
+    companyName: company?.name || '',
+    organizationId: profile.company_id || '',
+    spreadsheetId: profile.company_id || '',
     role: (profile.role as 'admin' | 'crew') || 'crew',
     token: session.access_token,
   };
@@ -187,19 +187,19 @@ export const onAuthStateChange = (
     if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('*, organizations(*)')
+        .select('*, companies(*)')
         .eq('id', session.user.id)
         .single();
 
       if (profile) {
-        const org = profile.organizations as any;
+        const company = (profile as any).companies;
         callback({
           id: session.user.id,
           email: session.user.email,
           username: session.user.email || '',
-          companyName: org?.name || '',
-          organizationId: profile.organization_id || '',
-          spreadsheetId: profile.organization_id || '',
+          companyName: company?.name || '',
+          organizationId: profile.company_id || '',
+          spreadsheetId: profile.company_id || '',
           role: (profile.role as 'admin' | 'crew') || 'crew',
           token: session.access_token,
         });

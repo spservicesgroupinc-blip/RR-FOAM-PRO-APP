@@ -1,5 +1,4 @@
 
-import React from 'react';
 import { useCalculator, DEFAULT_STATE } from '../context/CalculatorContext';
 import { EstimateRecord, CalculationResults, CustomerProfile, PurchaseOrder, InvoiceLineItem } from '../types';
 import { deleteEstimate, markJobPaid, createWorkOrderSheet, syncUp, logMaterialUsage } from '../services/api';

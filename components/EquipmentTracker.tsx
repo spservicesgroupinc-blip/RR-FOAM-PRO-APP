@@ -1,6 +1,6 @@
 
 import React, { useMemo } from 'react';
-import { ArrowLeft, MapPin, Wrench, Calendar, User } from 'lucide-react';
+import { ArrowLeft, MapPin, Wrench, Calendar, User, AlertCircle } from 'lucide-react';
 import { CalculatorState } from '../types';
 
 interface EquipmentTrackerProps {
@@ -80,6 +80,3 @@ export const EquipmentTracker: React.FC<EquipmentTrackerProps> = ({ state, onBac
     </div>
   );
 };
-
-// Import AlertCircle for fallback display
-import { AlertCircle } from 'lucide-react';
