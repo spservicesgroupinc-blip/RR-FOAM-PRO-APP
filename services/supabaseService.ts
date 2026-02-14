@@ -387,6 +387,29 @@ export const markEstimatePaid = async (
   return true;
 };
 
+/**
+ * Mark an estimate's inventory as processed (client-side safety net fallback).
+ * The crew_update_job SQL function now does this atomically, but this
+ * covers cases where the SQL hasn't been redeployed or the client reconciles.
+ */
+export const markEstimateInventoryProcessed = async (
+  estimateId: string
+): Promise<boolean> => {
+  const { error } = await supabase
+    .from('estimates')
+    .update({
+      inventory_processed: true,
+      last_modified: new Date().toISOString(),
+    })
+    .eq('id', estimateId);
+
+  if (error) {
+    console.error('markEstimateInventoryProcessed error:', error);
+    return false;
+  }
+  return true;
+};
+
 // ─── WAREHOUSE / INVENTORY ──────────────────────────────────────────────────
 
 export const updateWarehouseStock = async (
