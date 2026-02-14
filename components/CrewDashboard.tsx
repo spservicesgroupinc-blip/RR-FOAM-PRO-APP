@@ -523,6 +523,35 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                 </div>
                             </div>
 
+                            {/* INVENTORY ITEMS (Non-Foam Materials) */}
+                            {actuals.inventory && actuals.inventory.length > 0 && (
+                                <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 space-y-4">
+                                    <h4 className="text-xs font-black text-amber-900 uppercase tracking-widest border-b border-amber-200 pb-2 flex items-center gap-2">
+                                        <Package className="w-3.5 h-3.5" /> Inventory Used (Actual)
+                                    </h4>
+                                    {actuals.inventory.map((item: any, idx: number) => (
+                                        <div key={item.id || idx}>
+                                            <label className="text-xs font-bold text-amber-700 flex justify-between mb-1">
+                                                <span>{item.name}</span>
+                                                <span>Est: {(selectedJob.materials?.inventory?.find((e: any) => e.id === item.id || e.name === item.name)?.quantity || 0)} {item.unit || 'ea'}</span>
+                                            </label>
+                                            <input 
+                                                type="number"
+                                                step="0.25"
+                                                value={item.quantity ?? ''} 
+                                                onChange={(e) => {
+                                                    const updatedInv = [...actuals.inventory];
+                                                    updatedInv[idx] = { ...updatedInv[idx], quantity: parseFloat(e.target.value) || 0 };
+                                                    setActuals({ ...actuals, inventory: updatedInv });
+                                                }}
+                                                placeholder="0"
+                                                className="w-full p-4 bg-white border border-amber-200 rounded-xl font-bold text-lg text-amber-900 focus:ring-2 focus:ring-amber-500 outline-none"
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
                             {/* CREW NOTES */}
                             <div>
                                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1 flex items-center gap-1">

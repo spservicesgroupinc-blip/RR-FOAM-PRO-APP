@@ -1,6 +1,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useCalculator, DEFAULT_STATE } from '../context/CalculatorContext';
+import { EstimateRecord, MaterialUsageLogEntry } from '../types';
 import {
   fetchOrgData,
   fetchCrewWorkOrders,
@@ -8,6 +9,9 @@ import {
   subscribeToOrgChanges,
   updateOrgSettings,
   updateWarehouseStock,
+  upsertInventoryItem,
+  insertMaterialLogs,
+  markEstimateInventoryProcessed,
 } from '../services/supabaseService';
 
 export const useSync = () => {
@@ -16,6 +20,122 @@ export const useSync = () => {
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSyncedHashRef = useRef<string>('');
   const unsubscribeRef = useRef<(() => void) | null>(null);
+
+  // ─── INVENTORY RECONCILIATION (Client-side safety net) ───────────────────
+  // When crew completes a job, the updated crew_update_job SQL function adjusts
+  // warehouse inventory atomically in Supabase. This client-side function is a
+  // safety net that catches any completed jobs where inventoryProcessed is still
+  // false (e.g., if the SQL function hasn't been re-deployed yet).
+  const reconcileCompletedJobs = useCallback(async (
+    estimates: EstimateRecord[],
+    warehouse: any,
+    orgId: string
+  ) => {
+    const unprocessed = estimates.filter(e =>
+      e.executionStatus === 'Completed' &&
+      e.actuals &&
+      !e.inventoryProcessed
+    );
+
+    if (unprocessed.length === 0) return null;
+
+    console.log(`[Inventory Reconcile] Found ${unprocessed.length} unprocessed completed job(s). Reconciling...`);
+
+    const newWarehouse = {
+      ...warehouse,
+      items: warehouse.items ? [...warehouse.items.map((i: any) => ({ ...i }))] : [],
+    };
+    const updatedEstimateIds: string[] = [];
+    const allLogEntries: MaterialUsageLogEntry[] = [];
+    const normalizeName = (name?: string) => (name || '').trim().toLowerCase();
+
+    for (const job of unprocessed) {
+      const estOC = job.materials?.openCellSets || 0;
+      const estCC = job.materials?.closedCellSets || 0;
+      const actOC = job.actuals!.openCellSets || 0;
+      const actCC = job.actuals!.closedCellSets || 0;
+
+      // Foam adjustment: estimated was already deducted at work-order time.
+      // Positive diff = crew used less → return stock; negative = used more → deduct more.
+      newWarehouse.openCellSets = (newWarehouse.openCellSets || 0) + (estOC - actOC);
+      newWarehouse.closedCellSets = (newWarehouse.closedCellSets || 0) + (estCC - actCC);
+
+      // Non-chemical inventory item adjustments
+      const estInv = job.materials?.inventory || [];
+      const actInv = job.actuals!.inventory || [];
+
+      for (const estItem of estInv) {
+        const matchKey = estItem.warehouseItemId || estItem.id;
+        const matchActual = actInv.find((a: any) =>
+          (a.warehouseItemId || a.id) === matchKey ||
+          normalizeName(a.name) === normalizeName(estItem.name)
+        );
+        const diff = (estItem.quantity || 0) - (matchActual?.quantity || 0);
+        if (diff !== 0) {
+          newWarehouse.items = newWarehouse.items.map((wh: any) => {
+            if (wh.id === matchKey || normalizeName(wh.name) === normalizeName(estItem.name)) {
+              return { ...wh, quantity: (wh.quantity || 0) + diff };
+            }
+            return wh;
+          });
+        }
+      }
+
+      // Handle extra items crew used that weren't in the estimate
+      for (const actItem of actInv) {
+        const wasEstimated = estInv.find((e: any) =>
+          (e.warehouseItemId || e.id) === (actItem.warehouseItemId || actItem.id) ||
+          normalizeName(e.name) === normalizeName(actItem.name)
+        );
+        if (!wasEstimated && (actItem.quantity || 0) > 0) {
+          const whKey = actItem.warehouseItemId || actItem.id;
+          newWarehouse.items = newWarehouse.items.map((wh: any) => {
+            if (wh.id === whKey || normalizeName(wh.name) === normalizeName(actItem.name)) {
+              return { ...wh, quantity: (wh.quantity || 0) - actItem.quantity };
+            }
+            return wh;
+          });
+        }
+      }
+
+      // Create actual material usage log entries
+      const logDate = job.actuals!.completionDate || new Date().toISOString();
+      const loggedBy = job.actuals!.completedBy || 'Crew';
+      if (actOC > 0) allLogEntries.push({ date: logDate, jobId: job.id, customerName: job.customer?.name || '', materialName: 'Open Cell Foam', quantity: actOC, unit: 'sets', loggedBy, logType: 'actual' });
+      if (actCC > 0) allLogEntries.push({ date: logDate, jobId: job.id, customerName: job.customer?.name || '', materialName: 'Closed Cell Foam', quantity: actCC, unit: 'sets', loggedBy, logType: 'actual' });
+      for (const item of actInv) {
+        if ((item.quantity || 0) > 0) {
+          allLogEntries.push({ date: logDate, jobId: job.id, customerName: job.customer?.name || '', materialName: item.name, quantity: item.quantity, unit: item.unit || 'ea', loggedBy, logType: 'actual' });
+        }
+      }
+
+      updatedEstimateIds.push(job.id);
+    }
+
+    // Apply locally
+    const reconciledEstimates = estimates.map(e =>
+      updatedEstimateIds.includes(e.id) ? { ...e, inventoryProcessed: true } : e
+    );
+    dispatch({ type: 'UPDATE_DATA', payload: { warehouse: newWarehouse, savedEstimates: reconciledEstimates } });
+
+    // Persist to Supabase in background
+    try {
+      await updateWarehouseStock(orgId, newWarehouse.openCellSets, newWarehouse.closedCellSets);
+      for (const item of newWarehouse.items) {
+        await upsertInventoryItem(item, orgId);
+      }
+      if (allLogEntries.length > 0) {
+        await insertMaterialLogs(allLogEntries, orgId);
+      }
+      for (const id of updatedEstimateIds) {
+        await markEstimateInventoryProcessed(id);
+      }
+      console.log(`[Inventory Reconcile] Successfully processed ${unprocessed.length} job(s).`);
+      dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: `Inventory updated for ${unprocessed.length} completed job(s)` } });
+    } catch (err) {
+      console.error('[Inventory Reconcile] Supabase persist error:', err);
+    }
+  }, [dispatch]);
 
   // Simple hash to detect changes without deep comparison
   const computeHash = useCallback((data: any): string => {
@@ -73,6 +193,11 @@ export const useSync = () => {
           lastSyncedHashRef.current = computeHash(merged);
           dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
           setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 2000);
+
+          // Admin: reconcile completed jobs that haven't had inventory processed
+          if (session.role === 'admin' && merged.savedEstimates && merged.warehouse) {
+            reconcileCompletedJobs(merged.savedEstimates, merged.warehouse, session.organizationId);
+          }
 
           // Warn crew if zero work orders came back
           if (session.role === 'crew' && estimateCount === 0) {
@@ -250,6 +375,11 @@ export const useSync = () => {
         lastSyncedHashRef.current = computeHash(mergedState);
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
         setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 3000);
+
+        // Admin: reconcile any newly completed jobs
+        if (session?.role === 'admin' && mergedState.savedEstimates && mergedState.warehouse) {
+          reconcileCompletedJobs(mergedState.savedEstimates, mergedState.warehouse, session.organizationId);
+        }
       } else {
         console.warn('[Refresh] No data returned');
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });

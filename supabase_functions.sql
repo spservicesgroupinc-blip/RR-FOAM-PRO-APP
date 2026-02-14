@@ -87,6 +87,8 @@ $$;
 -- ─── 3. CREW UPDATE JOB ─────────────────────────────────────────────────────
 -- Allows crew to update job actuals and execution status without auth.uid().
 -- Used when crew starts/stops timer or completes a job.
+-- When status = 'Completed', automatically adjusts warehouse inventory based on
+-- the difference between estimated and actual material usage.
 
 DROP FUNCTION IF EXISTS crew_update_job(uuid, uuid, jsonb, text);
 CREATE OR REPLACE FUNCTION crew_update_job(
@@ -100,7 +102,37 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE
+  v_old_estimate record;
+  v_ref_oc numeric;
+  v_ref_cc numeric;
+  v_act_oc numeric;
+  v_act_cc numeric;
+  v_oc_adj numeric;
+  v_cc_adj numeric;
+  v_ref_inv jsonb;
+  v_act_inv jsonb;
+  v_est_item jsonb;
+  v_act_item jsonb;
+  v_item_diff numeric;
+  v_wh_item_id text;
+  v_item_name text;
+  v_already_processed boolean;
+  i int;
+  j int;
 BEGIN
+  -- 1. Read old state BEFORE updating
+  SELECT * INTO v_old_estimate
+  FROM estimates
+  WHERE id = p_estimate_id AND organization_id = p_org_id;
+
+  IF NOT FOUND THEN
+    RETURN false;
+  END IF;
+
+  v_already_processed := COALESCE(v_old_estimate.inventory_processed, false);
+
+  -- 2. Update the estimate with new actuals and status
   UPDATE estimates
   SET
     actuals = p_actuals,
@@ -109,8 +141,129 @@ BEGIN
   WHERE id = p_estimate_id
     AND organization_id = p_org_id;
 
-  IF NOT FOUND THEN
-    RETURN false;
+  -- 3. Adjust warehouse inventory when completing a job
+  IF p_execution_status = 'Completed' THEN
+
+    -- Determine reference amounts:
+    -- First completion: compare actual vs estimated (materials)
+    -- Re-edit after completion: compare new actual vs previous actual
+    IF v_already_processed THEN
+      -- Re-edit: reference is the PREVIOUS actuals (already reconciled)
+      v_ref_oc := COALESCE((v_old_estimate.actuals->>'openCellSets')::numeric, 0);
+      v_ref_cc := COALESCE((v_old_estimate.actuals->>'closedCellSets')::numeric, 0);
+      v_ref_inv := COALESCE(v_old_estimate.actuals->'inventory', '[]'::jsonb);
+    ELSE
+      -- First completion: reference is the ESTIMATED amounts (already deducted from warehouse)
+      v_ref_oc := COALESCE((v_old_estimate.materials->>'openCellSets')::numeric, 0);
+      v_ref_cc := COALESCE((v_old_estimate.materials->>'closedCellSets')::numeric, 0);
+      v_ref_inv := COALESCE(v_old_estimate.materials->'inventory', '[]'::jsonb);
+    END IF;
+
+    -- New actual amounts from crew submission
+    v_act_oc := COALESCE((p_actuals->>'openCellSets')::numeric, 0);
+    v_act_cc := COALESCE((p_actuals->>'closedCellSets')::numeric, 0);
+    v_act_inv := COALESCE(p_actuals->'inventory', '[]'::jsonb);
+
+    -- Calculate foam adjustment: positive = crew used less (return to stock), negative = used more (deduct more)
+    v_oc_adj := v_ref_oc - v_act_oc;
+    v_cc_adj := v_ref_cc - v_act_cc;
+
+    -- Apply foam stock adjustment
+    IF v_oc_adj != 0 OR v_cc_adj != 0 THEN
+      UPDATE warehouse_stock
+      SET
+        open_cell_sets = COALESCE(open_cell_sets, 0) + v_oc_adj,
+        closed_cell_sets = COALESCE(closed_cell_sets, 0) + v_cc_adj
+      WHERE organization_id = p_org_id;
+    END IF;
+
+    -- Adjust non-chemical inventory items
+    IF jsonb_array_length(v_ref_inv) > 0 THEN
+      FOR i IN 0..jsonb_array_length(v_ref_inv) - 1 LOOP
+        v_est_item := v_ref_inv->i;
+        v_wh_item_id := COALESCE(v_est_item->>'warehouseItemId', v_est_item->>'id');
+        v_item_name := v_est_item->>'name';
+
+        -- Find matching actual item by ID or name
+        v_act_item := NULL;
+        IF jsonb_array_length(v_act_inv) > 0 THEN
+          FOR j IN 0..jsonb_array_length(v_act_inv) - 1 LOOP
+            IF (COALESCE((v_act_inv->j)->>'warehouseItemId', (v_act_inv->j)->>'id') = v_wh_item_id)
+               OR (LOWER(TRIM((v_act_inv->j)->>'name')) = LOWER(TRIM(v_item_name))) THEN
+              v_act_item := v_act_inv->j;
+              EXIT;
+            END IF;
+          END LOOP;
+        END IF;
+
+        -- Calculate diff: reference qty - actual qty
+        v_item_diff := COALESCE((v_est_item->>'quantity')::numeric, 0) 
+                     - COALESCE((v_act_item->>'quantity')::numeric, 0);
+
+        IF v_item_diff != 0 AND v_wh_item_id IS NOT NULL THEN
+          -- Try matching by UUID first
+          UPDATE inventory_items
+          SET quantity = COALESCE(quantity, 0) + v_item_diff
+          WHERE id = v_wh_item_id::uuid
+            AND organization_id = p_org_id;
+
+          -- Fallback: match by name if UUID didn't work
+          IF NOT FOUND AND v_item_name IS NOT NULL THEN
+            UPDATE inventory_items
+            SET quantity = COALESCE(quantity, 0) + v_item_diff
+            WHERE LOWER(TRIM(name)) = LOWER(TRIM(v_item_name))
+              AND organization_id = p_org_id;
+          END IF;
+        END IF;
+      END LOOP;
+    END IF;
+
+    -- Handle items in actuals that were NOT in the reference (extra materials crew used)
+    IF jsonb_array_length(v_act_inv) > 0 THEN
+      FOR j IN 0..jsonb_array_length(v_act_inv) - 1 LOOP
+        v_act_item := v_act_inv->j;
+        v_wh_item_id := COALESCE(v_act_item->>'warehouseItemId', v_act_item->>'id');
+        v_item_name := v_act_item->>'name';
+
+        -- Check if this item was already in the reference set (already handled above)
+        v_est_item := NULL;
+        IF jsonb_array_length(v_ref_inv) > 0 THEN
+          FOR i IN 0..jsonb_array_length(v_ref_inv) - 1 LOOP
+            IF (COALESCE((v_ref_inv->i)->>'warehouseItemId', (v_ref_inv->i)->>'id') = v_wh_item_id)
+               OR (LOWER(TRIM((v_ref_inv->i)->>'name')) = LOWER(TRIM(v_item_name))) THEN
+              v_est_item := v_ref_inv->i;
+              EXIT;
+            END IF;
+          END LOOP;
+        END IF;
+
+        -- If NOT found in reference, this is extra usage — deduct it
+        IF v_est_item IS NULL AND COALESCE((v_act_item->>'quantity')::numeric, 0) > 0 THEN
+          v_item_diff := -1 * COALESCE((v_act_item->>'quantity')::numeric, 0);
+          
+          IF v_wh_item_id IS NOT NULL THEN
+            UPDATE inventory_items
+            SET quantity = COALESCE(quantity, 0) + v_item_diff
+            WHERE id = v_wh_item_id::uuid
+              AND organization_id = p_org_id;
+
+            IF NOT FOUND AND v_item_name IS NOT NULL THEN
+              UPDATE inventory_items
+              SET quantity = COALESCE(quantity, 0) + v_item_diff
+              WHERE LOWER(TRIM(name)) = LOWER(TRIM(v_item_name))
+                AND organization_id = p_org_id;
+            END IF;
+          END IF;
+        END IF;
+      END LOOP;
+    END IF;
+
+    -- Mark as inventory processed
+    UPDATE estimates
+    SET inventory_processed = true
+    WHERE id = p_estimate_id
+      AND organization_id = p_org_id;
+
   END IF;
 
   RETURN true;

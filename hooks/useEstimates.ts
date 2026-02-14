@@ -13,6 +13,7 @@ import {
   updateEquipmentStatus,
   insertMaterialLogs,
   insertPurchaseOrder,
+  updateEstimateActuals,
 } from '../services/supabaseService';
 import { generateWorkOrderPDF, generateDocumentPDF } from '../utils/pdfGenerator';
 
