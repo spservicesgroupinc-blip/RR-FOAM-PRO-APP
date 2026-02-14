@@ -274,21 +274,34 @@ export const useEstimates = () => {
     
     // Deduct non-chemical inventory items from warehouse (id-first, name fallback)
     if (appData.inventory.length > 0) {
+        console.log('[Inventory Deduction] Processing', appData.inventory.length, 'inventory items');
+        console.log('[Inventory Deduction] Inventory items:', appData.inventory.map(i => ({ id: i.id, name: i.name, qty: i.quantity, warehouseItemId: i.warehouseItemId })));
+        console.log('[Inventory Deduction] Warehouse items before:', newWarehouse.items.map(i => ({ id: i.id, name: i.name, qty: i.quantity })));
+        
         const normalizeName = (name?: string) => (name || '').trim().toLowerCase();
         const usageById = new Map<string, typeof appData.inventory[number]>();
 
         appData.inventory.forEach(item => {
             const key = item.warehouseItemId || item.id;
-            if (key) usageById.set(key, item);
+            if (key) {
+                usageById.set(key, item);
+                console.log('[Inventory Deduction] Map entry:', key, '→', item.name, 'qty:', item.quantity);
+            }
         });
 
         newWarehouse.items = newWarehouse.items.map(item => {
             const used = usageById.get(item.id) || appData.inventory.find(i => normalizeName(i.name) === normalizeName(item.name));
             if (used) {
-                return { ...item, quantity: item.quantity - (Number(used.quantity) || 0) };
+                const newQty = item.quantity - (Number(used.quantity) || 0);
+                console.log('[Inventory Deduction] Deducting from', item.name, ':', item.quantity, '-', used.quantity, '=', newQty, '(matched by', usageById.get(item.id) ? 'ID' : 'name', ')');
+                return { ...item, quantity: newQty };
             }
             return item;
         });
+        
+        console.log('[Inventory Deduction] Warehouse items after:', newWarehouse.items.map(i => ({ id: i.id, name: i.name, qty: i.quantity })));
+    } else {
+        console.log('[Inventory Deduction] No inventory items to process');
     }
 
     // 2. Save Estimate as Work Order & Update Warehouse State (Local First)
