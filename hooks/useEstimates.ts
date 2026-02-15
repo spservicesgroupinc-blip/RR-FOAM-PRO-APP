@@ -276,17 +276,52 @@ export const useEstimates = () => {
     // Deduct non-chemical inventory items from warehouse (id-first, name fallback)
     if (appData.inventory.length > 0) {
         const normalizeName = (name?: string) => (name || '').trim().toLowerCase();
-        const usageById = new Map<string, typeof appData.inventory[number]>();
-
-        appData.inventory.forEach(item => {
-            const key = item.warehouseItemId || item.id;
-            if (key) usageById.set(key, item);
+        
+        // Build a map of warehouse items by ID for faster lookup
+        const warehouseById = new Map<string, typeof newWarehouse.items[number]>();
+        newWarehouse.items.forEach(item => {
+            warehouseById.set(item.id, item);
+        });
+        
+        // Build a map of warehouse items by normalized name for fallback matching
+        const warehouseByName = new Map<string, typeof newWarehouse.items[number]>();
+        newWarehouse.items.forEach(item => {
+            const normalizedName = normalizeName(item.name);
+            if (normalizedName && !warehouseByName.has(normalizedName)) {
+                warehouseByName.set(normalizedName, item);
+            }
         });
 
+        // Track which warehouse items to deduct from
+        const deductions = new Map<string, number>(); // warehouse item id -> total quantity to deduct
+
+        // Process each inventory item from the estimate
+        appData.inventory.forEach(invItem => {
+            let warehouseItem: typeof newWarehouse.items[number] | undefined;
+            
+            // First, try to match by warehouseItemId if it exists
+            if (invItem.warehouseItemId) {
+                warehouseItem = warehouseById.get(invItem.warehouseItemId);
+            }
+            
+            // If not found by ID, try matching by normalized name
+            if (!warehouseItem && invItem.name) {
+                const normalizedInvName = normalizeName(invItem.name);
+                warehouseItem = warehouseByName.get(normalizedInvName);
+            }
+            
+            // If we found a matching warehouse item, track the deduction
+            if (warehouseItem) {
+                const currentDeduction = deductions.get(warehouseItem.id) || 0;
+                deductions.set(warehouseItem.id, currentDeduction + (Number(invItem.quantity) || 0));
+            }
+        });
+
+        // Apply deductions to warehouse items
         newWarehouse.items = newWarehouse.items.map(item => {
-            const used = usageById.get(item.id) || appData.inventory.find(i => normalizeName(i.name) === normalizeName(item.name));
-            if (used) {
-                return { ...item, quantity: item.quantity - (Number(used.quantity) || 0) };
+            const deductQty = deductions.get(item.id);
+            if (deductQty) {
+                return { ...item, quantity: item.quantity - deductQty };
             }
             return item;
         });
