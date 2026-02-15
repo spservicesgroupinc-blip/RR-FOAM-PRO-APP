@@ -17,6 +17,7 @@ import {
   updateEstimateActuals,
 } from '../services/supabaseService';
 import { generateWorkOrderPDF, generateDocumentPDF } from '../utils/pdfGenerator';
+import { setInventorySyncLock } from './useSync';
 
 export const useEstimates = () => {
   const { state, dispatch } = useCalculator();
@@ -336,16 +337,20 @@ export const useEstimates = () => {
     if (!session?.organizationId) return;
     
     dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
+
+    // Lock the inventory sync guard so realtime subscription events
+    // from our own writes don't overwrite locally-deducted quantities.
+    setInventorySyncLock(true);
     
     try {
-      // 1. Update warehouse stock in Supabase
+      // 1. Update warehouse stock in Supabase (foam chemical sets)
       await updateWarehouseStock(
         session.organizationId,
         currentWarehouse.openCellSets,
         currentWarehouse.closedCellSets
       );
 
-      // 2. Update inventory items
+      // 2. Update general inventory items (deducted quantities)
       for (const item of currentWarehouse.items) {
         await upsertInventoryItem(item, session.organizationId);
       }
@@ -411,7 +416,13 @@ export const useEstimates = () => {
       console.error('Background WO Sync Error:', e);
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
       dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Background Sync Failed. Check Connection.' } });
+    } finally {
+      setInventorySyncLock(false);
     }
+
+    // Re-dispatch the correct warehouse state to override any stale data
+    // that may have leaked in from realtime events during the sync window.
+    dispatch({ type: 'UPDATE_DATA', payload: { warehouse: currentWarehouse } });
   };
 
   const createPurchaseOrder = async (po: PurchaseOrder) => {

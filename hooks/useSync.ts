@@ -15,6 +15,12 @@ import {
 } from '../services/supabaseService';
 import { fetchSubscriptionStatus } from '../services/subscriptionService';
 
+// Module-level guard: prevents the realtime subscription from overwriting
+// locally-deducted warehouse inventory while a background work-order sync
+// is writing updated quantities to Supabase one item at a time.
+let _inventorySyncLock = false;
+export const setInventorySyncLock = (lock: boolean) => { _inventorySyncLock = lock; };
+
 export const useSync = () => {
   const { state, dispatch } = useCalculator();
   const { session, appData, ui } = state;
@@ -119,7 +125,8 @@ export const useSync = () => {
     );
     dispatch({ type: 'UPDATE_DATA', payload: { warehouse: newWarehouse, savedEstimates: reconciledEstimates } });
 
-    // Persist to Supabase in background
+    // Persist to Supabase in background (lock to prevent realtime overwrite)
+    _inventorySyncLock = true;
     try {
       await updateWarehouseStock(orgId, newWarehouse.openCellSets, newWarehouse.closedCellSets);
       for (const item of newWarehouse.items) {
@@ -135,7 +142,11 @@ export const useSync = () => {
       dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: `Inventory updated for ${unprocessed.length} completed job(s)` } });
     } catch (err) {
       console.error('[Inventory Reconcile] Supabase persist error:', err);
+    } finally {
+      _inventorySyncLock = false;
     }
+    // Re-apply the correct warehouse state after unlock
+    dispatch({ type: 'UPDATE_DATA', payload: { warehouse: newWarehouse, savedEstimates: reconciledEstimates } });
   }, [dispatch]);
 
   // Simple hash to detect changes without deep comparison
@@ -275,8 +286,15 @@ export const useSync = () => {
       },
       // Inventory changes
       (payload) => {
+        // Skip refetch if we are in the middle of our own background sync
+        // (each upsertInventoryItem triggers a realtime event; refetching now
+        //  would overwrite locally-deducted quantities with stale server data).
+        if (_inventorySyncLock) return;
         if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
           fetchOrgData(session.organizationId).then(data => {
+            // Double-check the lock; the fetch is async and the lock may have
+            // been acquired while the request was in flight.
+            if (_inventorySyncLock) return;
             if (data?.warehouse) {
               dispatch({ type: 'UPDATE_DATA', payload: { warehouse: data.warehouse } });
             }
@@ -313,21 +331,29 @@ export const useSync = () => {
     syncTimerRef.current = setTimeout(async () => {
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
       try {
-        // Only sync settings & warehouse on auto-sync (estimates are saved individually)
-        await Promise.all([
-          updateOrgSettings(session.organizationId, {
-            yields: appData.yields,
-            costs: appData.costs,
-            pricingMode: appData.pricingMode,
-            sqFtRates: appData.sqFtRates,
-            lifetimeUsage: appData.lifetimeUsage,
-          }),
-          updateWarehouseStock(
-            session.organizationId,
-            appData.warehouse.openCellSets,
-            appData.warehouse.closedCellSets
-          ),
-        ]);
+        // Sync settings, warehouse stock, AND inventory item quantities
+        _inventorySyncLock = true;
+        try {
+          await Promise.all([
+            updateOrgSettings(session.organizationId, {
+              yields: appData.yields,
+              costs: appData.costs,
+              pricingMode: appData.pricingMode,
+              sqFtRates: appData.sqFtRates,
+              lifetimeUsage: appData.lifetimeUsage,
+            }),
+            updateWarehouseStock(
+              session.organizationId,
+              appData.warehouse.openCellSets,
+              appData.warehouse.closedCellSets
+            ),
+            ...appData.warehouse.items.map(item =>
+              upsertInventoryItem(item, session.organizationId)
+            ),
+          ]);
+        } finally {
+          _inventorySyncLock = false;
+        }
         lastSyncedHashRef.current = currentHash;
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
         setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 2000);
