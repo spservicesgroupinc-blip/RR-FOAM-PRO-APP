@@ -18,8 +18,17 @@ import { fetchSubscriptionStatus } from '../services/subscriptionService';
 // Module-level guard: prevents the realtime subscription from overwriting
 // locally-deducted warehouse inventory while a background work-order sync
 // is writing updated quantities to Supabase one item at a time.
-let _inventorySyncLock = false;
-export const setInventorySyncLock = (lock: boolean) => { _inventorySyncLock = lock; };
+// Uses a counter so multiple concurrent sync operations (e.g. auto-sync +
+// background work-order sync) don't prematurely release the lock.
+let _inventorySyncLockCount = 0;
+export const acquireInventorySyncLock = () => { _inventorySyncLockCount++; };
+export const releaseInventorySyncLock = () => { _inventorySyncLockCount = Math.max(0, _inventorySyncLockCount - 1); };
+export const isInventorySyncLocked = () => _inventorySyncLockCount > 0;
+// Backward-compat shim used by useEstimates
+export const setInventorySyncLock = (lock: boolean) => { 
+  if (lock) acquireInventorySyncLock(); 
+  else releaseInventorySyncLock(); 
+};
 
 export const useSync = () => {
   const { state, dispatch } = useCalculator();
@@ -126,7 +135,7 @@ export const useSync = () => {
     dispatch({ type: 'UPDATE_DATA', payload: { warehouse: newWarehouse, savedEstimates: reconciledEstimates } });
 
     // Persist to Supabase in background (lock to prevent realtime overwrite)
-    _inventorySyncLock = true;
+    acquireInventorySyncLock();
     try {
       await updateWarehouseStock(orgId, newWarehouse.openCellSets, newWarehouse.closedCellSets);
       for (const item of newWarehouse.items) {
@@ -143,7 +152,7 @@ export const useSync = () => {
     } catch (err) {
       console.error('[Inventory Reconcile] Supabase persist error:', err);
     } finally {
-      _inventorySyncLock = false;
+      releaseInventorySyncLock();
     }
     // Re-apply the correct warehouse state after unlock
     dispatch({ type: 'UPDATE_DATA', payload: { warehouse: newWarehouse, savedEstimates: reconciledEstimates } });
@@ -289,12 +298,12 @@ export const useSync = () => {
         // Skip refetch if we are in the middle of our own background sync
         // (each upsertInventoryItem triggers a realtime event; refetching now
         //  would overwrite locally-deducted quantities with stale server data).
-        if (_inventorySyncLock) return;
+        if (isInventorySyncLocked()) return;
         if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
           fetchOrgData(session.organizationId).then(data => {
             // Double-check the lock; the fetch is async and the lock may have
             // been acquired while the request was in flight.
-            if (_inventorySyncLock) return;
+            if (isInventorySyncLocked()) return;
             if (data?.warehouse) {
               dispatch({ type: 'UPDATE_DATA', payload: { warehouse: data.warehouse } });
             }
@@ -332,9 +341,9 @@ export const useSync = () => {
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
       try {
         // Sync settings, warehouse stock, AND inventory item quantities
-        _inventorySyncLock = true;
+        acquireInventorySyncLock();
         try {
-          await Promise.all([
+          const inventoryResults = await Promise.all([
             updateOrgSettings(session.organizationId, {
               yields: appData.yields,
               costs: appData.costs,
@@ -351,8 +360,26 @@ export const useSync = () => {
               upsertInventoryItem(item, session.organizationId)
             ),
           ]);
+
+          // Backfill Supabase UUIDs for any warehouse items that had local IDs.
+          // The first two results are settings + warehouse stock; the rest are inventory items.
+          const inventorySaved = inventoryResults.slice(2);
+          let needsIdUpdate = false;
+          const updatedItems = appData.warehouse.items.map((item, idx) => {
+            const saved = inventorySaved[idx] as any;
+            if (saved && saved.id && saved.id !== item.id) {
+              needsIdUpdate = true;
+              return { ...item, id: saved.id };
+            }
+            return item;
+          });
+          if (needsIdUpdate) {
+            dispatch({ type: 'UPDATE_DATA', payload: { 
+              warehouse: { ...appData.warehouse, items: updatedItems } 
+            }});
+          }
         } finally {
-          _inventorySyncLock = false;
+          releaseInventorySyncLock();
         }
         lastSyncedHashRef.current = currentHash;
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });

@@ -265,34 +265,81 @@ export const useEstimates = () => {
   };
 
   const confirmWorkOrder = async (results: CalculationResults, workOrderLines?: InvoiceLineItem[]) => {
-    // 1. Deduct Inventory (Allow negatives - No checks/warnings/blocks)
-    const requiredOpen = Number(results.openCellSets) || 0;
-    const requiredClosed = Number(results.closedCellSets) || 0;
-    
+    // ─── DOUBLE-DEDUCTION GUARD ────────────────────────────────────────
+    // If this estimate already had inventory deducted (status was already
+    // 'Work Order'), skip the deduction to prevent subtracting twice.
+    const existingRecord = ui.editingEstimateId
+      ? appData.savedEstimates.find(e => e.id === ui.editingEstimateId)
+      : undefined;
+    const alreadyDeducted = existingRecord?.status === 'Work Order';
+
     const newWarehouse = { ...appData.warehouse };
-    newWarehouse.openCellSets = newWarehouse.openCellSets - requiredOpen;
-    newWarehouse.closedCellSets = newWarehouse.closedCellSets - requiredClosed;
-    
-    // Deduct non-chemical inventory items from warehouse (id-first, name fallback)
-    if (appData.inventory.length > 0) {
-        const normalizeName = (name?: string) => (name || '').trim().toLowerCase();
-        const usageById = new Map<string, typeof appData.inventory[number]>();
 
-        appData.inventory.forEach(item => {
-            const key = item.warehouseItemId || item.id;
-            if (key) usageById.set(key, item);
-        });
+    if (!alreadyDeducted) {
+      // 1. Deduct Foam Chemical Sets (Allow negatives)
+      const requiredOpen = Number(results.openCellSets) || 0;
+      const requiredClosed = Number(results.closedCellSets) || 0;
+      
+      newWarehouse.openCellSets = newWarehouse.openCellSets - requiredOpen;
+      newWarehouse.closedCellSets = newWarehouse.closedCellSets - requiredClosed;
 
-        newWarehouse.items = newWarehouse.items.map(item => {
-            const used = usageById.get(item.id) || appData.inventory.find(i => normalizeName(i.name) === normalizeName(item.name));
-            if (used) {
-                return { ...item, quantity: item.quantity - (Number(used.quantity) || 0) };
-            }
-            return item;
-        });
+      console.log(`[WO Inventory] Deducting foam: OC -${requiredOpen.toFixed(2)}, CC -${requiredClosed.toFixed(2)}`);
+      
+      // 2. Deduct non-chemical inventory items from warehouse
+      const deductionSummary: string[] = [];
+      
+      if (appData.inventory.length > 0) {
+          const normalizeName = (name?: string) => (name || '').trim().toLowerCase();
+
+          // Build lookup map: warehouseItemId (preferred) or inventory item id
+          const usageById = new Map<string, typeof appData.inventory[number]>();
+          appData.inventory.forEach(item => {
+              const key = item.warehouseItemId || item.id;
+              if (key) usageById.set(key, item);
+          });
+
+          newWarehouse.items = newWarehouse.items.map(whItem => {
+              // Match by warehouseItemId first, then by name (case-insensitive)
+              const used = usageById.get(whItem.id) 
+                || appData.inventory.find(i => normalizeName(i.name) === normalizeName(whItem.name));
+
+              if (used && (Number(used.quantity) || 0) > 0) {
+                  const deductQty = Number(used.quantity) || 0;
+                  const newQty = whItem.quantity - deductQty;
+                  console.log(`[WO Inventory] Deducting "${whItem.name}": ${whItem.quantity} → ${newQty} (used ${deductQty})`);
+                  deductionSummary.push(`${whItem.name}: -${deductQty}`);
+                  return { ...whItem, quantity: newQty };
+              }
+              return whItem;
+          });
+
+          // Warn about unmatched inventory items (admin typed custom name not in warehouse)
+          appData.inventory.forEach(inv => {
+              const matchedByName = newWarehouse.items.some(
+                w => normalizeName(w.name) === normalizeName(inv.name)
+              );
+              const matchedById = inv.warehouseItemId && newWarehouse.items.some(
+                w => w.id === inv.warehouseItemId
+              );
+              if (!matchedById && !matchedByName && (inv.quantity || 0) > 0) {
+                  console.warn(`[WO Inventory] No warehouse match for "${inv.name}" (qty: ${inv.quantity}). Item not deducted from warehouse stock.`);
+              }
+          });
+      }
+
+      // Build user notification
+      const parts: string[] = [];
+      if (requiredOpen > 0) parts.push(`OC: -${requiredOpen.toFixed(2)} sets`);
+      if (requiredClosed > 0) parts.push(`CC: -${requiredClosed.toFixed(2)} sets`);
+      parts.push(...deductionSummary);
+      if (parts.length > 0) {
+        console.log(`[WO Inventory] Deduction complete: ${parts.join(', ')}`);
+      }
+    } else {
+      console.log(`[WO Inventory] Skipping deduction — estimate already has Work Order status (double-deduction guard).`);
     }
 
-    // 2. Save Estimate as Work Order & Update Warehouse State (Local First)
+    // 3. Update Warehouse State Locally
     dispatch({ type: 'UPDATE_DATA', payload: { warehouse: newWarehouse } });
     
     const record = await saveEstimate(results, 'Work Order', { workOrderLines }, false);
@@ -316,14 +363,18 @@ export const useEstimates = () => {
             dispatch({ type: 'UPDATE_DATA', payload: { equipment: updatedEquipment } });
         }
 
-        // 3. OPTIMISTIC UPDATE: Navigate Immediately
+        // 4. OPTIMISTIC UPDATE: Navigate Immediately
         dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
-        dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Work Order Created. Syncing...' } });
         
-        // 4. Generate PDF Locally
+        const notifMsg = alreadyDeducted
+          ? 'Work Order Updated (inventory already deducted).'
+          : 'Work Order Created — Warehouse Inventory Deducted!';
+        dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: notifMsg } });
+        
+        // 5. Generate PDF Locally
         generateWorkOrderPDF(appData, record!);
 
-        // 5. Background persist to Supabase
+        // 6. Background persist to Supabase
         handleBackgroundWorkOrderSync(record, newWarehouse, updatedEquipment, results);
     }
   };

@@ -15,6 +15,7 @@ import { useEstimates } from '../hooks/useEstimates';
 import { calculateResults } from '../utils/calculatorHelpers';
 import { generateEstimatePDF, generateDocumentPDF, generateWorkOrderPDF } from '../utils/pdfGenerator';
 import { syncUp } from '../services/api';
+import { upsertInventoryItem } from '../services/supabaseService';
 import { getCurrentSession, signOut } from '../services/auth';
 
 import LoginPage from './LoginPage';
@@ -159,12 +160,34 @@ const SprayFoamCalculator: React.FC = () => {
   };
 
   const handleCreateWarehouseItem = (name: string, unit: string, cost: number) => {
+      const tempId = Math.random().toString(36).substr(2, 9);
       const newItem = {
-          id: Math.random().toString(36).substr(2, 9),
+          id: tempId,
           name, unit, unitCost: cost, quantity: 0
       };
+      // Optimistic local add
       dispatch({ type: 'UPDATE_DATA', payload: { warehouse: { ...appData.warehouse, items: [...appData.warehouse.items, newItem] } } });
-      return newItem.id;
+
+      // Immediately persist to Supabase to get a real UUID back.
+      // This prevents duplicate rows and ensures the warehouseItemId
+      // on job inventory items matches the UUID used for deduction.
+      if (session?.organizationId) {
+        upsertInventoryItem(newItem, session.organizationId).then(saved => {
+          if (saved && saved.id !== tempId) {
+            // Replace the temporary local ID with the Supabase UUID
+            const fixedItems = appData.warehouse.items.map(i =>
+              i.id === tempId ? { ...i, id: saved.id } : i
+            );
+            // Also include the new item in case the map didn't find it
+            // (the local dispatch above may not have been processed yet)
+            const hasItem = fixedItems.some(i => i.id === saved.id);
+            const finalItems = hasItem ? fixedItems : [...fixedItems, { ...newItem, id: saved.id }];
+            dispatch({ type: 'UPDATE_DATA', payload: { warehouse: { ...appData.warehouse, items: finalItems } } });
+          }
+        }).catch(err => console.error('Immediate warehouse item sync failed:', err));
+      }
+
+      return tempId;
   };
 
   const handleCustomerSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {

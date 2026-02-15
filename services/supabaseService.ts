@@ -442,8 +442,31 @@ export const upsertInventoryItem = async (item: WarehouseItem, orgId: string): P
     category: 'material',
   };
 
-  if (item.id && item.id.includes('-') && item.id.length > 20) {
+  // Only set ID if it looks like a valid Supabase UUID.
+  // Short local IDs (from `Math.random().toString(36)`) are intentionally
+  // omitted so Supabase generates a proper UUID on INSERT.
+  const isUuid = item.id && item.id.includes('-') && item.id.length > 20;
+  if (isUuid) {
     payload.id = item.id;
+  }
+
+  // For items with a UUID → upsert (update-or-insert by id).
+  // For items without a UUID → try to match by org + name first to avoid
+  // creating duplicates when the local ID hasn't been synced yet.
+  if (!isUuid && item.name) {
+    // Check if an item with this name already exists for this org
+    const { data: existing } = await supabase
+      .from('inventory_items')
+      .select('id')
+      .eq('organization_id', orgId)
+      .ilike('name', item.name)
+      .limit(1)
+      .maybeSingle();
+
+    if (existing?.id) {
+      // Update the existing row instead of creating a duplicate
+      payload.id = existing.id;
+    }
   }
 
   const { data, error } = await supabase

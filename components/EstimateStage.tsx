@@ -104,12 +104,13 @@ export const EstimateStage: React.FC<EstimateStageProps> = ({
 
       // 3. Inventory
       state.inventory.forEach((item, idx) => {
+          const itemCost = (Number(item.unitCost) || 0) * (Number(item.quantity) || 0);
           lines.push({
               id: `inv-${idx}`,
               item: item.name,
-              description: `Material Supply`,
+              description: `Material Supply — ${item.quantity} ${item.unit}${item.unitCost ? ` @ ${formatCurrency(item.unitCost)}/${item.unit}` : ''}`,
               qty: `${item.quantity} ${item.unit}`,
-              amount: 0 
+              amount: parseFloat(itemCost.toFixed(2))
           });
       });
 
