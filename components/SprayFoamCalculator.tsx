@@ -1,5 +1,5 @@
 
-import React, { useMemo, useEffect, useState } from 'react';
+import React, { useMemo, useEffect, useState, useRef } from 'react';
 import { Loader2, Download, X } from 'lucide-react';
 import { 
   CalculationMode, 
@@ -47,6 +47,10 @@ const SprayFoamCalculator: React.FC = () => {
   const [autoTriggerCustomerModal, setAutoTriggerCustomerModal] = useState(false);
   const [initialDashboardFilter, setInitialDashboardFilter] = useState<'all' | 'work_orders'>('all');
   const [authChecked, setAuthChecked] = useState(false);
+
+  // Track pending warehouse item UUID resolutions so we can await them
+  // before saving estimates that reference temp IDs.
+  const pendingWarehouseUUIDs = useRef<Map<string, Promise<string>>>(new Map());
 
   // Restore Supabase session on mount
   useEffect(() => {
@@ -172,7 +176,8 @@ const SprayFoamCalculator: React.FC = () => {
       // This prevents duplicate rows and ensures the warehouseItemId
       // on job inventory items matches the UUID used for deduction.
       if (session?.organizationId) {
-        upsertInventoryItem(newItem, session.organizationId).then(saved => {
+        const uuidPromise = upsertInventoryItem(newItem, session.organizationId).then(saved => {
+          pendingWarehouseUUIDs.current.delete(tempId);
           if (saved && saved.id !== tempId) {
             // Replace the temporary local ID with the Supabase UUID
             const fixedItems = appData.warehouse.items.map(i =>
@@ -193,8 +198,16 @@ const SprayFoamCalculator: React.FC = () => {
               warehouse: { ...appData.warehouse, items: finalItems },
               inventory: fixedInventory
             } });
+            return saved.id;
           }
-        }).catch(err => console.error('Immediate warehouse item sync failed:', err));
+          return tempId;
+        }).catch(err => {
+          console.error('Immediate warehouse item sync failed:', err);
+          pendingWarehouseUUIDs.current.delete(tempId);
+          return tempId;
+        });
+
+        pendingWarehouseUUIDs.current.set(tempId, uuidPromise);
       }
 
       return tempId;
@@ -323,6 +336,34 @@ const SprayFoamCalculator: React.FC = () => {
 
   // Called when WorkOrderStage confirms
   const handleConfirmWorkOrder = async (customLines: InvoiceLineItem[]) => {
+      // Await all pending warehouse item UUID resolutions before saving.
+      // This prevents temp IDs (e.g. "k3j9xm7a2") from being persisted
+      // in the estimate record, which would crash the SQL ::uuid cast.
+      if (pendingWarehouseUUIDs.current.size > 0) {
+        const entries = [...pendingWarehouseUUIDs.current.entries()];
+        const resolved = await Promise.all(
+          entries.map(async ([tempId, promise]) => {
+            const realId = await promise;
+            return { tempId, realId };
+          })
+        );
+
+        // Patch inventory items that still reference temp IDs
+        let needsUpdate = false;
+        const patchedInventory = appData.inventory.map(item => {
+          for (const { tempId, realId } of resolved) {
+            if (tempId !== realId && item.warehouseItemId === tempId) {
+              needsUpdate = true;
+              return { ...item, warehouseItemId: realId };
+            }
+          }
+          return item;
+        });
+        if (needsUpdate) {
+          dispatch({ type: 'UPDATE_DATA', payload: { inventory: patchedInventory } });
+        }
+      }
+
       await confirmWorkOrder(results, customLines);
   };
 

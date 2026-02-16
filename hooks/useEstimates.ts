@@ -347,6 +347,10 @@ export const useEstimates = () => {
                   console.warn(`[WO Inventory] No warehouse match for "${inv.name}" (qty: ${inv.quantity}). Item not deducted from warehouse stock.`);
               }
           });
+
+          // Persist the resolved warehouseItemIds back to state so the
+          // estimate record saved to Supabase has real UUIDs, not temp IDs.
+          dispatch({ type: 'UPDATE_DATA', payload: { inventory: resolvedInventory } });
       }
 
       // Build user notification
@@ -364,7 +368,28 @@ export const useEstimates = () => {
     // 3. Update Warehouse State Locally
     dispatch({ type: 'UPDATE_DATA', payload: { warehouse: newWarehouse } });
     
-    const record = await saveEstimate(results, 'Work Order', { workOrderLines }, false);
+    // Pass resolved inventory in extraData.materials so the persisted estimate
+    // record contains real warehouse UUIDs, not temp IDs that crash ::uuid casts.
+    const resolvedMaterials = {
+      openCellSets: results.openCellSets,
+      closedCellSets: results.closedCellSets,
+      inventory: appData.inventory.length > 0
+        ? (() => {
+            const normName = (n?: string) => (n || '').trim().toLowerCase().replace(/\s+/g, ' ');
+            return appData.inventory.map(item => {
+              if (item.warehouseItemId) {
+                const linked = newWarehouse.items.find(w => w.id === item.warehouseItemId);
+                if (linked) return item;
+              }
+              const match = newWarehouse.items.find(w => normName(w.name) === normName(item.name));
+              return match ? { ...item, warehouseItemId: match.id } : item;
+            });
+          })()
+        : [...appData.inventory],
+      equipment: [...appData.jobEquipment]
+    };
+
+    const record = await saveEstimate(results, 'Work Order', { workOrderLines, materials: resolvedMaterials }, false);
     
     if (record) {
         let updatedEquipment = appData.equipment;

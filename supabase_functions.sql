@@ -201,13 +201,15 @@ BEGIN
                      - COALESCE((v_act_item->>'quantity')::numeric, 0);
 
         IF v_item_diff != 0 AND v_wh_item_id IS NOT NULL THEN
-          -- Try matching by UUID first
-          UPDATE inventory_items
-          SET quantity = COALESCE(quantity, 0) + v_item_diff
-          WHERE id = v_wh_item_id::uuid
-            AND organization_id = p_org_id;
+          -- Try matching by UUID first (only if the ID is a valid UUID format)
+          IF v_wh_item_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+            UPDATE inventory_items
+            SET quantity = COALESCE(quantity, 0) + v_item_diff
+            WHERE id = v_wh_item_id::uuid
+              AND organization_id = p_org_id;
+          END IF;
 
-          -- Fallback: match by name if UUID didn't work
+          -- Fallback: match by name if UUID didn't match or wasn't valid
           IF NOT FOUND AND v_item_name IS NOT NULL THEN
             UPDATE inventory_items
             SET quantity = COALESCE(quantity, 0) + v_item_diff
@@ -242,11 +244,15 @@ BEGIN
           v_item_diff := -1 * COALESCE((v_act_item->>'quantity')::numeric, 0);
           
           IF v_wh_item_id IS NOT NULL THEN
-            UPDATE inventory_items
-            SET quantity = COALESCE(quantity, 0) + v_item_diff
-            WHERE id = v_wh_item_id::uuid
-              AND organization_id = p_org_id;
+            -- Try matching by UUID first (only if the ID is a valid UUID format)
+            IF v_wh_item_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+              UPDATE inventory_items
+              SET quantity = COALESCE(quantity, 0) + v_item_diff
+              WHERE id = v_wh_item_id::uuid
+                AND organization_id = p_org_id;
+            END IF;
 
+            -- Fallback: match by name if UUID didn't match or wasn't valid
             IF NOT FOUND AND v_item_name IS NOT NULL THEN
               UPDATE inventory_items
               SET quantity = COALESCE(quantity, 0) + v_item_diff
