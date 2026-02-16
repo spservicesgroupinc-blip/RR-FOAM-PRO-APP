@@ -6,11 +6,12 @@ import { generatePurchaseOrderPDF } from '../utils/pdfGenerator';
 
 interface MaterialOrderProps {
   state: CalculatorState;
+  orgId?: string;
   onCancel: () => void;
   onSavePO: (po: PurchaseOrder) => void;
 }
 
-export const MaterialOrder: React.FC<MaterialOrderProps> = ({ state, onCancel, onSavePO }) => {
+export const MaterialOrder: React.FC<MaterialOrderProps> = ({ state, orgId, onCancel, onSavePO }) => {
   const [vendor, setVendor] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [items, setItems] = useState<PurchaseOrder['items']>([]);
@@ -132,7 +133,7 @@ export const MaterialOrder: React.FC<MaterialOrderProps> = ({ state, onCancel, o
       };
 
       onSavePO(po);
-      await generatePurchaseOrderPDF(state, po);
+      await generatePurchaseOrderPDF(state, po, { orgId });
   };
 
   const totalValue = items.reduce((sum, i) => sum + i.total, 0);

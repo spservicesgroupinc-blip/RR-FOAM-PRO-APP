@@ -2,6 +2,7 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { CalculatorState, CalculationResults, EstimateRecord, FoamType, PurchaseOrder } from '../types';
+import { saveDocument } from '../services/documentService';
 
 const BRAND_COLOR: [number, number, number] = [15, 23, 42]; // Slate 900 (Black/Dark Blue)
 const ACCENT_COLOR: [number, number, number] = [227, 6, 19]; // RFE Red (#E30613)
@@ -289,17 +290,59 @@ const buildDocumentPDF = async (
   return { doc, filename: `${customer.name.replace(/\s+/g, '_')}_${docTitle.replace(/\s+/g, '_')}.pdf` };
 };
 
-export const generateDocumentPDF = async (state: CalculatorState, results: CalculationResults, type: 'ESTIMATE' | 'INVOICE' | 'RECEIPT', record?: EstimateRecord) => {
+export interface SaveToCloudOptions {
+  orgId?: string;
+  customerId?: string;
+  estimateId?: string;
+}
+
+export const generateDocumentPDF = async (
+  state: CalculatorState,
+  results: CalculationResults,
+  type: 'ESTIMATE' | 'INVOICE' | 'RECEIPT',
+  record?: EstimateRecord,
+  cloudOptions?: SaveToCloudOptions
+) => {
   const { doc, filename } = await buildDocumentPDF(state, results, type, record);
   doc.save(filename);
+
+  // Save to Supabase Storage in the background
+  const orgId = cloudOptions?.orgId;
+  if (orgId) {
+    try {
+      const blob = doc.output('blob');
+      const customerId = cloudOptions?.customerId || record?.customerId || undefined;
+      const estimateId = cloudOptions?.estimateId || record?.id || undefined;
+      await saveDocument({
+        pdfBlob: blob,
+        filename,
+        orgId,
+        customerId,
+        estimateId,
+        documentType: type,
+        metadata: {
+          customerName: record?.customer?.name || state.customerProfile?.name || '',
+          totalValue: record?.totalValue || results.totalCost || 0,
+          generatedAt: new Date().toISOString(),
+        },
+      });
+    } catch (err) {
+      console.error('[PDF] Cloud save failed (non-blocking):', err);
+    }
+  }
 };
 
-export const generateEstimatePDF = async (state: CalculatorState, results: CalculationResults, record?: EstimateRecord) => {
-    return generateDocumentPDF(state, results, 'ESTIMATE', record);
+export const generateEstimatePDF = async (
+  state: CalculatorState,
+  results: CalculationResults,
+  record?: EstimateRecord,
+  cloudOptions?: SaveToCloudOptions
+) => {
+    return generateDocumentPDF(state, results, 'ESTIMATE', record, cloudOptions);
 }
 
 // Purchase Order PDF
-export const generatePurchaseOrderPDF = async (state: CalculatorState, po: PurchaseOrder) => {
+export const generatePurchaseOrderPDF = async (state: CalculatorState, po: PurchaseOrder, cloudOptions?: SaveToCloudOptions) => {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
   let yPos = await drawCompanyHeader(doc, state, "PURCHASE ORDER");
@@ -345,11 +388,36 @@ export const generatePurchaseOrderPDF = async (state: CalculatorState, po: Purch
       doc.setFont(undefined, 'normal');
       doc.text(po.notes, 15, finalY + 5);
   }
-  doc.save(`PO_${po.vendorName}_${po.id.substring(0,6)}.pdf`);
+  const poFilename = `PO_${po.vendorName}_${po.id.substring(0,6)}.pdf`;
+  doc.save(poFilename);
+
+  // Save to Supabase Storage
+  const orgId = cloudOptions?.orgId;
+  if (orgId) {
+    try {
+      const blob = doc.output('blob');
+      await saveDocument({
+        pdfBlob: blob,
+        filename: poFilename,
+        orgId,
+        customerId: null,
+        estimateId: null,
+        documentType: 'PURCHASE_ORDER',
+        metadata: {
+          vendorName: po.vendorName,
+          totalCost: po.totalCost,
+          poId: po.id,
+          generatedAt: new Date().toISOString(),
+        },
+      });
+    } catch (err) {
+      console.error('[PDF] PO cloud save failed (non-blocking):', err);
+    }
+  }
 };
 
 // Work Order - Designed for Crew (No Pricing)
-export const generateWorkOrderPDF = async (state: CalculatorState, record: EstimateRecord) => {
+export const generateWorkOrderPDF = async (state: CalculatorState, record: EstimateRecord, cloudOptions?: SaveToCloudOptions) => {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
 
@@ -453,5 +521,29 @@ export const generateWorkOrderPDF = async (state: CalculatorState, record: Estim
       doc.text(record.notes, 15, yPos + 5, { maxWidth: pageWidth - 30 });
   }
 
-  doc.save(`${record.customer.name.replace(/\s+/g, '_')}_WorkOrder.pdf`);
+  const woFilename = `${record.customer.name.replace(/\s+/g, '_')}_WorkOrder.pdf`;
+  doc.save(woFilename);
+
+  // Save to Supabase Storage
+  const orgId = cloudOptions?.orgId;
+  if (orgId) {
+    try {
+      const blob = doc.output('blob');
+      await saveDocument({
+        pdfBlob: blob,
+        filename: woFilename,
+        orgId,
+        customerId: record.customerId || undefined,
+        estimateId: record.id || undefined,
+        documentType: 'WORK_ORDER',
+        metadata: {
+          customerName: record.customer?.name || '',
+          scheduledDate: record.scheduledDate || '',
+          generatedAt: new Date().toISOString(),
+        },
+      });
+    } catch (err) {
+      console.error('[PDF] Work order cloud save failed (non-blocking):', err);
+    }
+  }
 };

@@ -566,6 +566,70 @@ export interface Database {
           }
         ]
       }
+      documents: {
+        Row: {
+          id: string
+          organization_id: string
+          customer_id: string | null
+          estimate_id: string | null
+          document_type: string
+          filename: string
+          storage_path: string
+          public_url: string | null
+          file_size: number | null
+          metadata: Json
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          customer_id?: string | null
+          estimate_id?: string | null
+          document_type: string
+          filename: string
+          storage_path: string
+          public_url?: string | null
+          file_size?: number | null
+          metadata?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          customer_id?: string | null
+          estimate_id?: string | null
+          document_type?: string
+          filename?: string
+          storage_path?: string
+          public_url?: string | null
+          file_size?: number | null
+          metadata?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'documents_organization_id_fkey'
+            columns: ['organization_id']
+            referencedRelation: 'organizations'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'documents_customer_id_fkey'
+            columns: ['customer_id']
+            referencedRelation: 'customers'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'documents_estimate_id_fkey'
+            columns: ['estimate_id']
+            referencedRelation: 'estimates'
+            referencedColumns: ['id']
+          }
+        ]
+      }
     }
     Functions: {
       verify_crew_pin: {
@@ -586,6 +650,14 @@ export interface Database {
       }
       get_subscription_status: {
         Args: { p_org_id: string }
+        Returns: Json
+      }
+      get_customer_documents: {
+        Args: { p_org_id: string; p_customer_id: string }
+        Returns: Json
+      }
+      get_estimate_documents: {
+        Args: { p_org_id: string; p_estimate_id: string }
         Returns: Json
       }
     }

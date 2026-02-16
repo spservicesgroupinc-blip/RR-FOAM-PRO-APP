@@ -1,12 +1,14 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Archive, Phone, Mail, MapPin, ArrowLeft } from 'lucide-react';
+import { Plus, Archive, Phone, Mail, MapPin, ArrowLeft, FileText, Download, Trash2, ExternalLink, Loader2 } from 'lucide-react';
 import { CalculatorState, CustomerProfile, EstimateRecord } from '../types';
 import { usePagination } from '../hooks/usePagination';
 import { PaginationControls } from './PaginationControls';
+import { getCustomerDocuments, deleteDocument, DocumentRecord } from '../services/documentService';
 
 interface CustomersProps {
   state: CalculatorState;
+  orgId?: string;
   viewingCustomerId: string | null;
   onSelectCustomer: (id: string | null) => void;
   onSaveCustomer: (customer: CustomerProfile) => void;
@@ -19,6 +21,7 @@ interface CustomersProps {
 
 export const Customers: React.FC<CustomersProps> = ({
   state,
+  orgId,
   viewingCustomerId,
   onSelectCustomer,
   onSaveCustomer,
@@ -32,6 +35,9 @@ export const Customers: React.FC<CustomersProps> = ({
   const [formData, setFormData] = useState<CustomerProfile>({
     id: '', name: '', address: '', city: '', state: '', zip: '', email: '', phone: '', notes: '', status: 'Active'
   });
+  const [customerDocs, setCustomerDocs] = useState<DocumentRecord[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
 
   // Intelligent Workflow: Auto-open modal if requested via Quick Actions
   useEffect(() => {
@@ -40,6 +46,51 @@ export const Customers: React.FC<CustomersProps> = ({
       if (onAutoOpenComplete) onAutoOpenComplete();
     }
   }, [autoOpen]);
+
+  // Fetch documents when viewing a customer
+  useEffect(() => {
+    if (viewingCustomerId && orgId) {
+      setLoadingDocs(true);
+      getCustomerDocuments(orgId, viewingCustomerId)
+        .then(docs => setCustomerDocs(docs))
+        .catch(() => setCustomerDocs([]))
+        .finally(() => setLoadingDocs(false));
+    } else {
+      setCustomerDocs([]);
+    }
+  }, [viewingCustomerId, orgId]);
+
+  const handleDeleteDoc = async (doc: DocumentRecord) => {
+    if (!confirm(`Delete "${doc.filename}"?`)) return;
+    setDeletingDocId(doc.id);
+    const ok = await deleteDocument(doc.id, doc.storagePath);
+    if (ok) {
+      setCustomerDocs(prev => prev.filter(d => d.id !== doc.id));
+    }
+    setDeletingDocId(null);
+  };
+
+  const docTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      estimate: 'Estimate',
+      invoice: 'Invoice',
+      receipt: 'Receipt',
+      work_order: 'Work Order',
+      purchase_order: 'Purchase Order',
+    };
+    return labels[type] || type;
+  };
+
+  const docTypeBadgeColor = (type: string) => {
+    const colors: Record<string, string> = {
+      estimate: 'bg-blue-100 text-blue-700',
+      invoice: 'bg-amber-100 text-amber-700',
+      receipt: 'bg-green-100 text-green-700',
+      work_order: 'bg-purple-100 text-purple-700',
+      purchase_order: 'bg-slate-100 text-slate-700',
+    };
+    return colors[type] || 'bg-slate-100 text-slate-600';
+  };
 
   const handleOpenModal = (customer?: CustomerProfile) => {
     if (customer) {
@@ -109,6 +160,81 @@ export const Customers: React.FC<CustomersProps> = ({
                     </tbody>
                     </table>
                 </div>
+            </div>
+
+            {/* Customer Documents */}
+            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="p-6 border-b border-slate-100 bg-slate-50 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-brand" />
+                        <span className="font-black uppercase text-[10px] tracking-widest text-slate-400">Documents</span>
+                    </div>
+                    <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{customerDocs.length} Files</span>
+                </div>
+                
+                {loadingDocs ? (
+                    <div className="p-12 flex items-center justify-center">
+                        <Loader2 className="w-5 h-5 animate-spin text-slate-300" />
+                        <span className="ml-2 text-slate-400 text-sm">Loading documents...</span>
+                    </div>
+                ) : customerDocs.length === 0 ? (
+                    <div className="p-12 text-center text-slate-300 italic text-sm">
+                        No documents yet. Documents are automatically saved when you generate estimates, invoices, work orders, or receipts.
+                    </div>
+                ) : (
+                    <div className="divide-y divide-slate-100">
+                        {customerDocs.map(doc => (
+                            <div key={doc.id} className="px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors group">
+                                <div className="flex items-center gap-4 min-w-0 flex-1">
+                                    <div className="bg-slate-100 p-2.5 rounded-xl group-hover:bg-brand/10 transition-colors">
+                                        <FileText className="w-4 h-4 text-slate-400 group-hover:text-brand transition-colors" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="font-bold text-sm text-slate-800 truncate">{doc.filename}</p>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${docTypeBadgeColor(doc.documentType)}`}>
+                                                {docTypeLabel(doc.documentType)}
+                                            </span>
+                                            <span className="text-[10px] text-slate-400">{new Date(doc.createdAt).toLocaleDateString()}</span>
+                                            {doc.fileSize > 0 && <span className="text-[10px] text-slate-300">{(doc.fileSize / 1024).toFixed(0)} KB</span>}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-1 shrink-0 ml-2">
+                                    {doc.publicUrl && (
+                                        <a
+                                            href={doc.publicUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="p-2 text-slate-300 hover:text-brand hover:bg-red-50 rounded-lg transition-colors"
+                                            title="Open PDF"
+                                        >
+                                            <ExternalLink className="w-4 h-4" />
+                                        </a>
+                                    )}
+                                    {doc.publicUrl && (
+                                        <a
+                                            href={doc.publicUrl}
+                                            download={doc.filename}
+                                            className="p-2 text-slate-300 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                                            title="Download"
+                                        >
+                                            <Download className="w-4 h-4" />
+                                        </a>
+                                    )}
+                                    <button
+                                        onClick={() => handleDeleteDoc(doc)}
+                                        disabled={deletingDocId === doc.id}
+                                        className="p-2 text-slate-200 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                                        title="Delete"
+                                    >
+                                        {deletingDocId === doc.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Modal */}

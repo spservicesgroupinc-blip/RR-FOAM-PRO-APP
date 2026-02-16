@@ -106,3 +106,71 @@ create policy "Crew read customers" on customers
       and profiles.role = 'crew'
     )
   );
+
+-- Documents (tracks all generated PDFs per org/customer/estimate)
+create table documents (
+  id uuid primary key default uuid_generate_v4(),
+  organization_id uuid references organizations(id) not null,
+  customer_id uuid references customers(id) on delete set null,
+  estimate_id uuid references estimates(id) on delete set null,
+  document_type text not null check (document_type in ('estimate', 'invoice', 'receipt', 'work_order', 'purchase_order')),
+  filename text not null,
+  storage_path text not null,
+  public_url text,
+  file_size integer,
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+create index idx_documents_org on documents(organization_id);
+create index idx_documents_customer on documents(customer_id);
+create index idx_documents_estimate on documents(estimate_id);
+create index idx_documents_type on documents(document_type);
+create index idx_documents_created on documents(created_at desc);
+
+alter table documents enable row level security;
+
+create policy "Admins full access to documents" on documents
+  for all using (
+    exists (
+      select 1 from profiles
+      where profiles.id = auth.uid()
+      and profiles.organization_id = documents.organization_id
+      and profiles.role = 'admin'
+    )
+  );
+
+create policy "Crew read documents" on documents
+  for select using (
+    exists (
+      select 1 from profiles
+      where profiles.id = auth.uid()
+      and profiles.organization_id = documents.organization_id
+      and profiles.role = 'crew'
+    )
+  );
+
+-- RPC: Get all documents for a customer (SECURITY DEFINER for crew access)
+create or replace function get_customer_documents(p_org_id uuid, p_customer_id uuid)
+returns setof documents
+language sql
+security definer
+as $$
+  select * from documents
+  where organization_id = p_org_id
+    and customer_id = p_customer_id
+  order by created_at desc;
+$$;
+
+-- RPC: Get all documents for an estimate
+create or replace function get_estimate_documents(p_org_id uuid, p_estimate_id uuid)
+returns setof documents
+language sql
+security definer
+as $$
+  select * from documents
+  where organization_id = p_org_id
+    and estimate_id = p_estimate_id
+  order by created_at desc;
+$$;

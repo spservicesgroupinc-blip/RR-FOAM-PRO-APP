@@ -16,7 +16,7 @@ import {
   insertPurchaseOrder,
   updateEstimateActuals,
 } from '../services/supabaseService';
-import { generateWorkOrderPDF, generateDocumentPDF } from '../utils/pdfGenerator';
+import { generateWorkOrderPDF, generateDocumentPDF, SaveToCloudOptions } from '../utils/pdfGenerator';
 import { setInventorySyncLock } from './useSync';
 
 export const useEstimates = () => {
@@ -217,7 +217,8 @@ export const useEstimates = () => {
       dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Paid! Profit Calculated.' } });
       
       // Generate receipt PDF
-      generateDocumentPDF(appData, estimate.results, 'RECEIPT', paidEstimate);
+      const cloudOpts: SaveToCloudOptions = { orgId: session?.organizationId, customerId: estimate.customerId, estimateId: id };
+      generateDocumentPDF(appData, estimate.results, 'RECEIPT', paidEstimate, cloudOpts);
 
       // Persist to Supabase
       try {
@@ -406,8 +407,9 @@ export const useEstimates = () => {
           : 'Work Order Created — Warehouse Inventory Deducted!';
         dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: notifMsg } });
         
-        // 5. Generate PDF Locally
-        generateWorkOrderPDF(appData, record!);
+        // 5. Generate PDF Locally + Save to Cloud
+        const cloudOpts: SaveToCloudOptions = { orgId: session?.organizationId, customerId: record!.customerId, estimateId: record!.id };
+        generateWorkOrderPDF(appData, record!, cloudOpts);
 
         // 6. Background persist to Supabase
         handleBackgroundWorkOrderSync(record, newWarehouse, updatedEquipment, results);

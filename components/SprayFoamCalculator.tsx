@@ -13,7 +13,7 @@ import { useCalculator, DEFAULT_STATE } from '../context/CalculatorContext';
 import { useSync } from '../hooks/useSync';
 import { useEstimates } from '../hooks/useEstimates';
 import { calculateResults } from '../utils/calculatorHelpers';
-import { generateEstimatePDF, generateDocumentPDF, generateWorkOrderPDF } from '../utils/pdfGenerator';
+import { generateEstimatePDF, generateDocumentPDF, generateWorkOrderPDF, SaveToCloudOptions } from '../utils/pdfGenerator';
 import { syncUp } from '../services/api';
 import { upsertInventoryItem } from '../services/supabaseService';
 import { getCurrentSession, signOut } from '../services/auth';
@@ -310,17 +310,24 @@ const SprayFoamCalculator: React.FC = () => {
     dispatch({ type: 'SET_VIEW', payload: 'estimate_stage' });
   };
 
+  // Helper: build cloud save options for PDF generators
+  const getCloudOptions = (record?: EstimateRecord): SaveToCloudOptions => ({
+    orgId: session?.organizationId,
+    customerId: record?.customerId || appData.customerProfile?.id || undefined,
+    estimateId: record?.id || ui.editingEstimateId || undefined,
+  });
+
   // Called after InvoiceStage saves its lines to the record
   const handleConfirmInvoice = async (record?: EstimateRecord) => {
     const finalRecord = record || appData.savedEstimates.find(e => e.id === ui.editingEstimateId);
     
     if (finalRecord) {
-        await generateDocumentPDF(appData, finalRecord.results, 'INVOICE', finalRecord);
+        await generateDocumentPDF(appData, finalRecord.results, 'INVOICE', finalRecord, getCloudOptions(finalRecord));
         dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
     } else {
         const newRec = await saveEstimate(results, 'Invoiced');
         if (newRec) {
-            await generateDocumentPDF(appData, results, 'INVOICE', newRec);
+            await generateDocumentPDF(appData, results, 'INVOICE', newRec, getCloudOptions(newRec));
             dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
         }
     }
@@ -329,7 +336,7 @@ const SprayFoamCalculator: React.FC = () => {
   // Called after EstimateStage saves its lines
   const handleConfirmEstimate = async (record: EstimateRecord, shouldPrint: boolean) => {
       if (shouldPrint) {
-          await generateEstimatePDF(appData, record.results, record);
+          await generateEstimatePDF(appData, record.results, record, getCloudOptions(record));
       }
       dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
   };
@@ -477,7 +484,7 @@ const SprayFoamCalculator: React.FC = () => {
                 onMarkPaid={handleMarkPaid}
                 initialFilter={initialDashboardFilter}
                 onGoToWarehouse={() => dispatch({ type: 'SET_VIEW', payload: 'warehouse' })}
-                onViewInvoice={async (rec) => await generateDocumentPDF(appData, rec.results, 'INVOICE', rec)}
+                onViewInvoice={async (rec) => await generateDocumentPDF(appData, rec.results, 'INVOICE', rec, getCloudOptions(rec))}
                 onSync={forceRefresh}
                 subscription={state.subscription}
             />
@@ -495,7 +502,7 @@ const SprayFoamCalculator: React.FC = () => {
                 onAddInventory={addInventoryItem}
                 onRemoveInventory={removeInventoryItem}
                 onSaveEstimate={(status) => saveEstimate(results, status)}
-                onGeneratePDF={async () => await generateEstimatePDF(appData, results)}
+                onGeneratePDF={async () => await generateEstimatePDF(appData, results, undefined, getCloudOptions())}
                 onStageWorkOrder={handleStageWorkOrder}
                 onStageInvoice={handleStageInvoice}
                 onStageEstimate={handleStageEstimate} // Pass new handler
@@ -511,7 +518,7 @@ const SprayFoamCalculator: React.FC = () => {
                 results={results} 
                 onBack={() => dispatch({ type: 'SET_VIEW', payload: 'dashboard' })}
                 onEdit={() => dispatch({ type: 'SET_VIEW', payload: 'calculator' })}
-                onGeneratePDF={async () => await generateEstimatePDF(appData, results, appData.savedEstimates.find(e => e.id === ui.editingEstimateId))}
+                onGeneratePDF={async () => await generateEstimatePDF(appData, results, appData.savedEstimates.find(e => e.id === ui.editingEstimateId), getCloudOptions(appData.savedEstimates.find(e => e.id === ui.editingEstimateId)))}
                 onSold={handleStageWorkOrder}
                 onInvoice={handleStageInvoice}
             />
@@ -572,6 +579,7 @@ const SprayFoamCalculator: React.FC = () => {
         {ui.view === 'material_order' && (
             <MaterialOrder 
                 state={appData}
+                orgId={session?.organizationId}
                 onCancel={() => dispatch({ type: 'SET_VIEW', payload: 'warehouse' })}
                 onSavePO={createPurchaseOrder}
             />
@@ -594,6 +602,7 @@ const SprayFoamCalculator: React.FC = () => {
         {(ui.view === 'customers' || ui.view === 'customer_detail') && (
             <Customers 
                 state={appData}
+                orgId={session?.organizationId}
                 viewingCustomerId={ui.view === 'customer_detail' ? ui.viewingCustomerId : null}
                 onSelectCustomer={(id) => { 
                     dispatch({ type: 'SET_VIEWING_CUSTOMER', payload: id }); 
