@@ -265,104 +265,92 @@ export const useEstimates = () => {
   };
 
   const confirmWorkOrder = async (results: CalculationResults, workOrderLines?: InvoiceLineItem[]) => {
-    // ─── DOUBLE-DEDUCTION GUARD ────────────────────────────────────────
-    // If this estimate already had inventory deducted (status was already
-    // 'Work Order'), skip the deduction to prevent subtracting twice.
     const existingRecord = ui.editingEstimateId
       ? appData.savedEstimates.find(e => e.id === ui.editingEstimateId)
       : undefined;
-    const alreadyDeducted = existingRecord?.status === 'Work Order';
+
+    // Only treat previous materials as "already deducted" if the estimate
+    // was already processed as a Work Order. Draft estimates store materials
+    // but haven't deducted from warehouse yet, so we use zeroed-out
+    // previous materials for the first Draft → Work Order transition.
+    const alreadyDeducted = existingRecord?.inventoryProcessed === true;
+    const previousMaterials = alreadyDeducted
+      ? (existingRecord?.materials || { openCellSets: 0, closedCellSets: 0, inventory: [] })
+      : { openCellSets: 0, closedCellSets: 0, inventory: [] };
 
     const newWarehouse = { ...appData.warehouse };
 
-    if (!alreadyDeducted) {
-      // 1. Deduct Foam Chemical Sets (Allow negatives)
-      const requiredOpen = Number(results.openCellSets) || 0;
-      const requiredClosed = Number(results.closedCellSets) || 0;
-      
-      newWarehouse.openCellSets = newWarehouse.openCellSets - requiredOpen;
-      newWarehouse.closedCellSets = newWarehouse.closedCellSets - requiredClosed;
+    // 1) Foam deltas — allow negatives so users can return stock if they reduce sets
+    const requiredOpen = Number(results.openCellSets) || 0;
+    const requiredClosed = Number(results.closedCellSets) || 0;
+    const prevOpen = Number(previousMaterials.openCellSets) || 0;
+    const prevClosed = Number(previousMaterials.closedCellSets) || 0;
+    const deltaOpen = requiredOpen - prevOpen;
+    const deltaClosed = requiredClosed - prevClosed;
 
-      console.log(`[WO Inventory] Deducting foam: OC -${requiredOpen.toFixed(2)}, CC -${requiredClosed.toFixed(2)}`);
-      
-      // 2. Deduct non-chemical inventory items from warehouse
-      const deductionSummary: string[] = [];
+    const deductionSummary: string[] = [];
 
-      if (appData.inventory.length > 0) {
-          const normalizeName = (name?: string) => (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (deltaOpen !== 0) {
+      newWarehouse.openCellSets = newWarehouse.openCellSets - deltaOpen;
+      deductionSummary.push(`OC: ${deltaOpen > 0 ? '-' : '+'}${Math.abs(deltaOpen).toFixed(2)} sets`);
+    }
+    if (deltaClosed !== 0) {
+      newWarehouse.closedCellSets = newWarehouse.closedCellSets - deltaClosed;
+      deductionSummary.push(`CC: ${deltaClosed > 0 ? '-' : '+'}${Math.abs(deltaClosed).toFixed(2)} sets`);
+    }
 
-          // Auto-resolve warehouseItemId for items that only have a name match.
-          // This fixes the case where an inventory item was added without selecting
-          // from the warehouse dropdown — the random temp ID won't match anything,
-          // so we resolve the link by name before building the deduction map.
-          const resolvedInventory = appData.inventory.map(item => {
-              if (item.warehouseItemId) {
-                  // Already linked — verify the link is still valid
-                  const linked = newWarehouse.items.find(w => w.id === item.warehouseItemId);
-                  if (linked) return item;
-                  // warehouseItemId is stale (e.g. temp ID replaced by Supabase UUID),
-                  // fall through to name-based resolution below
-              }
-              // Try to resolve by normalized name
-              const match = newWarehouse.items.find(
-                  w => normalizeName(w.name) === normalizeName(item.name)
-              );
-              if (match) {
-                  console.log(`[WO Inventory] Auto-linked "${item.name}" → warehouse item ${match.id}`);
-                  return { ...item, warehouseItemId: match.id };
-              }
-              return item;
-          });
+    // 2) Non-chemical inventory deltas (deduct or restock based on changes)
+    const normalizeName = (name?: string) => (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const prevInventory = previousMaterials.inventory || [];
 
-          // Build lookup map keyed by warehouseItemId (now reliably set)
-          const usageById = new Map<string, typeof appData.inventory[number]>();
-          resolvedInventory.forEach(item => {
-              if (item.warehouseItemId) usageById.set(item.warehouseItemId, item);
-          });
+    if (appData.inventory.length > 0) {
+      // Resolve warehouseItemId for current job inventory to avoid temp IDs
+      const resolvedInventory = appData.inventory.map(item => {
+        if (item.warehouseItemId) {
+          const linked = newWarehouse.items.find(w => w.id === item.warehouseItemId);
+          if (linked) return item;
+        }
+        const match = newWarehouse.items.find(w => normalizeName(w.name) === normalizeName(item.name));
+        return match ? { ...item, warehouseItemId: match.id } : item;
+      });
 
-          newWarehouse.items = newWarehouse.items.map(whItem => {
-              // Match by resolved warehouseItemId, then fall back to name
-              const used = usageById.get(whItem.id)
-                || resolvedInventory.find(i => normalizeName(i.name) === normalizeName(whItem.name));
+      const getUsageQty = (list: typeof resolvedInventory, whItem: any) => {
+        const byId = list.find(i => i.warehouseItemId === whItem.id);
+        if (byId) return Number(byId.quantity) || 0;
+        const byName = list.find(i => normalizeName(i.name) === normalizeName(whItem.name));
+        return byName ? Number(byName.quantity) || 0 : 0;
+      };
 
-              if (used && (Number(used.quantity) || 0) > 0) {
-                  const deductQty = Number(used.quantity) || 0;
-                  const newQty = whItem.quantity - deductQty;
-                  console.log(`[WO Inventory] Deducting "${whItem.name}": ${whItem.quantity} → ${newQty} (used ${deductQty})`);
-                  deductionSummary.push(`${whItem.name}: -${deductQty}`);
-                  return { ...whItem, quantity: newQty };
-              }
-              return whItem;
-          });
+      newWarehouse.items = newWarehouse.items.map(whItem => {
+        const currentUse = getUsageQty(resolvedInventory, whItem);
+        const prevUse = getUsageQty(prevInventory as any, whItem);
+        const deltaUse = currentUse - prevUse;
 
-          // Warn about unmatched inventory items (admin typed custom name not in warehouse)
-          resolvedInventory.forEach(inv => {
-              const matchedById = inv.warehouseItemId && newWarehouse.items.some(
-                w => w.id === inv.warehouseItemId
-              );
-              const matchedByName = newWarehouse.items.some(
-                w => normalizeName(w.name) === normalizeName(inv.name)
-              );
-              if (!matchedById && !matchedByName && (inv.quantity || 0) > 0) {
-                  console.warn(`[WO Inventory] No warehouse match for "${inv.name}" (qty: ${inv.quantity}). Item not deducted from warehouse stock.`);
-              }
-          });
+        if (deltaUse !== 0) {
+          const newQty = whItem.quantity - deltaUse;
+          deductionSummary.push(`${whItem.name}: ${deltaUse > 0 ? '-' : '+'}${Math.abs(deltaUse)}`);
+          return { ...whItem, quantity: newQty };
+        }
+        return whItem;
+      });
 
-          // Persist the resolved warehouseItemIds back to state so the
-          // estimate record saved to Supabase has real UUIDs, not temp IDs.
-          dispatch({ type: 'UPDATE_DATA', payload: { inventory: resolvedInventory } });
-      }
+      // Warn about unmatched items so admins know nothing was deducted
+      resolvedInventory.forEach(inv => {
+        const matchedById = inv.warehouseItemId && newWarehouse.items.some(w => w.id === inv.warehouseItemId);
+        const matchedByName = newWarehouse.items.some(w => normalizeName(w.name) === normalizeName(inv.name));
+        if (!matchedById && !matchedByName && (inv.quantity || 0) > 0) {
+          console.warn(`[WO Inventory] No warehouse match for "${inv.name}" (qty: ${inv.quantity}). Item not deducted from warehouse stock.`);
+        }
+      });
 
-      // Build user notification
-      const parts: string[] = [];
-      if (requiredOpen > 0) parts.push(`OC: -${requiredOpen.toFixed(2)} sets`);
-      if (requiredClosed > 0) parts.push(`CC: -${requiredClosed.toFixed(2)} sets`);
-      parts.push(...deductionSummary);
-      if (parts.length > 0) {
-        console.log(`[WO Inventory] Deduction complete: ${parts.join(', ')}`);
-      }
+      // Persist the resolved IDs back into job inventory before saving
+      dispatch({ type: 'UPDATE_DATA', payload: { inventory: resolvedInventory } });
+    }
+
+    if (deductionSummary.length > 0) {
+      console.log(`[WO Inventory] Inventory delta applied: ${deductionSummary.join(', ')}`);
     } else {
-      console.log(`[WO Inventory] Skipping deduction — estimate already has Work Order status (double-deduction guard).`);
+      console.log('[WO Inventory] No inventory deltas detected; warehouse left unchanged.');
     }
 
     // 3. Update Warehouse State Locally
@@ -389,7 +377,7 @@ export const useEstimates = () => {
       equipment: [...appData.jobEquipment]
     };
 
-    const record = await saveEstimate(results, 'Work Order', { workOrderLines, materials: resolvedMaterials }, false);
+    const record = await saveEstimate(results, 'Work Order', { workOrderLines, materials: resolvedMaterials, inventoryProcessed: true }, false);
     
     if (record) {
         let updatedEquipment = appData.equipment;
