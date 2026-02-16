@@ -287,21 +287,43 @@ export const useEstimates = () => {
       
       // 2. Deduct non-chemical inventory items from warehouse
       const deductionSummary: string[] = [];
-      
-      if (appData.inventory.length > 0) {
-          const normalizeName = (name?: string) => (name || '').trim().toLowerCase();
 
-          // Build lookup map: warehouseItemId (preferred) or inventory item id
+      if (appData.inventory.length > 0) {
+          const normalizeName = (name?: string) => (name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+          // Auto-resolve warehouseItemId for items that only have a name match.
+          // This fixes the case where an inventory item was added without selecting
+          // from the warehouse dropdown — the random temp ID won't match anything,
+          // so we resolve the link by name before building the deduction map.
+          const resolvedInventory = appData.inventory.map(item => {
+              if (item.warehouseItemId) {
+                  // Already linked — verify the link is still valid
+                  const linked = newWarehouse.items.find(w => w.id === item.warehouseItemId);
+                  if (linked) return item;
+                  // warehouseItemId is stale (e.g. temp ID replaced by Supabase UUID),
+                  // fall through to name-based resolution below
+              }
+              // Try to resolve by normalized name
+              const match = newWarehouse.items.find(
+                  w => normalizeName(w.name) === normalizeName(item.name)
+              );
+              if (match) {
+                  console.log(`[WO Inventory] Auto-linked "${item.name}" → warehouse item ${match.id}`);
+                  return { ...item, warehouseItemId: match.id };
+              }
+              return item;
+          });
+
+          // Build lookup map keyed by warehouseItemId (now reliably set)
           const usageById = new Map<string, typeof appData.inventory[number]>();
-          appData.inventory.forEach(item => {
-              const key = item.warehouseItemId || item.id;
-              if (key) usageById.set(key, item);
+          resolvedInventory.forEach(item => {
+              if (item.warehouseItemId) usageById.set(item.warehouseItemId, item);
           });
 
           newWarehouse.items = newWarehouse.items.map(whItem => {
-              // Match by warehouseItemId first, then by name (case-insensitive)
-              const used = usageById.get(whItem.id) 
-                || appData.inventory.find(i => normalizeName(i.name) === normalizeName(whItem.name));
+              // Match by resolved warehouseItemId, then fall back to name
+              const used = usageById.get(whItem.id)
+                || resolvedInventory.find(i => normalizeName(i.name) === normalizeName(whItem.name));
 
               if (used && (Number(used.quantity) || 0) > 0) {
                   const deductQty = Number(used.quantity) || 0;
@@ -314,12 +336,12 @@ export const useEstimates = () => {
           });
 
           // Warn about unmatched inventory items (admin typed custom name not in warehouse)
-          appData.inventory.forEach(inv => {
-              const matchedByName = newWarehouse.items.some(
-                w => normalizeName(w.name) === normalizeName(inv.name)
-              );
+          resolvedInventory.forEach(inv => {
               const matchedById = inv.warehouseItemId && newWarehouse.items.some(
                 w => w.id === inv.warehouseItemId
+              );
+              const matchedByName = newWarehouse.items.some(
+                w => normalizeName(w.name) === normalizeName(inv.name)
               );
               if (!matchedById && !matchedByName && (inv.quantity || 0) > 0) {
                   console.warn(`[WO Inventory] No warehouse match for "${inv.name}" (qty: ${inv.quantity}). Item not deducted from warehouse stock.`);

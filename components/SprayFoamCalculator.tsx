@@ -182,7 +182,17 @@ const SprayFoamCalculator: React.FC = () => {
             // (the local dispatch above may not have been processed yet)
             const hasItem = fixedItems.some(i => i.id === saved.id);
             const finalItems = hasItem ? fixedItems : [...fixedItems, { ...newItem, id: saved.id }];
-            dispatch({ type: 'UPDATE_DATA', payload: { warehouse: { ...appData.warehouse, items: finalItems } } });
+
+            // Also update any job inventory items that reference the old temp ID
+            // so the warehouseItemId stays valid for deduction matching
+            const fixedInventory = appData.inventory.map(inv =>
+              inv.warehouseItemId === tempId ? { ...inv, warehouseItemId: saved.id } : inv
+            );
+
+            dispatch({ type: 'UPDATE_DATA', payload: {
+              warehouse: { ...appData.warehouse, items: finalItems },
+              inventory: fixedInventory
+            } });
           }
         }).catch(err => console.error('Immediate warehouse item sync failed:', err));
       }
