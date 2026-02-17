@@ -16,7 +16,19 @@ import {
   Receipt,
   Copy,
   Download,
-  Menu
+  Menu,
+  Wrench,
+  ClipboardList,
+  FileText,
+  Settings,
+  ChevronDown,
+  ChevronRight,
+  Package,
+  Truck,
+  BarChart3,
+  HardHat,
+  MoreHorizontal,
+  Cog
 } from 'lucide-react';
 import { UserSession } from '../types';
 
@@ -50,7 +62,9 @@ export const Layout: React.FC<LayoutProps> = ({
   onInstall
 }) => {
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+  const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [copiedId, setCopiedId] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   
   // Auto-clear notification - Reduced to 2000ms
   useEffect(() => {
@@ -73,36 +87,45 @@ export const Layout: React.FC<LayoutProps> = ({
       setTimeout(() => setCopiedId(false), 2000);
   };
 
-  const NavButton = ({ target, icon: Icon, label, isAction = false }: any) => {
-    const isActive = view === target || (target === 'customers' && view === 'customer_detail');
-    
-    if (isAction) {
-      return (
-        <button 
-          onClick={() => setIsActionMenuOpen(true)} 
-          className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold text-sm mb-1
-            ${view === 'calculator' 
-              ? 'bg-brand text-white shadow-lg shadow-red-200' 
-              : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'}`}
-        >
-          <Icon className="w-5 h-5" />
-          <span className="md:inline">{label}</span>
-        </button>
-      );
-    }
+  const toggleSection = (section: string) => {
+    setCollapsedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
 
+  // Navigation item component for desktop sidebar
+  const SidebarItem = ({ target, icon: Icon, label, badge }: { target: string; icon: any; label: string; badge?: number }) => {
+    const isActive = view === target || (target === 'customers' && view === 'customer_detail');
     return (
       <button 
         onClick={() => setView(target)} 
-        className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold text-sm mb-1
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all font-semibold text-[13px] group
           ${isActive 
-            ? 'bg-slate-900 text-white shadow-lg' 
-            : 'text-slate-500 hover:bg-slate-100'}`}
+            ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20' 
+            : 'text-slate-500 hover:bg-slate-100 hover:text-slate-700'}`}
       >
-        <Icon className="w-5 h-5" />
-        <span className="hidden md:inline">{label}</span>
-        {/* Mobile Label */}
-        <span className="md:hidden text-[10px]">{label}</span> 
+        <Icon className={`w-[18px] h-[18px] shrink-0 ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-slate-600'}`} />
+        <span className="truncate">{label}</span>
+        {badge !== undefined && badge > 0 && (
+          <span className={`ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isActive ? 'bg-white/20 text-white' : 'bg-red-100 text-red-600'}`}>
+            {badge}
+          </span>
+        )}
+      </button>
+    );
+  };
+
+  // Section header for desktop sidebar
+  const SectionHeader = ({ title, section }: { title: string; section: string }) => {
+    const isCollapsed = collapsedSections[section];
+    return (
+      <button 
+        onClick={() => toggleSection(section)}
+        className="w-full flex items-center justify-between px-3 py-2 mt-3 mb-1 group"
+      >
+        <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 group-hover:text-slate-600 transition-colors">{title}</span>
+        {isCollapsed 
+          ? <ChevronRight className="w-3 h-3 text-slate-300 group-hover:text-slate-500" />
+          : <ChevronDown className="w-3 h-3 text-slate-300 group-hover:text-slate-500" />
+        }
       </button>
     );
   };
@@ -180,41 +203,85 @@ export const Layout: React.FC<LayoutProps> = ({
         </div>
       )}
 
-      {/* Sidebar (Desktop) */}
-      <aside className="hidden md:flex flex-col w-64 bg-white border-r border-slate-200 h-screen sticky top-0 z-20">
-        <div className="p-6 border-b border-slate-100">
+      {/* ==================== DESKTOP SIDEBAR ==================== */}
+      <aside className="hidden md:flex flex-col w-[270px] bg-white border-r border-slate-200 h-screen sticky top-0 z-20">
+        {/* Logo */}
+        <div className="p-5 pb-4 border-b border-slate-100">
            <div className="cursor-pointer" onClick={() => setView('dashboard')}>
               <RFESmallLogo />
            </div>
         </div>
 
-        <nav className="flex-1 p-4 overflow-y-auto">
-          <NavButton target="dashboard" icon={LayoutDashboard} label="Dashboard" />
-          <NavButton target="calculator" icon={Plus} label="Create New..." isAction />
-          <NavButton target="customers" icon={Users} label="Customers" />
-          <NavButton target="warehouse" icon={Warehouse} label="Warehouse" />
+        {/* Quick Create Button */}
+        <div className="px-3 pt-4 pb-1">
+          <button 
+            onClick={() => setIsActionMenuOpen(true)} 
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl font-bold text-sm bg-brand text-white hover:bg-red-700 transition-all shadow-lg shadow-red-200/50 active:scale-[0.98]"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Create New</span>
+          </button>
+        </div>
+
+        {/* Scrollable Navigation */}
+        <nav className="flex-1 px-3 py-1 overflow-y-auto space-y-0.5 scrollbar-thin">
           
-          <div className="my-4 border-t border-slate-100"></div>
-          
-          <NavButton target="settings" icon={RefreshCw} label="Settings" />
-          <NavButton target="profile" icon={User} label="Profile" />
+          {/* MAIN */}
+          <SectionHeader title="Main" section="main" />
+          {!collapsedSections.main && (
+            <div className="space-y-0.5">
+              <SidebarItem target="dashboard" icon={LayoutDashboard} label="Dashboard" />
+              <SidebarItem target="calculator" icon={Calculator} label="Estimate Calculator" />
+            </div>
+          )}
+
+          {/* JOBS & CRM */}
+          <SectionHeader title="Jobs & CRM" section="jobs" />
+          {!collapsedSections.jobs && (
+            <div className="space-y-0.5">
+              <SidebarItem target="customers" icon={Users} label="Customers" />
+            </div>
+          )}
+
+          {/* INVENTORY & EQUIPMENT */}
+          <SectionHeader title="Inventory & Equipment" section="inventory" />
+          {!collapsedSections.inventory && (
+            <div className="space-y-0.5">
+              <SidebarItem target="warehouse" icon={Warehouse} label="Warehouse" />
+              <SidebarItem target="material_report" icon={BarChart3} label="Material Report" />
+              <SidebarItem target="equipment_tracker" icon={Truck} label="Equipment Tracker" />
+              <SidebarItem target="equipment_maintenance" icon={Wrench} label="Equipment Maintenance" />
+            </div>
+          )}
+
+          {/* ACCOUNT */}
+          <SectionHeader title="Account" section="account" />
+          {!collapsedSections.account && (
+            <div className="space-y-0.5">
+              <SidebarItem target="settings" icon={Cog} label="Settings" />
+              <SidebarItem target="profile" icon={User} label="Profile" />
+            </div>
+          )}
 
           {/* Install App Button Desktop */}
           {installPrompt && (
-            <button 
-              onClick={onInstall}
-              className="flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold text-sm mb-1 text-white bg-brand hover:bg-brand-hover mt-4 shadow-lg shadow-red-100 animate-pulse"
-            >
-              <Download className="w-5 h-5" />
-              <span>Install RFE Desktop</span>
-            </button>
+            <div className="mt-4">
+              <button 
+                onClick={onInstall}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all font-bold text-sm text-white bg-brand hover:bg-red-700 shadow-lg shadow-red-100 animate-pulse"
+              >
+                <Download className="w-[18px] h-[18px]" />
+                <span>Install RFE Desktop</span>
+              </button>
+            </div>
           )}
         </nav>
 
-        <div className="p-4 border-t border-slate-100 bg-slate-50">
+        {/* User Footer */}
+        <div className="p-3 border-t border-slate-100 bg-slate-50/80">
            <div className="flex items-center justify-between">
-              <div className="flex flex-col">
-                <span className="text-xs font-bold text-slate-900 truncate max-w-[120px]" title={userSession.companyName}>{userSession.companyName}</span>
+              <div className="flex flex-col min-w-0">
+                <span className="text-xs font-bold text-slate-900 truncate max-w-[160px]" title={userSession.companyName}>{userSession.companyName}</span>
                 <button 
                     onClick={copyUsername}
                     className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium bg-white border border-slate-200 px-2 py-1 rounded-md my-1 w-fit hover:border-red-200 hover:text-brand transition-colors group"
@@ -231,14 +298,14 @@ export const Layout: React.FC<LayoutProps> = ({
                   {syncStatus === 'idle' && 'Active'}
                 </span>
               </div>
-              <button onClick={onLogout} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+              <button onClick={onLogout} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors" title="Sign Out">
                 <LogOut className="w-4 h-4" />
               </button>
            </div>
         </div>
       </aside>
 
-      {/* Main Content */}
+      {/* ==================== MAIN CONTENT ==================== */}
       <main className="flex-1 min-w-0 md:p-8 p-3 sm:p-4 overflow-x-hidden pt-0 md:pt-8 pb-28 md:pb-8">
         {/* Mobile Header - sticky, glassmorphism */}
         <div className="md:hidden sticky top-0 z-30 -mx-3 sm:-mx-4 px-3 sm:px-4 pt-[env(safe-area-inset-top)] mb-4">
@@ -270,9 +337,64 @@ export const Layout: React.FC<LayoutProps> = ({
         {children}
       </main>
 
-      {/* Mobile Bottom Nav - Modern with raised center FAB */}
+      {/* ==================== MOBILE "MORE" DRAWER ==================== */}
+      {isMobileMoreOpen && (
+        <div className="md:hidden fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-end" onClick={() => setIsMobileMoreOpen(false)}>
+          <div className="bg-white rounded-t-3xl w-full shadow-2xl max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            {/* Drag handle */}
+            <div className="w-10 h-1 bg-slate-200 rounded-full mx-auto mt-3 mb-2" />
+            <div className="flex justify-between items-center px-5 py-3 border-b border-slate-100">
+              <h3 className="text-base font-black text-slate-900 uppercase tracking-tight">All Features</h3>
+              <button onClick={() => setIsMobileMoreOpen(false)} className="p-2 bg-slate-100 rounded-full text-slate-400 hover:bg-slate-200 active:scale-90 transition-all">
+                <X className="w-5 h-5"/>
+              </button>
+            </div>
+            
+            <div className="px-4 py-3 space-y-1">
+              {/* Main */}
+              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 px-3 pt-2 pb-1">Main</div>
+              <MobileMenuButton icon={LayoutDashboard} label="Dashboard" isActive={view === 'dashboard'} onClick={() => { setView('dashboard'); setIsMobileMoreOpen(false); }} />
+              <MobileMenuButton icon={Calculator} label="Estimate Calculator" isActive={view === 'calculator'} onClick={() => { setView('calculator'); setIsMobileMoreOpen(false); }} />
+              
+              {/* Jobs & CRM */}
+              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 px-3 pt-3 pb-1">Jobs & CRM</div>
+              <MobileMenuButton icon={Users} label="Customers" isActive={view === 'customers' || view === 'customer_detail'} onClick={() => { setView('customers'); setIsMobileMoreOpen(false); }} />
+              
+              {/* Inventory & Equipment */}
+              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 px-3 pt-3 pb-1">Inventory & Equipment</div>
+              <MobileMenuButton icon={Warehouse} label="Warehouse" isActive={view === 'warehouse'} onClick={() => { setView('warehouse'); setIsMobileMoreOpen(false); }} />
+              <MobileMenuButton icon={BarChart3} label="Material Report" isActive={view === 'material_report'} onClick={() => { setView('material_report'); setIsMobileMoreOpen(false); }} />
+              <MobileMenuButton icon={Truck} label="Equipment Tracker" isActive={view === 'equipment_tracker'} onClick={() => { setView('equipment_tracker'); setIsMobileMoreOpen(false); }} />
+              <MobileMenuButton icon={Wrench} label="Equipment Maintenance" isActive={view === 'equipment_maintenance'} onClick={() => { setView('equipment_maintenance'); setIsMobileMoreOpen(false); }} />
+              
+              {/* Account */}
+              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 px-3 pt-3 pb-1">Account</div>
+              <MobileMenuButton icon={Cog} label="Settings" isActive={view === 'settings'} onClick={() => { setView('settings'); setIsMobileMoreOpen(false); }} />
+              <MobileMenuButton icon={User} label="Profile" isActive={view === 'profile'} onClick={() => { setView('profile'); setIsMobileMoreOpen(false); }} />
+            </div>
+            
+            {/* User Info */}
+            <div className="px-5 py-4 mt-2 border-t border-slate-100 bg-slate-50">
+              <div className="flex items-center justify-between">
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-slate-900">{userSession.companyName}</span>
+                  <span className="text-[10px] text-slate-400 font-mono mt-0.5">ID: {userSession.username}</span>
+                </div>
+                <button onClick={() => { setIsMobileMoreOpen(false); onLogout(); }} className="flex items-center gap-2 px-3 py-2 text-red-500 bg-red-50 rounded-xl text-xs font-bold hover:bg-red-100 transition-colors">
+                  <LogOut className="w-3.5 h-3.5" />
+                  Sign Out
+                </button>
+              </div>
+            </div>
+
+            {/* Safe area padding on mobile */}
+            <div className="h-[env(safe-area-inset-bottom)]" />
+          </div>
+        </div>
+      )}
+
+      {/* ==================== MOBILE BOTTOM NAV ==================== */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 z-50">
-        {/* Curved background with notch effect */}
         <div className="relative">
           {/* Center FAB Button - raised above the bar */}
           <div className="absolute left-1/2 -translate-x-1/2 -top-7 z-10">
@@ -302,7 +424,7 @@ export const Layout: React.FC<LayoutProps> = ({
               />
               <MobileNavItem 
                 icon={Users} 
-                label="Leads" 
+                label="CRM" 
                 isActive={view === 'customers' || view === 'customer_detail'} 
                 onClick={() => setView('customers')} 
               />
@@ -314,16 +436,16 @@ export const Layout: React.FC<LayoutProps> = ({
 
               {/* Right items */}
               <MobileNavItem 
-                icon={Warehouse} 
-                label="Stock" 
-                isActive={view === 'warehouse'} 
+                icon={Wrench} 
+                label="Equip" 
+                isActive={view === 'equipment_tracker' || view === 'equipment_maintenance' || view === 'warehouse'} 
                 onClick={() => setView('warehouse')} 
               />
               <MobileNavItem 
-                icon={User} 
-                label="Profile" 
-                isActive={view === 'profile' || view === 'settings'} 
-                onClick={() => setView('profile')} 
+                icon={MoreHorizontal} 
+                label="More" 
+                isActive={isMobileMoreOpen || view === 'settings' || view === 'profile' || view === 'material_report'} 
+                onClick={() => setIsMobileMoreOpen(true)} 
               />
             </div>
           </div>
@@ -333,7 +455,7 @@ export const Layout: React.FC<LayoutProps> = ({
   );
 };
 
-/* Mobile Nav Item sub-component */
+/* Mobile Nav Item sub-component for bottom bar */
 const MobileNavItem: React.FC<{ icon: any; label: string; isActive: boolean; onClick: () => void }> = ({ icon: Icon, label, isActive, onClick }) => (
   <button 
     onClick={onClick} 
@@ -349,5 +471,21 @@ const MobileNavItem: React.FC<{ icon: any; label: string; isActive: boolean; onC
     <span className={`text-[9px] font-bold mt-0.5 transition-colors ${isActive ? 'text-brand' : 'text-slate-400'}`}>{label}</span>
     {/* Active indicator dot */}
     {isActive && <div className="w-1 h-1 rounded-full bg-brand mt-0.5" />}
+  </button>
+);
+
+/* Mobile Menu Button for the "More" drawer */
+const MobileMenuButton: React.FC<{ icon: any; label: string; isActive: boolean; onClick: () => void }> = ({ icon: Icon, label, isActive, onClick }) => (
+  <button 
+    onClick={onClick} 
+    className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all active:scale-[0.98] ${
+      isActive 
+        ? 'bg-slate-900 text-white' 
+        : 'text-slate-700 hover:bg-slate-100 active:bg-slate-200'
+    }`}
+  >
+    <Icon className={`w-5 h-5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+    <span className="font-semibold text-sm">{label}</span>
+    {isActive && <div className="ml-auto w-2 h-2 rounded-full bg-brand" />}
   </button>
 );
