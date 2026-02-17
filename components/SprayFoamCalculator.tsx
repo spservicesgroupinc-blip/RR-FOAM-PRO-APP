@@ -250,7 +250,15 @@ const SprayFoamCalculator: React.FC = () => {
   };
 
   const addEquipment = () => {
-      const newEq: EquipmentItem = { id: Math.random().toString(36).substr(2,9), name: '', status: 'Available' };
+      // Use crypto.randomUUID for proper unique ID generation (fallback for older browsers)
+      const generateId = () => {
+          if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+              return crypto.randomUUID();
+          }
+          // Fallback for environments without crypto.randomUUID
+          return `eq-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      };
+      const newEq: EquipmentItem = { id: generateId(), name: '', status: 'Available' };
       dispatch({ type: 'UPDATE_DATA', payload: { equipment: [...(appData.equipment || []), newEq] } });
       // Persist to Supabase in background
       if (session?.organizationId) {

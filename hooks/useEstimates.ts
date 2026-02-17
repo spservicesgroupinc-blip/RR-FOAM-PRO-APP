@@ -166,20 +166,36 @@ export const useEstimates = () => {
         
         // Persist equipment status updates to Supabase
         if (session?.organizationId) {
+            const equipmentMap = new Map(appData.equipment.map(e => [e.id, e]));
+            const updatePromises: Promise<boolean>[] = [];
+            
             // Update currently assigned equipment
             appData.jobEquipment.forEach(tool => {
-                updateEquipmentStatus(tool.id, 'In Use', lastSeen).catch(err => {
-                    console.error('Failed to update equipment status:', err);
-                });
+                updatePromises.push(
+                    updateEquipmentStatus(tool.id, 'In Use', lastSeen).catch(err => {
+                        console.error('Failed to update equipment status:', err);
+                        return false;
+                    })
+                );
             });
+            
             // Clear status for removed equipment
             removedEquipmentIds.forEach((id: string) => {
-                const eq = appData.equipment.find(e => e.id === id);
+                const eq = equipmentMap.get(id);
                 if (eq?.lastSeen?.jobId === estimateId) {
-                    updateEquipmentStatus(id, 'Available', undefined).catch(err => {
-                        console.error('Failed to clear equipment status:', err);
-                    });
+                    updatePromises.push(
+                        updateEquipmentStatus(id, 'Available', undefined).catch(err => {
+                            console.error('Failed to clear equipment status:', err);
+                            return false;
+                        })
+                    );
                 }
+            });
+            
+            // Execute all updates concurrently (fire-and-forget for non-blocking save)
+            // Equipment status updates are secondary; we don't block the UI on them
+            Promise.all(updatePromises).catch(err => {
+                console.error('Equipment status updates failed:', err);
             });
         }
     }
