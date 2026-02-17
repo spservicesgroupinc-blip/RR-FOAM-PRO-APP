@@ -16,7 +16,7 @@ import {
   insertPurchaseOrder,
   updateEstimateActuals,
 } from '../services/supabaseService';
-import { generateWorkOrderPDF, generateDocumentPDF, SaveToCloudOptions } from '../utils/pdfGenerator';
+import { generateWorkOrderPDF, SaveToCloudOptions } from '../utils/pdfGenerator';
 import { setInventorySyncLock } from './useSync';
 
 export const useEstimates = () => {
@@ -189,7 +189,7 @@ export const useEstimates = () => {
     }
   };
 
-  const handleMarkPaid = async (id: string) => {
+  const handleMarkPaid = async (id: string, onPDFReady?: (record: EstimateRecord) => void) => {
       const estimate = appData.savedEstimates.find(e => e.id === id);
       if (!estimate) return;
 
@@ -198,7 +198,7 @@ export const useEstimates = () => {
 
       // Calculate financials locally
       const revenue = estimate.totalValue || 0;
-      const chemicalCost = 
+      const chemicalCost =
         ((estimate.materials?.openCellSets || 0) * (appData.costs.openCell || 0)) +
         ((estimate.materials?.closedCellSets || 0) * (appData.costs.closedCell || 0));
       const laborCost = (estimate.expenses?.manHours || 0) * (estimate.expenses?.laborRate || appData.costs.laborRate || 0);
@@ -215,10 +215,11 @@ export const useEstimates = () => {
       const updatedEstimates = appData.savedEstimates.map(e => e.id === id ? paidEstimate : e);
       dispatch({ type: 'UPDATE_DATA', payload: { savedEstimates: updatedEstimates } });
       dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Paid! Profit Calculated.' } });
-      
-      // Generate receipt PDF
-      const cloudOpts: SaveToCloudOptions = { orgId: session?.organizationId, customerId: estimate.customerId, estimateId: id };
-      generateDocumentPDF(appData, estimate.results, 'RECEIPT', paidEstimate, cloudOpts);
+
+      // Open PDF modal for receipt via callback
+      if (onPDFReady) {
+        onPDFReady(paidEstimate);
+      }
 
       // Persist to Supabase
       try {
