@@ -177,39 +177,52 @@ export const useEstimates = () => {
   };
 
   const confirmWorkOrder = async (results: CalculationResults, workOrderLines?: InvoiceLineItem[]) => {
-    // 1. Deduct Inventory (Allow negatives - No checks/warnings/blocks)
-    const requiredOpen = Number(results.openCellSets) || 0;
-    const requiredClosed = Number(results.closedCellSets) || 0;
-    
-    const newWarehouse = { ...appData.warehouse };
-    newWarehouse.openCellSets = newWarehouse.openCellSets - requiredOpen;
-    newWarehouse.closedCellSets = newWarehouse.closedCellSets - requiredClosed;
-    
-    // Deduct non-chemical inventory items from warehouse (id-first, name fallback)
-    if (appData.inventory.length > 0) {
-        const normalizeName = (name?: string) => (name || '').trim().toLowerCase();
-        const usageById = new Map<string, typeof appData.inventory[number]>();
+    // Check if inventory was already deducted for this estimate (prevents double-deduction on re-confirm)
+    const existingRecord = ui.editingEstimateId
+        ? appData.savedEstimates.find(e => e.id === ui.editingEstimateId)
+        : null;
+    const alreadyProcessed = existingRecord?.inventoryProcessed === true;
 
-        appData.inventory.forEach(item => {
-            const key = item.warehouseItemId || item.id;
-            if (key) usageById.set(key, item);
-        });
+    let newWarehouse = { ...appData.warehouse };
 
-        newWarehouse.items = newWarehouse.items.map(item => {
-            const used = usageById.get(item.id) || appData.inventory.find(i => normalizeName(i.name) === normalizeName(item.name));
-            if (used) {
-                return { ...item, quantity: item.quantity - (Number(used.quantity) || 0) };
-            }
-            return item;
-        });
+    if (!alreadyProcessed) {
+        // 1. Deduct Inventory (Allow negatives - No checks/warnings/blocks)
+        const requiredOpen = Number(results.openCellSets) || 0;
+        const requiredClosed = Number(results.closedCellSets) || 0;
+
+        newWarehouse.openCellSets = newWarehouse.openCellSets - requiredOpen;
+        newWarehouse.closedCellSets = newWarehouse.closedCellSets - requiredClosed;
+
+        // Deduct non-chemical inventory items from warehouse (warehouseItemId-first, name fallback)
+        if (appData.inventory.length > 0) {
+            const normalizeName = (name?: string) => (name || '').trim().toLowerCase();
+
+            // Build a lookup keyed by warehouseItemId for items that have one
+            const usageByWarehouseId = new Map<string, typeof appData.inventory[number]>();
+            appData.inventory.forEach(item => {
+                if (item.warehouseItemId) {
+                    usageByWarehouseId.set(item.warehouseItemId, item);
+                }
+            });
+
+            newWarehouse.items = newWarehouse.items.map(item => {
+                // First try exact warehouseItemId match, then fall back to name match
+                const used = usageByWarehouseId.get(item.id)
+                    || appData.inventory.find(i => !i.warehouseItemId && normalizeName(i.name) === normalizeName(item.name));
+                if (used) {
+                    return { ...item, quantity: item.quantity - (Number(used.quantity) || 0) };
+                }
+                return item;
+            });
+        }
+
+        // 2. Update Warehouse State (Local First)
+        dispatch({ type: 'UPDATE_DATA', payload: { warehouse: newWarehouse } });
     }
 
-    // 2. Save Estimate as Work Order & Update Warehouse State (Local First)
-    dispatch({ type: 'UPDATE_DATA', payload: { warehouse: newWarehouse } });
-    
+    // Save Estimate as Work Order with inventoryProcessed flag
     // Pass false to suppress redirect to estimate_detail, so we can go to dashboard after generation
-    // This updates the context with the new Work Order record
-    const record = await saveEstimate(results, 'Work Order', { workOrderLines }, false);
+    const record = await saveEstimate(results, 'Work Order', { workOrderLines, inventoryProcessed: true }, false);
     
     if (record) {
         let updatedEquipment = appData.equipment;
@@ -258,53 +271,51 @@ export const useEstimates = () => {
         generateWorkOrderPDF(appData, record!);
 
         // 5. Background Sync & Sheet Creation
+        // Build a complete state snapshot NOW (before async gap) to avoid stale closure issues
+        let snapshotCustomers = [...appData.customers];
+        if (!snapshotCustomers.find(c => c.id === record.customer.id)) {
+            snapshotCustomers.push(record.customer);
+        }
+        let snapshotEstimates = [...appData.savedEstimates];
+        const snapshotIdx = snapshotEstimates.findIndex(e => e.id === record.id);
+        if (snapshotIdx >= 0) snapshotEstimates[snapshotIdx] = record;
+        else snapshotEstimates.unshift(record);
+
+        const stateSnapshot = {
+            ...appData,
+            customers: snapshotCustomers,
+            warehouse: newWarehouse,
+            equipment: updatedEquipment,
+            savedEstimates: snapshotEstimates
+        };
+
         // We do NOT await this here, allowing the UI to remain responsive.
-        // We launch a fire-and-forget logic that updates state later.
-                handleBackgroundWorkOrderGeneration(record, newWarehouse, updatedEquipment);
+        handleBackgroundWorkOrderGeneration(record, stateSnapshot);
     }
   };
 
-    const handleBackgroundWorkOrderGeneration = async (record: EstimateRecord, currentWarehouse: any, currentEquipment: any) => {
+    const handleBackgroundWorkOrderGeneration = async (record: EstimateRecord, stateSnapshot: typeof appData) => {
       if (!session?.spreadsheetId) return;
-      
+
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
-      
+
       try {
           // Create Standalone Sheet for Crew Log (Slow API Call)
           const woUrl = await createWorkOrderSheet(record, session.folderId, session.spreadsheetId);
-          
+
           let finalRecord = record;
           if (woUrl) {
               finalRecord = { ...record, workOrderSheetUrl: woUrl };
               // Update local state with the new URL
               dispatch({ type: 'UPDATE_SAVED_ESTIMATE', payload: finalRecord });
           }
-          
-          // Construct state snapshot for sync
-          // Note: We use the captured warehouse and construct the estimate list based on current `appData` logic
-          // Be aware: `appData` inside this closure refers to the state when `confirmWorkOrder` was called initially.
-          // This is generally safe for this flow as user just navigated.
-          
-          let currentCustomers = [...appData.customers];
-          if (!currentCustomers.find(c => c.id === record.customer.id)) {
-              currentCustomers.push(record.customer);
-          }
 
-          let freshEstimates = [...appData.savedEstimates];
-          const recIdx = freshEstimates.findIndex(e => e.id === record.id);
-          if (recIdx >= 0) freshEstimates[recIdx] = finalRecord;
-          else freshEstimates.unshift(finalRecord);
-
-          const updatedState = { 
-              ...appData, 
-              customers: currentCustomers, 
-              warehouse: currentWarehouse,
-              equipment: currentEquipment,
-              savedEstimates: freshEstimates
-          };
+          // Update the snapshot with the final record (which may have the workOrderSheetUrl)
+          const syncEstimates = stateSnapshot.savedEstimates.map(e => e.id === finalRecord.id ? finalRecord : e);
+          const updatedState = { ...stateSnapshot, savedEstimates: syncEstimates };
 
           await syncUp(updatedState, session.spreadsheetId);
-          
+
           dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' });
           dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Work Order & Sheet Synced Successfully' } });
 
