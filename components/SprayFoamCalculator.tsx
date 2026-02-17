@@ -34,6 +34,7 @@ import { MaterialOrder } from './MaterialOrder';
 import { MaterialReport } from './MaterialReport';
 import { EstimateDetail } from './EstimateDetail';
 import { EquipmentTracker } from './EquipmentTracker';
+import { EquipmentMaintenance } from './EquipmentMaintenance';
 import { WalkthroughProvider, useWalkthrough } from '../context/WalkthroughContext';
 import { WalkthroughOverlay } from './Walkthrough';
 
@@ -576,6 +577,7 @@ const SprayFoamCalculator: React.FC = () => {
                 onFinishSetup={() => dispatch({ type: 'SET_VIEW', payload: 'dashboard' })}
                 onViewReport={() => dispatch({ type: 'SET_VIEW', payload: 'material_report' })}
                 onViewEquipmentTracker={() => dispatch({ type: 'SET_VIEW', payload: 'equipment_tracker' })}
+                onViewEquipmentMaintenance={() => dispatch({ type: 'SET_VIEW', payload: 'equipment_maintenance' })}
                 onAddEquipment={addEquipment}
                 onRemoveEquipment={removeEquipment}
                 onUpdateEquipment={updateEquipment}
@@ -602,6 +604,15 @@ const SprayFoamCalculator: React.FC = () => {
             <EquipmentTracker 
                 state={appData}
                 onBack={() => dispatch({ type: 'SET_VIEW', payload: 'warehouse' })}
+            />
+        )}
+
+        {ui.view === 'equipment_maintenance' && session?.organizationId && (
+            <EquipmentMaintenance 
+                state={appData}
+                organizationId={session.organizationId}
+                onBack={() => dispatch({ type: 'SET_VIEW', payload: 'warehouse' })}
+                onNotify={(n) => dispatch({ type: 'SET_NOTIFICATION', payload: n })}
             />
         )}
 

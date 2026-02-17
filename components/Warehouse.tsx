@@ -12,6 +12,7 @@ interface WarehouseProps {
   onFinishSetup?: () => void;
   onViewReport?: () => void;
   onViewEquipmentTracker?: () => void; // New Handler
+  onViewEquipmentMaintenance?: () => void;
   onAddEquipment?: () => void;
   onRemoveEquipment?: (id: string) => void;
   onUpdateEquipment?: (id: string, field: keyof EquipmentItem, value: any) => void;
@@ -26,6 +27,7 @@ export const Warehouse: React.FC<WarehouseProps> = ({
     onFinishSetup, 
     onViewReport,
     onViewEquipmentTracker,
+    onViewEquipmentMaintenance,
     onAddEquipment,
     onRemoveEquipment,
     onUpdateEquipment
@@ -266,6 +268,11 @@ export const Warehouse: React.FC<WarehouseProps> = ({
                         <p className="text-slate-400 text-xs font-medium mt-1">Ladders, Scaffolding, Guns, etc.</p>
                     </div>
                     <div className="flex gap-2">
+                        {onViewEquipmentMaintenance && (
+                            <button onClick={onViewEquipmentMaintenance} className="bg-amber-50 border border-amber-200 hover:bg-amber-100 text-amber-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-colors">
+                                <Wrench className="w-4 h-4" /> Maintenance
+                            </button>
+                        )}
                         {onViewEquipmentTracker && (
                             <button onClick={onViewEquipmentTracker} className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-colors">
                                 <MapPin className="w-4 h-4" /> Usage Map

@@ -323,6 +323,70 @@ export interface UserSession {
   role: 'admin' | 'crew'; 
 }
 
+// ─── EQUIPMENT MAINTENANCE TYPES ────────────────────────────────────────────
+
+export interface MaintenanceEquipment {
+  id: string;
+  organizationId: string;
+  name: string;
+  description: string;
+  category: string;
+  totalSetsSprayed: number;
+  totalHoursOperated: number;
+  lifetimeSets: number;
+  lifetimeHours: number;
+  status: 'active' | 'inactive' | 'retired';
+  lastServiceDate: string | null;
+  serviceItems: MaintenanceServiceItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MaintenanceServiceItem {
+  id: string;
+  equipmentId: string;
+  organizationId: string;
+  name: string;
+  description: string;
+  intervalSets: number;
+  intervalHours: number;
+  setsSinceLastService: number;
+  hoursSinceLastService: number;
+  lastServicedAt: string | null;
+  lastServicedBy: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MaintenanceServiceLog {
+  id: string;
+  organizationId: string;
+  equipmentId: string;
+  serviceItemId: string | null;
+  serviceDate: string;
+  performedBy: string;
+  notes: string;
+  setsAtService: number;
+  hoursAtService: number;
+  createdAt: string;
+}
+
+export interface MaintenanceJobUsage {
+  id: string;
+  organizationId: string;
+  estimateId: string | null;
+  openCellSets: number;
+  closedCellSets: number;
+  totalSets: number;
+  operatingHours: number;
+  jobDate: string;
+  customerName: string;
+  notes: string;
+  applied: boolean;
+  createdAt: string;
+}
+
 export type SubscriptionPlan = 'trial' | 'starter' | 'pro' | 'enterprise';
 export type SubscriptionStatus = 'active' | 'past_due' | 'cancelled' | 'suspended';
 

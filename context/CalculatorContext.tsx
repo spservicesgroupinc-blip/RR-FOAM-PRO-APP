@@ -108,7 +108,7 @@ export const DEFAULT_STATE: CalculatorState = {
 };
 
 // --- TYPES ---
-type ViewType = 'calculator' | 'settings' | 'profile' | 'warehouse' | 'estimate' | 'dashboard' | 'customers' | 'customer_detail' | 'work_order_stage' | 'invoice_stage' | 'estimate_stage' | 'material_order' | 'material_report' | 'estimate_detail' | 'equipment_tracker';
+type ViewType = 'calculator' | 'settings' | 'profile' | 'warehouse' | 'estimate' | 'dashboard' | 'customers' | 'customer_detail' | 'work_order_stage' | 'invoice_stage' | 'estimate_stage' | 'material_order' | 'material_report' | 'estimate_detail' | 'equipment_tracker' | 'equipment_maintenance';
 
 interface UIState {
   view: ViewType;

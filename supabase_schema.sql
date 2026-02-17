@@ -174,3 +174,72 @@ as $$
     and estimate_id = p_estimate_id
   order by created_at desc;
 $$;
+
+-- ============================================
+-- EQUIPMENT MAINTENANCE TABLES
+-- ============================================
+
+-- Equipment registry
+create table maintenance_equipment (
+  id uuid primary key default uuid_generate_v4(),
+  organization_id uuid references organizations(id) not null,
+  name text not null,
+  description text,
+  category text default 'general',
+  total_sets_sprayed numeric default 0,
+  total_hours_operated numeric default 0,
+  lifetime_sets numeric default 0,
+  lifetime_hours numeric default 0,
+  status text default 'active' check (status in ('active', 'inactive', 'retired')),
+  last_service_date timestamp with time zone,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Service items per equipment (admin-configurable)
+create table maintenance_service_items (
+  id uuid primary key default uuid_generate_v4(),
+  equipment_id uuid references maintenance_equipment(id) on delete cascade not null,
+  organization_id uuid references organizations(id) not null,
+  name text not null,
+  description text,
+  interval_sets numeric default 0,
+  interval_hours numeric default 0,
+  sets_since_last_service numeric default 0,
+  hours_since_last_service numeric default 0,
+  last_serviced_at timestamp with time zone,
+  last_serviced_by text,
+  is_active boolean default true,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Service log history
+create table maintenance_service_logs (
+  id uuid primary key default uuid_generate_v4(),
+  organization_id uuid references organizations(id) not null,
+  equipment_id uuid references maintenance_equipment(id) on delete cascade not null,
+  service_item_id uuid references maintenance_service_items(id) on delete set null,
+  service_date timestamp with time zone default timezone('utc'::text, now()) not null,
+  performed_by text,
+  notes text,
+  sets_at_service numeric default 0,
+  hours_at_service numeric default 0,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Job usage linking (tracks material sprayed per job)
+create table maintenance_job_usage (
+  id uuid primary key default uuid_generate_v4(),
+  organization_id uuid references organizations(id) not null,
+  estimate_id uuid references estimates(id) on delete set null,
+  open_cell_sets numeric default 0,
+  closed_cell_sets numeric default 0,
+  total_sets numeric generated always as (open_cell_sets + closed_cell_sets) stored,
+  operating_hours numeric default 0,
+  job_date timestamp with time zone default timezone('utc'::text, now()),
+  customer_name text,
+  notes text,
+  applied boolean default false,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
