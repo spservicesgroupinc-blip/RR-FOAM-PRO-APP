@@ -1,9 +1,9 @@
 
 import React from 'react';
 import { useCalculator, DEFAULT_STATE } from '../context/CalculatorContext';
-import { EstimateRecord, CalculationResults, CustomerProfile, PurchaseOrder, InvoiceLineItem } from '../types';
+import { EstimateRecord, CalculationResults, CustomerProfile, PurchaseOrder, InvoiceLineItem, DocumentType } from '../types';
 import { deleteEstimate, markJobPaid, createWorkOrderSheet, syncUp, logMaterialUsage } from '../services/api';
-import { generateWorkOrderPDF, generateDocumentPDF } from '../utils/pdfGenerator';
+import { generateWorkOrderPDF } from '../utils/pdfGenerator';
 
 export const useEstimates = () => {
   const { state, dispatch } = useCalculator();
@@ -145,7 +145,7 @@ export const useEstimates = () => {
     }
   };
 
-  const handleMarkPaid = async (id: string) => {
+  const handleMarkPaid = async (id: string, onPDFReady?: (record: EstimateRecord) => void) => {
       const estimate = appData.savedEstimates.find(e => e.id === id);
       if (estimate) {
          dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Processing Payment & P&L...' } });
@@ -155,7 +155,10 @@ export const useEstimates = () => {
              const updatedEstimates = appData.savedEstimates.map(e => e.id === id ? result.estimate! : e);
              dispatch({ type: 'UPDATE_DATA', payload: { savedEstimates: updatedEstimates } });
              dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Paid! Profit Calculated.' } });
-             generateDocumentPDF(appData, estimate.results, 'RECEIPT', result.estimate);
+             // Open PDF modal for receipt via callback
+             if (onPDFReady) {
+               onPDFReady(result.estimate);
+             }
          } else {
              dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Failed to update P&L.' } });
          }

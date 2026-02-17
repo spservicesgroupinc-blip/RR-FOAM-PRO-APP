@@ -311,6 +311,35 @@ export interface CalculatorState {
   paymentTerms?: string;
 }
 
+// ── Document Type for PDF Builder ──
+export enum DocumentType {
+  ESTIMATE = 'ESTIMATE',
+  WORK_ORDER = 'WORK ORDER',
+  INVOICE = 'INVOICE',
+}
+
+export const statusToDocumentType = (status: EstimateRecord['status']): DocumentType => {
+  switch (status) {
+    case 'Invoiced':
+    case 'Paid':
+      return DocumentType.INVOICE;
+    case 'Work Order':
+      return DocumentType.WORK_ORDER;
+    default:
+      return DocumentType.ESTIMATE;
+  }
+};
+
+export const formatDocumentNumber = (baseNumber: string, docType: DocumentType): string => {
+  const raw = baseNumber.replace(/^(EST|WO|INV)-?/i, '');
+  const prefixMap: Record<DocumentType, string> = {
+    [DocumentType.ESTIMATE]: 'EST',
+    [DocumentType.WORK_ORDER]: 'WO',
+    [DocumentType.INVOICE]: 'INV',
+  };
+  return `${prefixMap[docType]}-${raw}`;
+};
+
 export interface UserSession {
   id: string;
   email?: string;
