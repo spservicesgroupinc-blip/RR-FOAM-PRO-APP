@@ -911,6 +911,16 @@ export const subscribeToOrgChanges = (
       },
       onInventoryChange
     )
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'warehouse_stock',
+        filter: `organization_id=eq.${orgId}`,
+      },
+      onInventoryChange
+    )
     .subscribe();
 
   return () => {

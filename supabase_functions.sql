@@ -117,7 +117,6 @@ DECLARE
   v_item_diff numeric;
   v_wh_item_id text;
   v_item_name text;
-  v_already_processed boolean;
   i int;
   j int;
 BEGIN
@@ -129,8 +128,6 @@ BEGIN
   IF NOT FOUND THEN
     RETURN false;
   END IF;
-
-  v_already_processed := COALESCE(v_old_estimate.inventory_processed, false);
 
   -- 2. Update the estimate with new actuals and status
   UPDATE estimates
@@ -147,8 +144,13 @@ BEGIN
     -- Determine reference amounts:
     -- First completion: compare actual vs estimated (materials)
     -- Re-edit after completion: compare new actual vs previous actual
-    IF v_already_processed THEN
-      -- Re-edit: reference is the PREVIOUS actuals (already reconciled)
+    -- NOTE: Use execution_status (NOT inventory_processed) to detect re-edits.
+    -- inventory_processed is set to true when the admin creates the Work Order
+    -- (to track that estimated materials were deducted). Using it here would
+    -- incorrectly take the re-edit branch on the FIRST crew completion,
+    -- reading NULL actuals as the reference (0) and causing wrong adjustments.
+    IF v_old_estimate.execution_status = 'Completed' THEN
+      -- Re-edit: job was already completed, reference is the PREVIOUS actuals
       v_ref_oc := COALESCE((v_old_estimate.actuals->>'openCellSets')::numeric, 0);
       v_ref_cc := COALESCE((v_old_estimate.actuals->>'closedCellSets')::numeric, 0);
       v_ref_inv := COALESCE(v_old_estimate.actuals->'inventory', '[]'::jsonb);

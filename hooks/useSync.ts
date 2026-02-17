@@ -272,13 +272,21 @@ export const useSync = () => {
 
     unsubscribeRef.current = subscribeToOrgChanges(
       session.organizationId,
-      // Estimate changes
+      // Estimate changes — also refresh warehouse since crew_update_job adjusts
+      // warehouse_stock atomically in the same transaction as the estimate update.
       (payload) => {
         if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
-          // Refresh data on remote changes to keep admin/crew in sync
           fetchOrgData(session.organizationId).then(data => {
-            if (data?.savedEstimates) {
-              dispatch({ type: 'UPDATE_DATA', payload: { savedEstimates: data.savedEstimates } });
+            if (data) {
+              const updatePayload: any = {};
+              if (data.savedEstimates) updatePayload.savedEstimates = data.savedEstimates;
+              // Always refresh warehouse when estimates change so that
+              // crew_update_job stock adjustments are reflected locally
+              // before the next auto-sync writes to Supabase.
+              if (data.warehouse && !isInventorySyncLocked()) updatePayload.warehouse = data.warehouse;
+              if (Object.keys(updatePayload).length > 0) {
+                dispatch({ type: 'UPDATE_DATA', payload: updatePayload });
+              }
             }
           });
         }
