@@ -2,12 +2,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ArrowLeft, 
+  ArrowRight,
   FileText, 
   Loader2,
-  Save,
   Plus,
-  Trash2,
-  Download
+  Trash2
 } from 'lucide-react';
 import { CalculatorState, CalculationResults, EstimateRecord, InvoiceLineItem, FoamType } from '../types';
 import { useEstimates } from '../hooks/useEstimates';
@@ -31,7 +30,7 @@ export const EstimateStage: React.FC<EstimateStageProps> = ({
 }) => {
   const { saveEstimate } = useEstimates();
   const [isProcessing, setIsProcessing] = useState(false);
-  const [actionType, setActionType] = useState<'save' | 'print' | null>(null);
+
   
   // Local state for editable lines
   const [estimateLines, setEstimateLines] = useState<InvoiceLineItem[]>([]);
@@ -163,22 +162,20 @@ export const EstimateStage: React.FC<EstimateStageProps> = ({
       return estimateLines.reduce((sum, line) => sum + (Number(line.amount) || 0), 0);
   }, [estimateLines]);
 
-  const handleAction = async (type: 'save' | 'print') => {
-      setActionType(type);
+  const handleContinue = async () => {
       setIsProcessing(true);
       
-      // Update record with lines first
+      // Save record with lines, then generate PDF and advance
       const updatedRecord = await saveEstimate(results, undefined, {
           estimateLines: estimateLines,
           totalValue: estimateTotal
       }, false);
 
       if (updatedRecord) {
-          await onConfirm(updatedRecord, type === 'print');
+          await onConfirm(updatedRecord, true);
       }
       
       setIsProcessing(false);
-      setActionType(null);
   };
 
   return (
@@ -198,23 +195,15 @@ export const EstimateStage: React.FC<EstimateStageProps> = ({
                   </div>
               </div>
 
-              {/* ACTION BUTTONS */}
-              <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+              {/* ACTION BUTTON */}
+              <div className="w-full md:w-auto">
                   <button 
-                      onClick={() => handleAction('save')}
-                      disabled={isProcessing}
-                      className="px-6 py-4 bg-white border-2 border-slate-100 hover:border-slate-300 text-slate-600 rounded-xl font-bold uppercase text-xs tracking-widest flex items-center justify-center gap-2 transition-all w-full md:w-auto"
-                  >
-                      {actionType === 'save' ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4" />}
-                      Save Estimate
-                  </button>
-                  <button 
-                      onClick={() => handleAction('print')}
+                      onClick={handleContinue}
                       disabled={isProcessing}
                       className="px-8 py-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-slate-200 transition-all w-full md:w-auto"
                   >
-                      {actionType === 'print' ? <Loader2 className="w-5 h-5 animate-spin"/> : <Download className="w-5 h-5" />}
-                      Save & PDF
+                      {isProcessing ? <Loader2 className="w-5 h-5 animate-spin"/> : <ArrowRight className="w-5 h-5" />}
+                      Save & Continue
                   </button>
               </div>
           </div>

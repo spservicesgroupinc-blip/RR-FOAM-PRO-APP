@@ -6,7 +6,6 @@ import {
   CheckCircle2, 
   BarChart3,
   Loader2,
-  Save,
   MessageSquare,
   Plus,
   Trash2
@@ -242,31 +241,30 @@ export const InvoiceStage: React.FC<InvoiceStageProps> = ({
                   </div>
               </div>
 
-              {/* ACTION BUTTONS */}
-              <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+              {/* ACTION BUTTON */}
+              <div className="w-full md:w-auto">
                   {isPaid ? (
                       <div className="px-8 py-4 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 w-full md:w-auto">
                           <CheckCircle2 className="w-5 h-5" /> Payment Recorded
                       </div>
+                  ) : currentRecord?.status === 'Invoiced' ? (
+                      <button 
+                          onClick={handleMarkPaidClick}
+                          disabled={isProcessing}
+                          className="px-8 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-emerald-200 transition-all w-full md:w-auto"
+                      >
+                          {isProcessing ? <Loader2 className="w-5 h-5 animate-spin"/> : <CheckCircle2 className="w-5 h-5" />}
+                          Mark as Paid
+                      </button>
                   ) : (
-                      <>
-                        <button 
-                            onClick={handleUpdateClick}
-                            disabled={isProcessing}
-                            className="px-6 py-4 bg-white border-2 border-slate-100 hover:border-slate-300 text-slate-600 rounded-xl font-bold uppercase text-xs tracking-widest flex items-center justify-center gap-2 transition-all w-full md:w-auto"
-                        >
-                            {processingAction === 'save' ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4" />}
-                            Save Invoice
-                        </button>
-                        <button 
-                            onClick={handleMarkPaidClick}
-                            disabled={isProcessing}
-                            className="px-8 py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-emerald-200 transition-all w-full md:w-auto"
-                        >
-                            {processingAction === 'pay' ? <Loader2 className="w-5 h-5 animate-spin"/> : <CheckCircle2 className="w-5 h-5" />}
-                            Mark as Paid
-                        </button>
-                      </>
+                      <button 
+                          onClick={handleUpdateClick}
+                          disabled={isProcessing}
+                          className="px-8 py-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-slate-200 transition-all w-full md:w-auto"
+                      >
+                          {isProcessing ? <Loader2 className="w-5 h-5 animate-spin"/> : <Receipt className="w-5 h-5" />}
+                          Save & Generate Invoice
+                      </button>
                   )}
               </div>
           </div>

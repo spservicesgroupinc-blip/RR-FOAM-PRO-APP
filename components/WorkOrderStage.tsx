@@ -241,14 +241,6 @@ export const WorkOrderStage: React.FC<WorkOrderStageProps> = ({
                     </>
                 )}
             </button>
-
-            <button 
-                onClick={onCancel}
-                disabled={isProcessing}
-                className="w-full bg-white hover:bg-slate-50 text-slate-500 font-bold py-3 rounded-xl border border-slate-200 transition-all active:scale-95 uppercase text-xs tracking-widest"
-            >
-                Continue Editing
-            </button>
         </div>
 
       </div>
