@@ -5,6 +5,7 @@ import { EstimateRecord, MaterialUsageLogEntry } from '../types';
 import {
   fetchOrgData,
   fetchCrewWorkOrders,
+  fetchWarehouseState,
   syncAppDataToSupabase,
   subscribeToOrgChanges,
   updateOrgSettings,
@@ -36,6 +37,26 @@ export const useSync = () => {
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSyncedHashRef = useRef<string>('');
   const unsubscribeRef = useRef<(() => void) | null>(null);
+
+  // ── Warehouse sync tracking ──────────────────────────────────────────────
+  // Tracks the last warehouse state synced from/to the server. This prevents
+  // the auto-sync from blindly overwriting crew_update_job warehouse adjustments
+  // when only non-warehouse data (estimates, settings, etc.) triggered the sync.
+  const lastSyncedWarehouseRef = useRef<string>('');
+  // Set when a realtime warehouse update was blocked by the inventory sync lock.
+  // After the lock is released, a deferred warehouse refresh is performed.
+  const pendingWarehouseRefreshRef = useRef(false);
+
+  const computeWarehouseHash = useCallback((warehouse: any): string => {
+    if (!warehouse) return '';
+    try {
+      return JSON.stringify({
+        oc: warehouse.openCellSets,
+        cc: warehouse.closedCellSets,
+        items: (warehouse.items || []).map((i: any) => ({ id: i.id, name: i.name, qty: i.quantity })),
+      });
+    } catch { return ''; }
+  }, []);
 
   // ─── INVENTORY RECONCILIATION (Client-side safety net) ───────────────────
   // When crew completes a job, the updated crew_update_job SQL function adjusts
@@ -156,7 +177,8 @@ export const useSync = () => {
     }
     // Re-apply the correct warehouse state after unlock
     dispatch({ type: 'UPDATE_DATA', payload: { warehouse: newWarehouse, savedEstimates: reconciledEstimates } });
-  }, [dispatch]);
+    lastSyncedWarehouseRef.current = computeWarehouseHash(newWarehouse);
+  }, [dispatch, computeWarehouseHash]);
 
   // Simple hash to detect changes without deep comparison
   const computeHash = useCallback((data: any): string => {
@@ -219,6 +241,7 @@ export const useSync = () => {
           dispatch({ type: 'LOAD_DATA', payload: merged });
           dispatch({ type: 'SET_INITIALIZED', payload: true });
           lastSyncedHashRef.current = computeHash(merged);
+          lastSyncedWarehouseRef.current = computeWarehouseHash(merged.warehouse);
           dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
           setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 2000);
 
@@ -283,7 +306,15 @@ export const useSync = () => {
               // Always refresh warehouse when estimates change so that
               // crew_update_job stock adjustments are reflected locally
               // before the next auto-sync writes to Supabase.
-              if (data.warehouse && !isInventorySyncLocked()) updatePayload.warehouse = data.warehouse;
+              if (data.warehouse && !isInventorySyncLocked()) {
+                updatePayload.warehouse = data.warehouse;
+                // Mark this warehouse state as "from server" so auto-sync doesn't
+                // treat it as a local admin change and blindly write it back.
+                lastSyncedWarehouseRef.current = computeWarehouseHash(data.warehouse);
+              } else if (data.warehouse) {
+                // Lock is held — queue a deferred refresh after lock is released
+                pendingWarehouseRefreshRef.current = true;
+              }
               if (Object.keys(updatePayload).length > 0) {
                 dispatch({ type: 'UPDATE_DATA', payload: updatePayload });
               }
@@ -306,14 +337,21 @@ export const useSync = () => {
         // Skip refetch if we are in the middle of our own background sync
         // (each upsertInventoryItem triggers a realtime event; refetching now
         //  would overwrite locally-deducted quantities with stale server data).
-        if (isInventorySyncLocked()) return;
+        if (isInventorySyncLocked()) {
+          pendingWarehouseRefreshRef.current = true;
+          return;
+        }
         if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
           fetchOrgData(session.organizationId).then(data => {
             // Double-check the lock; the fetch is async and the lock may have
             // been acquired while the request was in flight.
-            if (isInventorySyncLocked()) return;
+            if (isInventorySyncLocked()) {
+              pendingWarehouseRefreshRef.current = true;
+              return;
+            }
             if (data?.warehouse) {
               dispatch({ type: 'UPDATE_DATA', payload: { warehouse: data.warehouse } });
+              lastSyncedWarehouseRef.current = computeWarehouseHash(data.warehouse);
             }
           });
         }
@@ -348,47 +386,79 @@ export const useSync = () => {
     syncTimerRef.current = setTimeout(async () => {
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
       try {
-        // Sync settings, warehouse stock, AND inventory item quantities
+        // Determine if warehouse actually changed locally (admin action) vs
+        // just being carried along by an unrelated data change (estimate
+        // timestamp update, settings tweak, etc.).  Only write warehouse
+        // when it was the admin who changed it — this prevents the auto-sync
+        // from blindly overwriting crew_update_job warehouse adjustments.
+        const warehouseNeedsSync = computeWarehouseHash(appData.warehouse) !== lastSyncedWarehouseRef.current;
+
         acquireInventorySyncLock();
         try {
-          const inventoryResults = await Promise.all([
-            updateOrgSettings(session.organizationId, {
-              yields: appData.yields,
-              costs: appData.costs,
-              pricingMode: appData.pricingMode,
-              sqFtRates: appData.sqFtRates,
-              lifetimeUsage: appData.lifetimeUsage,
-            }),
-            updateWarehouseStock(
-              session.organizationId,
-              appData.warehouse.openCellSets,
-              appData.warehouse.closedCellSets
-            ),
-            ...appData.warehouse.items.map(item =>
-              upsertInventoryItem(item, session.organizationId)
-            ),
-          ]);
-
-          // Backfill Supabase UUIDs for any warehouse items that had local IDs.
-          // The first two results are settings + warehouse stock; the rest are inventory items.
-          const inventorySaved = inventoryResults.slice(2);
-          let needsIdUpdate = false;
-          const updatedItems = appData.warehouse.items.map((item, idx) => {
-            const saved = inventorySaved[idx] as any;
-            if (saved && saved.id && saved.id !== item.id) {
-              needsIdUpdate = true;
-              return { ...item, id: saved.id };
-            }
-            return item;
+          // Always sync settings
+          await updateOrgSettings(session.organizationId, {
+            yields: appData.yields,
+            costs: appData.costs,
+            pricingMode: appData.pricingMode,
+            sqFtRates: appData.sqFtRates,
+            lifetimeUsage: appData.lifetimeUsage,
           });
-          if (needsIdUpdate) {
-            dispatch({ type: 'UPDATE_DATA', payload: { 
-              warehouse: { ...appData.warehouse, items: updatedItems } 
-            }});
+
+          // Only sync warehouse when it actually changed locally
+          if (warehouseNeedsSync) {
+            console.log('[Auto-Sync] Warehouse changed locally — syncing to server');
+            const warehouseResults = await Promise.all([
+              updateWarehouseStock(
+                session.organizationId,
+                appData.warehouse.openCellSets,
+                appData.warehouse.closedCellSets
+              ),
+              ...appData.warehouse.items.map(item =>
+                upsertInventoryItem(item, session.organizationId)
+              ),
+            ]);
+
+            // Backfill Supabase UUIDs for any warehouse items that had local IDs.
+            // The first result is warehouse stock; the rest are inventory items.
+            const inventorySaved = warehouseResults.slice(1);
+            let needsIdUpdate = false;
+            const updatedItems = appData.warehouse.items.map((item, idx) => {
+              const saved = inventorySaved[idx] as any;
+              if (saved && saved.id && saved.id !== item.id) {
+                needsIdUpdate = true;
+                return { ...item, id: saved.id };
+              }
+              return item;
+            });
+            if (needsIdUpdate) {
+              const newWarehouse = { ...appData.warehouse, items: updatedItems };
+              dispatch({ type: 'UPDATE_DATA', payload: { warehouse: newWarehouse } });
+              lastSyncedWarehouseRef.current = computeWarehouseHash(newWarehouse);
+            } else {
+              lastSyncedWarehouseRef.current = computeWarehouseHash(appData.warehouse);
+            }
           }
         } finally {
           releaseInventorySyncLock();
         }
+
+        // After releasing the lock, check if any warehouse updates were
+        // deferred during the sync window (realtime events blocked by lock).
+        // Fetch fresh warehouse from server to pick up crew_update_job adjustments.
+        if (pendingWarehouseRefreshRef.current) {
+          pendingWarehouseRefreshRef.current = false;
+          try {
+            const freshWarehouse = await fetchWarehouseState(session.organizationId);
+            if (freshWarehouse) {
+              console.log('[Auto-Sync] Deferred warehouse refresh — applying server state');
+              dispatch({ type: 'UPDATE_DATA', payload: { warehouse: freshWarehouse } });
+              lastSyncedWarehouseRef.current = computeWarehouseHash(freshWarehouse);
+            }
+          } catch (e) {
+            console.error('[Auto-Sync] Deferred warehouse refresh failed:', e);
+          }
+        }
+
         lastSyncedHashRef.current = currentHash;
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
         setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 2000);
@@ -442,6 +512,7 @@ export const useSync = () => {
         console.log(`[Refresh] Got ${estimateCount} estimates`);
         dispatch({ type: 'LOAD_DATA', payload: mergedState });
         lastSyncedHashRef.current = computeHash(mergedState);
+        lastSyncedWarehouseRef.current = computeWarehouseHash(mergedState.warehouse);
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
         setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 3000);
 

@@ -867,6 +867,36 @@ export const crewUpdateJob = async (
   }
 };
 
+// ─── LIGHTWEIGHT WAREHOUSE FETCH ────────────────────────────────────────────
+
+/**
+ * Fetch ONLY warehouse data (stock + inventory items) for an organization.
+ * Used for targeted refreshes after auto-sync to catch crew_update_job adjustments
+ * without the overhead of a full fetchOrgData call.
+ */
+export const fetchWarehouseState = async (
+  orgId: string
+): Promise<{ openCellSets: number; closedCellSets: number; items: WarehouseItem[] } | null> => {
+  try {
+    const [stockRes, itemsRes] = await Promise.all([
+      supabase.from('warehouse_stock').select('*').eq('organization_id', orgId).single(),
+      supabase.from('inventory_items').select('*').eq('organization_id', orgId),
+    ]);
+
+    const stock = stockRes.data || {};
+    const items = (itemsRes.data || []).map(dbInventoryToWarehouseItem);
+
+    return {
+      openCellSets: Number(stock.open_cell_sets) || 0,
+      closedCellSets: Number(stock.closed_cell_sets) || 0,
+      items,
+    };
+  } catch (err) {
+    console.error('fetchWarehouseState error:', err);
+    return null;
+  }
+};
+
 // ─── REALTIME SUBSCRIPTIONS ─────────────────────────────────────────────────
 
 /**
