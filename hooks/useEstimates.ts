@@ -279,7 +279,11 @@ export const useEstimates = () => {
       ? (existingRecord?.materials || { openCellSets: 0, closedCellSets: 0, inventory: [] })
       : { openCellSets: 0, closedCellSets: 0, inventory: [] };
 
-    const newWarehouse = { ...appData.warehouse };
+    // Deep copy warehouse so mutations don't affect the original state
+    const newWarehouse = {
+      ...appData.warehouse,
+      items: appData.warehouse.items.map(i => ({ ...i })),
+    };
 
     // 1) Foam deltas — allow negatives so users can return stock if they reduce sets
     const requiredOpen = Number(results.openCellSets) || 0;

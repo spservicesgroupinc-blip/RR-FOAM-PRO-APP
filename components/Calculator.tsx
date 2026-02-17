@@ -38,6 +38,7 @@ interface CalculatorProps {
   onSettingsChange: (category: 'wallSettings' | 'roofSettings', field: string, value: any) => void;
   onCustomerSelect: (e: React.ChangeEvent<HTMLSelectElement>) => void;
   onInventoryUpdate: (id: string, field: string, value: any) => void;
+  onBatchInventoryUpdate: (id: string, updates: Record<string, any>) => void;
   onAddInventory: () => void;
   onRemoveInventory: (id: string) => void;
   onSaveEstimate: (status?: EstimateRecord['status']) => void;
@@ -58,6 +59,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
   onSettingsChange,
   onCustomerSelect,
   onInventoryUpdate,
+  onBatchInventoryUpdate,
   onAddInventory,
   onRemoveInventory,
   onSaveEstimate,
@@ -111,6 +113,9 @@ export const Calculator: React.FC<CalculatorProps> = ({
   };
 
   // Helper to pre-fill inventory from warehouse OR Create New
+  // Uses onBatchInventoryUpdate to set all fields in a SINGLE dispatch,
+  // preventing stale-closure issues where sequential onInventoryUpdate calls
+  // each read the same stale appData.inventory and overwrite each other.
   const handleWarehouseSelect = (itemId: string, warehouseItemId: string) => {
       if (warehouseItemId === 'create_new') {
           // Trigger Creation Flow
@@ -122,21 +127,24 @@ export const Calculator: React.FC<CalculatorProps> = ({
 
           if (onCreateWarehouseItem) {
               const createdId = onCreateWarehouseItem(name, unit, cost);
-              // Update the current line item immediately to this new item
-              onInventoryUpdate(itemId, 'name', name);
-              onInventoryUpdate(itemId, 'unit', unit);
-              onInventoryUpdate(itemId, 'unitCost', cost);
-              if (createdId) {
-                  onInventoryUpdate(itemId, 'warehouseItemId', createdId);
-              }
+              // Update the current line item in a single atomic dispatch
+              onBatchInventoryUpdate(itemId, {
+                  name,
+                  unit,
+                  unitCost: cost,
+                  ...(createdId ? { warehouseItemId: createdId } : {})
+              });
           }
       } else {
           const warehouseItem = state.warehouse.items.find(w => w.id === warehouseItemId);
           if (warehouseItem) {
-              onInventoryUpdate(itemId, 'warehouseItemId', warehouseItem.id);
-              onInventoryUpdate(itemId, 'name', warehouseItem.name);
-              onInventoryUpdate(itemId, 'unit', warehouseItem.unit);
-              onInventoryUpdate(itemId, 'unitCost', warehouseItem.unitCost); 
+              // Set all fields in a single atomic dispatch
+              onBatchInventoryUpdate(itemId, {
+                  warehouseItemId: warehouseItem.id,
+                  name: warehouseItem.name,
+                  unit: warehouseItem.unit,
+                  unitCost: warehouseItem.unitCost,
+              });
           }
       }
   };

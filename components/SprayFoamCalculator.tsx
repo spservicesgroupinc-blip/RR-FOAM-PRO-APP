@@ -235,6 +235,11 @@ const SprayFoamCalculator: React.FC = () => {
     dispatch({ type: 'UPDATE_DATA', payload: { inventory: updatedInv } });
   };
 
+  const batchUpdateInventoryItem = (id: string, updates: Record<string, any>) => {
+    const updatedInv = appData.inventory.map(i => i.id === id ? { ...i, ...updates } : i);
+    dispatch({ type: 'UPDATE_DATA', payload: { inventory: updatedInv } });
+  };
+
   const addInventoryItem = () => {
       const newItem = { id: Math.random().toString(36).substr(2,9), name: '', quantity: 1, unit: 'pcs' };
       dispatch({ type: 'UPDATE_DATA', payload: { inventory: [...appData.inventory, newItem] } });
@@ -499,6 +504,7 @@ const SprayFoamCalculator: React.FC = () => {
                 onSettingsChange={handleSettingsChange}
                 onCustomerSelect={handleCustomerSelect}
                 onInventoryUpdate={updateInventoryItem}
+                onBatchInventoryUpdate={batchUpdateInventoryItem}
                 onAddInventory={addInventoryItem}
                 onRemoveInventory={removeInventoryItem}
                 onSaveEstimate={(status) => saveEstimate(results, status)}
