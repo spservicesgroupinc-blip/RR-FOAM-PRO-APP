@@ -5,6 +5,7 @@ import { CalculatorState, CustomerProfile, EstimateRecord } from '../types';
 import { usePagination } from '../hooks/usePagination';
 import { PaginationControls } from './PaginationControls';
 import { getCustomerDocuments, deleteDocument, DocumentRecord } from '../services/documentService';
+import { FeedbackButton } from './FeedbackButton';
 
 interface CustomersProps {
   state: CalculatorState;
@@ -269,7 +270,10 @@ export const Customers: React.FC<CustomersProps> = ({
                 <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Customer Database</h2>
                 <p className="text-slate-500 font-medium text-sm">CRM & History Management</p>
             </div>
-            <button onClick={() => handleOpenModal()} className="bg-slate-900 text-white px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2"> <Plus className="w-4 h-4" /> Add Lead </button>
+            <div className="flex items-center gap-3">
+                <FeedbackButton area="Customers" />
+                <button onClick={() => handleOpenModal()} className="bg-slate-900 text-white px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2"> <Plus className="w-4 h-4" /> Add Lead </button>
+            </div>
         </div>
         <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
             <table className="w-full text-sm text-left">

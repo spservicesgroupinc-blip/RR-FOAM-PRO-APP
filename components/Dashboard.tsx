@@ -5,6 +5,7 @@ import { CalculatorState, EstimateRecord, SubscriptionInfo } from '../types';
 import { getTrialDaysRemaining } from '../services/subscriptionService';
 import { usePagination } from '../hooks/usePagination';
 import { PaginationControls } from './PaginationControls';
+import { FeedbackButton } from './FeedbackButton';
 
 interface DashboardProps {
   state: CalculatorState;
@@ -159,6 +160,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in zoom-in duration-200">
+
+        {/* Feedback */}
+        <div className="flex justify-end"><FeedbackButton area="Dashboard" /></div>
 
         {/* SUBSCRIPTION / TRIAL BANNER */}
         {subscription && (subscription.isTrialExpired || subscription.plan === 'trial' || subscription.status === 'past_due') && (

@@ -33,6 +33,7 @@ import {
   applyPendingUsage,
   syncJobsToMaintenance,
 } from '../services/maintenanceService';
+import { FeedbackButton } from './FeedbackButton';
 
 interface EquipmentMaintenanceProps {
   state: CalculatorState;
@@ -195,6 +196,7 @@ export const EquipmentMaintenance: React.FC<EquipmentMaintenanceProps> = ({
           <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Equipment Maintenance</h1>
           <p className="text-slate-500 text-sm font-medium">Track service intervals based on material sprayed</p>
         </div>
+        <FeedbackButton area="Equipment Maintenance" />
         <button
           onClick={handleSyncJobs}
           disabled={syncing}

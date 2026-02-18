@@ -4,6 +4,7 @@ import { ArrowLeft, Download, Filter, Droplet, FileBarChart } from 'lucide-react
 import { CalculatorState, MaterialUsageLogEntry } from '../types';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { FeedbackButton } from './FeedbackButton';
 
 interface MaterialReportProps {
   state: CalculatorState;
@@ -69,9 +70,12 @@ export const MaterialReport: React.FC<MaterialReportProps> = ({ state, onBack })
                     <p className="text-slate-500 text-sm font-medium">Tracking usage from completed jobs.</p>
                 </div>
             </div>
-            <button onClick={generatePDF} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-slate-800">
+            <div className="flex items-center gap-3">
+                <FeedbackButton area="Material Report" />
+                <button onClick={generatePDF} className="bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-slate-800">
                 <Download className="w-4 h-4" /> Export Ledger
-            </button>
+                </button>
+            </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { CalculatorState, EstimateRecord } from '../types';
 import { crewUpdateJob } from '../services/supabaseService';
+import { FeedbackButton } from './FeedbackButton';
 
 interface CrewDashboardProps {
   state: CalculatorState;
@@ -628,6 +629,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                 <div>
                     <h1 className="text-2xl font-black mb-1">Crew Dashboard</h1>
                     <p className="text-slate-400 text-sm font-medium">Select a Work Order to begin.</p>
+                    <div className="mt-2"><FeedbackButton area="Crew Dashboard" /></div>
                 </div>
                 <button 
                     onClick={() => setShowHistory(!showHistory)}

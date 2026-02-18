@@ -2,6 +2,7 @@
 import React, { useRef, useState } from 'react';
 import { Fuel, Box, Trash2, ArrowDown, CheckCircle2, FileBarChart, AlertCircle, Wrench, MapPin } from 'lucide-react';
 import { CalculatorState, WarehouseItem, EquipmentItem } from '../types';
+import { FeedbackButton } from './FeedbackButton';
 
 interface WarehouseProps {
   state: CalculatorState;
@@ -48,6 +49,7 @@ export const Warehouse: React.FC<WarehouseProps> = ({
                 <h2 className="text-xl md:text-2xl font-black text-slate-900 uppercase tracking-tight">Warehouse Inventory</h2>
                 <p className="text-slate-500 font-medium text-xs md:text-sm">Manage chemicals, supplies, and tracked equipment.</p>
              </div>
+             <FeedbackButton area="Warehouse" />
              
              {/* TABS */}
              <div className="flex gap-2">

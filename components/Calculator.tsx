@@ -29,6 +29,7 @@ import {
   AdditionalArea
 } from '../types';
 import { JobProgress } from './JobProgress';
+import { FeedbackButton } from './FeedbackButton';
 
 interface CalculatorProps {
   state: CalculatorState;
@@ -172,6 +173,7 @@ export const Calculator: React.FC<CalculatorProps> = ({
                 </h2>
                 <p className="text-slate-500 font-medium text-sm">Follow the workflow to manage this job.</p>
               </div>
+              <FeedbackButton area="Calculator" />
               <div className="text-right hidden md:block">
                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Current Status</span>
                   <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest inline-block ${

@@ -14,6 +14,7 @@ import {
   DollarSign
 } from 'lucide-react';
 import { EstimateRecord, CalculationResults } from '../types';
+import { FeedbackButton } from './FeedbackButton';
 
 interface EstimateDetailProps {
   record: EstimateRecord;
@@ -72,6 +73,7 @@ export const EstimateDetail: React.FC<EstimateDetailProps> = ({
                           <span className="flex items-center gap-2"><MapPin className="w-3 h-3"/> {record.customer.address}, {record.customer.city}</span>
                           <span className="flex items-center gap-2"><Phone className="w-3 h-3"/> {record.customer.phone}</span>
                       </div>
+                      <div className="mt-3"><FeedbackButton area="Estimate Detail" /></div>
                   </div>
 
                   <div className="text-left md:text-right bg-white/5 p-6 rounded-2xl border border-white/10 backdrop-blur-sm">

@@ -10,6 +10,7 @@ import {
   Eye, EyeOff, Lock, Unlock, Layers, RefreshCw, Bell, Share2, Menu,
   Home, ChevronUp, ArrowUp
 } from 'lucide-react';
+import { FeedbackButton } from './FeedbackButton';
 
 // ─── Section Data ───────────────────────────────────────────────
 interface ManualSection {
@@ -1272,6 +1273,7 @@ const UserManual: React.FC = () => {
               <span className="text-white/20">•</span>
               <span className="text-[10px] font-bold text-white/30 uppercase tracking-widest">February 2026</span>
             </div>
+            <div className="mt-4"><FeedbackButton area="User Manual" /></div>
           </div>
         </div>
       </AnimatedCard>

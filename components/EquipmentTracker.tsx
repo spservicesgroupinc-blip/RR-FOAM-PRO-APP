@@ -2,6 +2,7 @@
 import React, { useMemo } from 'react';
 import { ArrowLeft, MapPin, Wrench, Calendar, User, AlertCircle } from 'lucide-react';
 import { CalculatorState } from '../types';
+import { FeedbackButton } from './FeedbackButton';
 
 interface EquipmentTrackerProps {
   state: CalculatorState;
@@ -29,6 +30,7 @@ export const EquipmentTracker: React.FC<EquipmentTrackerProps> = ({ state, onBac
                 <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Equipment Tracker</h1>
                 <p className="text-slate-500 text-sm font-medium">Locate tools based on last known job usage.</p>
             </div>
+            <FeedbackButton area="Equipment Tracker" />
         </div>
 
         <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">

@@ -13,6 +13,7 @@ import {
   Trash2
 } from 'lucide-react';
 import { CalculatorState, CalculationResults, InvoiceLineItem } from '../types';
+import { FeedbackButton } from './FeedbackButton';
 
 interface WorkOrderStageProps {
   state: CalculatorState;
@@ -114,6 +115,7 @@ export const WorkOrderStage: React.FC<WorkOrderStageProps> = ({
            <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Finalize Work Order</h1>
            <p className="text-slate-500 text-sm font-medium">Review details, customize scope text, and schedule crew.</p>
         </div>
+        <FeedbackButton area="Work Order Stage" />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
