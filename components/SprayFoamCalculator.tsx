@@ -299,13 +299,13 @@ const SprayFoamCalculator: React.FC = () => {
              };
              await syncUp(stateSnapshot, session.spreadsheetId);
           }
-          await handleMarkPaidWithPDF(savedRecord.id);
+          await handleMarkPaidWithoutPDF(savedRecord.id);
       }
   };
 
-  // Wrapper for mark paid that opens PDF modal for the receipt
-  const handleMarkPaidWithPDF = async (id: string) => {
-    await handleMarkPaid(id, (rec) => openPDFModal(rec, DocumentType.INVOICE));
+  // Mark paid without auto-opening PDF — user can generate PDF manually
+  const handleMarkPaidWithoutPDF = async (id: string) => {
+    await handleMarkPaid(id);
   };
 
   const handleStageWorkOrder = () => {
@@ -340,13 +340,13 @@ const SprayFoamCalculator: React.FC = () => {
     const finalRecord = record || appData.savedEstimates.find(e => e.id === ui.editingEstimateId);
 
     if (finalRecord) {
-        openPDFModal(finalRecord, DocumentType.INVOICE);
         dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
+        dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Invoice saved. Generate PDF from menu or customer page.' } });
     } else {
         const newRec = await saveEstimate(results, 'Invoiced');
         if (newRec) {
-            openPDFModal(newRec, DocumentType.INVOICE);
             dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
+            dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Invoice saved. Generate PDF from menu or customer page.' } });
         }
     }
   };
@@ -470,6 +470,7 @@ const SprayFoamCalculator: React.FC = () => {
       notification={ui.notification}
       clearNotification={() => dispatch({ type: 'SET_NOTIFICATION', payload: null })}
       onQuickAction={handleQuickAction}
+      onOpenPDFGenerator={() => openPDFModal(undefined, DocumentType.ESTIMATE)}
       installPrompt={deferredPrompt}
       onInstall={handleInstallApp}
     >
@@ -499,7 +500,7 @@ const SprayFoamCalculator: React.FC = () => {
                 onEditEstimate={handleEditFromDashboard}
                 onDeleteEstimate={handleDeleteEstimate}
                 onNewEstimate={() => { resetCalculator(); dispatch({ type: 'SET_VIEW', payload: 'calculator' }); }}
-                onMarkPaid={handleMarkPaidWithPDF}
+                onMarkPaid={handleMarkPaidWithoutPDF}
                 initialFilter={initialDashboardFilter}
                 onGoToWarehouse={() => dispatch({ type: 'SET_VIEW', payload: 'warehouse' })}
                 onViewInvoice={(rec) => openPDFModal(rec, DocumentType.INVOICE)}
@@ -526,7 +527,7 @@ const SprayFoamCalculator: React.FC = () => {
                 onStageInvoice={handleStageInvoice}
                 onStageEstimate={handleStageEstimate} // Pass new handler
                 onAddNewCustomer={() => { dispatch({ type: 'SET_VIEW', payload: 'customers' }); setAutoTriggerCustomerModal(true); }}
-                onMarkPaid={handleMarkPaidWithPDF}
+                onMarkPaid={handleMarkPaidWithoutPDF}
                 onCreateWarehouseItem={handleCreateWarehouseItem}
             />
         )}
@@ -647,6 +648,7 @@ const SprayFoamCalculator: React.FC = () => {
                 onLoadEstimate={loadEstimateForEditing}
                 autoOpen={autoTriggerCustomerModal}
                 onAutoOpenComplete={() => setAutoTriggerCustomerModal(false)}
+                onOpenPDF={(rec, docType) => openPDFModal(rec, docType)}
             />
         )}
 
