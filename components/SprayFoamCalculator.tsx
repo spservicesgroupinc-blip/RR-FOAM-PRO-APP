@@ -39,6 +39,7 @@ import { EquipmentMaintenance } from './EquipmentMaintenance';
 import { WalkthroughProvider, useWalkthrough } from '../context/WalkthroughContext';
 import { WalkthroughOverlay } from './Walkthrough';
 import PDFPreviewModal from './PDFPreviewModal';
+import UserManual from './UserManual';
 
 const SprayFoamCalculator: React.FC = () => {
   const { state, dispatch } = useCalculator();
@@ -673,6 +674,10 @@ const SprayFoamCalculator: React.FC = () => {
                 username={session?.username}
                 spreadsheetId={session?.spreadsheetId}
             />
+        )}
+
+        {ui.view === 'user_manual' && (
+            <UserManual />
         )}
 
         {/* PDF Preview Modal — shown over any view */}

@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState } from 'react';
-import { 
+import {
   LayoutDashboard, 
   Plus, 
   Warehouse, 
@@ -28,7 +28,8 @@ import {
   BarChart3,
   HardHat,
   MoreHorizontal,
-  Cog
+  Cog,
+  BookOpen
 } from 'lucide-react';
 import { UserSession } from '../types';
 
@@ -260,6 +261,7 @@ export const Layout: React.FC<LayoutProps> = ({
             <div className="space-y-0.5">
               <SidebarItem target="settings" icon={Cog} label="Settings" />
               <SidebarItem target="profile" icon={User} label="Profile" />
+              <SidebarItem target="user_manual" icon={BookOpen} label="User Manual" />
             </div>
           )}
 
@@ -371,6 +373,7 @@ export const Layout: React.FC<LayoutProps> = ({
               <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 px-3 pt-3 pb-1">Account</div>
               <MobileMenuButton icon={Cog} label="Settings" isActive={view === 'settings'} onClick={() => { setView('settings'); setIsMobileMoreOpen(false); }} />
               <MobileMenuButton icon={User} label="Profile" isActive={view === 'profile'} onClick={() => { setView('profile'); setIsMobileMoreOpen(false); }} />
+              <MobileMenuButton icon={BookOpen} label="User Manual" isActive={view === 'user_manual'} onClick={() => { setView('user_manual'); setIsMobileMoreOpen(false); }} />
             </div>
             
             {/* User Info */}
