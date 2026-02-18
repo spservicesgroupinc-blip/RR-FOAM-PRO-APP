@@ -68,7 +68,6 @@ interface CustomersProps {
   onArchiveCustomer: (id: string) => void;
   onStartEstimate: (customer: CustomerProfile) => void;
   onLoadEstimate: (est: EstimateRecord) => void;
-  onOpenPDF?: (record: EstimateRecord, docType?: string) => void;
   autoOpen?: boolean;
   onAutoOpenComplete?: () => void;
 }
@@ -114,7 +113,6 @@ export const Customers: React.FC<CustomersProps> = ({
   onArchiveCustomer,
   onStartEstimate,
   onLoadEstimate,
-  onOpenPDF,
   autoOpen,
   onAutoOpenComplete
 }) => {
@@ -537,24 +535,15 @@ export const Customers: React.FC<CustomersProps> = ({
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
                 <thead className="bg-slate-50 text-[10px] font-black text-slate-300 uppercase tracking-widest border-b">
-                  <tr><th className="px-6 py-5">Date</th><th className="px-6 py-5">Status</th><th className="px-6 py-5">Quote</th><th className="px-6 py-5 text-right">Actions</th></tr>
+                  <tr><th className="px-6 py-5">Date</th><th className="px-6 py-5">Status</th><th className="px-6 py-5">Quote</th><th className="px-6 py-5 text-right">Action</th></tr>
                 </thead>
                 <tbody>
                   {customerEstimates.map(est => (
-                    <tr key={est.id} className="hover:bg-slate-50 border-b last:border-0 transition-colors">
+                    <tr key={est.id} className="hover:bg-slate-50 border-b last:border-0 cursor-pointer transition-colors" onClick={() => onLoadEstimate(est)}>
                       <td className="px-6 py-5 font-bold text-slate-800">{new Date(est.date).toLocaleDateString()}</td>
                       <td className="px-6 py-5"><span className="bg-slate-100 px-3 py-1 rounded-full text-[10px] font-black text-slate-600 uppercase tracking-tighter">{est.status}</span></td>
                       <td className="px-6 py-5 font-mono font-black text-slate-900">${est.totalValue?.toLocaleString() || 0}</td>
-                      <td className="px-6 py-5 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {onOpenPDF && (
-                            <button onClick={(e) => { e.stopPropagation(); onOpenPDF(est); }} className="flex items-center gap-1 px-3 py-1.5 bg-red-50 text-brand hover:bg-red-100 rounded-lg text-[10px] font-black uppercase tracking-widest transition-colors" title="Generate PDF">
-                              <FileText className="w-3.5 h-3.5" /> PDF
-                            </button>
-                          )}
-                          <button onClick={() => onLoadEstimate(est)} className="text-brand font-black uppercase text-[10px] tracking-widest hover:underline">Open Quote</button>
-                        </div>
-                      </td>
+                      <td className="px-6 py-5 text-right text-brand font-black uppercase text-[10px] tracking-widest">Open Quote</td>
                     </tr>
                   ))}
                   {customerEstimates.length === 0 && <tr><td colSpan={4} className="p-12 text-center text-slate-300 italic">No project history found.</td></tr>}

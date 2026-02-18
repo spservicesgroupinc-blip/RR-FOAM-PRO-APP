@@ -43,7 +43,6 @@ interface LayoutProps {
   notification: { type: 'success' | 'error', message: string } | null;
   clearNotification: () => void;
   onQuickAction: (action: 'new_estimate' | 'new_customer' | 'new_invoice') => void;
-  onOpenPDFGenerator: () => void;
   installPrompt: any;
   onInstall: () => void;
 }
@@ -59,7 +58,6 @@ export const Layout: React.FC<LayoutProps> = ({
   notification,
   clearNotification,
   onQuickAction,
-  onOpenPDFGenerator,
   installPrompt,
   onInstall
 }) => {
@@ -234,13 +232,6 @@ export const Layout: React.FC<LayoutProps> = ({
             <div className="space-y-0.5">
               <SidebarItem target="dashboard" icon={LayoutDashboard} label="Dashboard" />
               <SidebarItem target="calculator" icon={Calculator} label="Estimate Calculator" />
-              <button 
-                onClick={onOpenPDFGenerator}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all font-semibold text-[13px] group text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-              >
-                <FileText className="w-[18px] h-[18px] shrink-0 text-slate-400 group-hover:text-slate-600" />
-                <span className="truncate">PDF Generator</span>
-              </button>
             </div>
           )}
 
@@ -364,7 +355,6 @@ export const Layout: React.FC<LayoutProps> = ({
               <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 px-3 pt-2 pb-1">Main</div>
               <MobileMenuButton icon={LayoutDashboard} label="Dashboard" isActive={view === 'dashboard'} onClick={() => { setView('dashboard'); setIsMobileMoreOpen(false); }} />
               <MobileMenuButton icon={Calculator} label="Estimate Calculator" isActive={view === 'calculator'} onClick={() => { setView('calculator'); setIsMobileMoreOpen(false); }} />
-              <MobileMenuButton icon={FileText} label="PDF Generator" isActive={false} onClick={() => { onOpenPDFGenerator(); setIsMobileMoreOpen(false); }} />
               
               {/* Jobs & CRM */}
               <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 px-3 pt-3 pb-1">Jobs & CRM</div>
