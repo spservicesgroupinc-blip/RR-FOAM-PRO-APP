@@ -13,6 +13,7 @@ import {
   CalculatorState,
   EstimateRecord,
   CustomerProfile,
+  CustomerActivity,
   InventoryItem,
   WarehouseItem,
   EquipmentItem,
@@ -132,6 +133,29 @@ const dbCustomerToProfile = (row: any): CustomerProfile => ({
   phone: row.phone || '',
   notes: row.notes || '',
   status: row.status || 'Active',
+  // CRM fields
+  leadStage: row.lead_stage || 'new_lead',
+  source: row.source || undefined,
+  tags: row.tags || [],
+  companyName: row.company_name || '',
+  alternatePhone: row.alternate_phone || '',
+  lastContactDate: row.last_contact_date || undefined,
+  nextFollowUp: row.next_follow_up || undefined,
+  estimatedValue: Number(row.estimated_value) || 0,
+});
+
+const dbActivityToRecord = (row: any): CustomerActivity => ({
+  id: row.id,
+  customerId: row.customer_id,
+  type: row.activity_type,
+  subject: row.subject || '',
+  description: row.description || '',
+  outcome: row.outcome || undefined,
+  duration: row.duration || undefined,
+  loggedBy: row.logged_by || '',
+  createdAt: row.created_at,
+  followUpDate: row.follow_up_date || undefined,
+  followUpCompleted: row.follow_up_completed || false,
 });
 
 const dbEquipmentToItem = (row: any): EquipmentItem => ({
@@ -254,6 +278,15 @@ export const upsertCustomer = async (customer: CustomerProfile, orgId: string): 
     phone: customer.phone || null,
     status: customer.status || 'Active',
     notes: customer.notes || null,
+    // CRM fields
+    lead_stage: customer.leadStage || 'new_lead',
+    source: customer.source || null,
+    tags: customer.tags || [],
+    company_name: customer.companyName || null,
+    alternate_phone: customer.alternatePhone || null,
+    last_contact_date: customer.lastContactDate || null,
+    next_follow_up: customer.nextFollowUp || null,
+    estimated_value: customer.estimatedValue || 0,
   };
 
   // If ID looks like a UUID, include it for upsert; otherwise let DB generate
@@ -282,6 +315,88 @@ export const deleteCustomer = async (customerId: string): Promise<boolean> => {
     return false;
   }
   return true;
+};
+
+// ─── CUSTOMER ACTIVITIES (CRM) ──────────────────────────────────────────────
+
+export const fetchCustomerActivities = async (orgId: string, customerId: string): Promise<CustomerActivity[]> => {
+  try {
+    const { data, error } = await supabase.rpc('get_customer_activities', {
+      p_org_id: orgId,
+      p_customer_id: customerId,
+    });
+    if (error) {
+      console.error('fetchCustomerActivities error:', error);
+      return [];
+    }
+    return (data || []).map(dbActivityToRecord);
+  } catch (err) {
+    console.error('fetchCustomerActivities exception:', err);
+    return [];
+  }
+};
+
+export const createActivity = async (
+  activity: Omit<CustomerActivity, 'id' | 'createdAt'>,
+  orgId: string
+): Promise<CustomerActivity | null> => {
+  const { data, error } = await supabase
+    .from('customer_activities')
+    .insert({
+      organization_id: orgId,
+      customer_id: activity.customerId,
+      activity_type: activity.type,
+      subject: activity.subject,
+      description: activity.description || null,
+      outcome: activity.outcome || null,
+      duration: activity.duration || null,
+      logged_by: activity.loggedBy || null,
+      follow_up_date: activity.followUpDate || null,
+      follow_up_completed: activity.followUpCompleted || false,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error('createActivity error:', error);
+    return null;
+  }
+  return dbActivityToRecord(data);
+};
+
+export const completeFollowUp = async (activityId: string): Promise<boolean> => {
+  const { error } = await supabase
+    .from('customer_activities')
+    .update({ follow_up_completed: true })
+    .eq('id', activityId);
+  if (error) {
+    console.error('completeFollowUp error:', error);
+    return false;
+  }
+  return true;
+};
+
+export const deleteActivity = async (activityId: string): Promise<boolean> => {
+  const { error } = await supabase.from('customer_activities').delete().eq('id', activityId);
+  if (error) {
+    console.error('deleteActivity error:', error);
+    return false;
+  }
+  return true;
+};
+
+export const fetchUpcomingFollowUps = async (orgId: string): Promise<any[]> => {
+  try {
+    const { data, error } = await supabase.rpc('get_upcoming_follow_ups', { p_org_id: orgId });
+    if (error) {
+      console.error('fetchUpcomingFollowUps error:', error);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.error('fetchUpcomingFollowUps exception:', err);
+    return [];
+  }
 };
 
 // ─── ESTIMATES ──────────────────────────────────────────────────────────────
