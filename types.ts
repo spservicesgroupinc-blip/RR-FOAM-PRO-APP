@@ -71,25 +71,6 @@ export interface CompanyProfile {
   crewAccessPin: string;
 }
 
-export type CustomerSource = 'referral' | 'website' | 'google' | 'social_media' | 'repeat' | 'walk_in' | 'cold_call' | 'other';
-export type CustomerTag = 'residential' | 'commercial' | 'industrial' | 'new_construction' | 'retrofit' | 'vip' | 'builder' | 'contractor' | 'property_manager';
-export type LeadStage = 'new_lead' | 'contacted' | 'site_visit' | 'quoted' | 'negotiating' | 'won' | 'lost';
-export type ActivityType = 'call' | 'email' | 'text' | 'site_visit' | 'meeting' | 'note' | 'follow_up' | 'estimate_sent' | 'status_change';
-
-export interface CustomerActivity {
-  id: string;
-  customerId: string;
-  type: ActivityType;
-  subject: string;
-  description: string;
-  outcome?: string;
-  duration?: number; // minutes (for calls/meetings)
-  loggedBy: string;
-  createdAt: string;
-  followUpDate?: string;
-  followUpCompleted?: boolean;
-}
-
 export interface CustomerProfile {
   id: string;
   name: string;
@@ -101,16 +82,6 @@ export interface CustomerProfile {
   phone: string;
   notes: string;
   status: 'Active' | 'Archived' | 'Lead';
-  // CRM Enhancements
-  leadStage?: LeadStage;
-  source?: CustomerSource;
-  tags?: CustomerTag[];
-  companyName?: string;
-  alternatePhone?: string;
-  lastContactDate?: string;
-  nextFollowUp?: string;
-  estimatedValue?: number;
-  activities?: CustomerActivity[];
 }
 
 export interface EstimateExpenses {
