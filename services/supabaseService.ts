@@ -56,7 +56,7 @@ const dbEstimateToRecord = (row: any, customers: CustomerProfile[]): EstimateRec
     executionStatus: row.execution_status || 'Not Started',
     inputs: row.inputs || {},
     results: row.results || {},
-    materials: row.materials || { openCellSets: 0, closedCellSets: 0, inventory: [], equipment: [] },
+    materials: row.materials || { openCellSets: 0, closedCellSets: 0, openCellStrokes: 0, closedCellStrokes: 0, ocStrokesPerSet: 6600, ccStrokesPerSet: 6600, inventory: [], equipment: [] },
     totalValue: Number(row.total_value) || 0,
     wallSettings: row.wall_settings || {},
     roofSettings: row.roof_settings || {},

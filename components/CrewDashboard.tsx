@@ -50,9 +50,10 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
   const [lastClickTime, setLastClickTime] = useState<number>(0);
   const strokeFlashRef = useRef<HTMLDivElement>(null);
 
-  // Strokes per set from user preferences (Settings tab)
-  const ocStrokesPerSet = state.yields?.openCellStrokes || 6600;
-  const ccStrokesPerSet = state.yields?.closedCellStrokes || 6600;
+  // Strokes per set: prefer job-locked ratio from materials, fallback to user Settings
+  const selectedJobForRatio = state.savedEstimates.find(e => e.id === selectedJobId);
+  const ocStrokesPerSet = selectedJobForRatio?.materials?.ocStrokesPerSet || state.yields?.openCellStrokes || 6600;
+  const ccStrokesPerSet = selectedJobForRatio?.materials?.ccStrokesPerSet || state.yields?.closedCellStrokes || 6600;
 
   // Persist stroke counts per job to localStorage
   const strokeStorageKey = (jobId: string, type: string) => `foamPro_strokeCount_${jobId}_${type}`;
@@ -338,6 +339,8 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
         const finalData = {
             ...actuals,
+            ocStrokesPerSet,
+            ccStrokesPerSet,
             completionDate: new Date().toISOString(),
             completedBy: session.username || "Crew"
         };
@@ -818,7 +821,11 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                     <input 
                                         type="number" step="0.25"
                                         value={actuals.openCellSets} 
-                                        onChange={(e) => setActuals({...actuals, openCellSets: parseFloat(e.target.value) || 0})}
+                                        onChange={(e) => {
+                                            const sets = parseFloat(e.target.value) || 0;
+                                            const derivedStrokes = Math.round(sets * ocStrokesPerSet);
+                                            setActuals({...actuals, openCellSets: sets, openCellStrokes: derivedStrokes});
+                                        }}
                                         placeholder="0.00"
                                         className="w-full p-4 bg-white border border-slate-200 rounded-xl font-bold text-lg text-slate-900 focus:ring-2 focus:ring-brand outline-none"
                                     />
@@ -828,7 +835,11 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                     <input 
                                         type="number" step="0.25"
                                         value={actuals.closedCellSets} 
-                                        onChange={(e) => setActuals({...actuals, closedCellSets: parseFloat(e.target.value) || 0})}
+                                        onChange={(e) => {
+                                            const sets = parseFloat(e.target.value) || 0;
+                                            const derivedStrokes = Math.round(sets * ccStrokesPerSet);
+                                            setActuals({...actuals, closedCellSets: sets, closedCellStrokes: derivedStrokes});
+                                        }}
                                         placeholder="0.00"
                                         className="w-full p-4 bg-white border border-slate-200 rounded-xl font-bold text-lg text-slate-900 focus:ring-2 focus:ring-brand outline-none"
                                     />
@@ -843,20 +854,30 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                     <input 
                                         type="number"
                                         value={actuals.openCellStrokes || ''} 
-                                        onChange={(e) => setActuals({...actuals, openCellStrokes: parseInt(e.target.value) || 0})}
+                                        onChange={(e) => {
+                                            const strokes = parseInt(e.target.value) || 0;
+                                            const derivedSets = strokes > 0 ? parseFloat((strokes / ocStrokesPerSet).toFixed(2)) : actuals.openCellSets;
+                                            setActuals({...actuals, openCellStrokes: strokes, openCellSets: derivedSets});
+                                        }}
                                         placeholder="0"
                                         className="w-full p-4 bg-white border border-sky-200 rounded-xl font-bold text-lg text-sky-900 focus:ring-2 focus:ring-sky-500 outline-none"
                                     />
+                                    {actuals.openCellStrokes > 0 && <p className="text-[10px] text-sky-500 mt-1 text-right">= {(actuals.openCellStrokes / ocStrokesPerSet).toFixed(2)} Sets ({ocStrokesPerSet} strokes/set)</p>}
                                 </div>
                                 <div>
                                     <label className="text-xs font-bold text-sky-700 flex justify-between mb-1"><span>Closed Cell Strokes</span> <span>Est: {selectedJob.results.closedCellStrokes?.toLocaleString()}</span></label>
                                     <input 
                                         type="number"
                                         value={actuals.closedCellStrokes || ''} 
-                                        onChange={(e) => setActuals({...actuals, closedCellStrokes: parseInt(e.target.value) || 0})}
+                                        onChange={(e) => {
+                                            const strokes = parseInt(e.target.value) || 0;
+                                            const derivedSets = strokes > 0 ? parseFloat((strokes / ccStrokesPerSet).toFixed(2)) : actuals.closedCellSets;
+                                            setActuals({...actuals, closedCellStrokes: strokes, closedCellSets: derivedSets});
+                                        }}
                                         placeholder="0"
                                         className="w-full p-4 bg-white border border-sky-200 rounded-xl font-bold text-lg text-sky-900 focus:ring-2 focus:ring-sky-500 outline-none"
                                     />
+                                    {actuals.closedCellStrokes > 0 && <p className="text-[10px] text-sky-500 mt-1 text-right">= {(actuals.closedCellStrokes / ccStrokesPerSet).toFixed(2)} Sets ({ccStrokesPerSet} strokes/set)</p>}
                                 </div>
                             </div>
 

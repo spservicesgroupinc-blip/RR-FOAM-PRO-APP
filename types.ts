@@ -193,6 +193,10 @@ export interface EstimateRecord {
   materials: {
     openCellSets: number;
     closedCellSets: number;
+    openCellStrokes: number;
+    closedCellStrokes: number;
+    ocStrokesPerSet: number;
+    ccStrokesPerSet: number;
     inventory: InventoryItem[];
     equipment: EquipmentItem[];
   };
@@ -224,6 +228,8 @@ export interface EstimateRecord {
     closedCellSets: number;
     openCellStrokes?: number;
     closedCellStrokes?: number;
+    ocStrokesPerSet?: number;
+    ccStrokesPerSet?: number;
     laborHours: number;
     inventory: InventoryItem[];
     notes: string;

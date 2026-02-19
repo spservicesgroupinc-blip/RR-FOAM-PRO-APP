@@ -99,7 +99,7 @@ export const useEstimates = () => {
           additionalAreas: appData.additionalAreas
       },
       results: { ...results },
-      materials: { openCellSets: results.openCellSets, closedCellSets: results.closedCellSets, inventory: [...appData.inventory], equipment: [...appData.jobEquipment] },
+      materials: { openCellSets: results.openCellSets, closedCellSets: results.closedCellSets, openCellStrokes: results.openCellStrokes, closedCellStrokes: results.closedCellStrokes, ocStrokesPerSet: appData.yields?.openCellStrokes || 6600, ccStrokesPerSet: appData.yields?.closedCellStrokes || 6600, inventory: [...appData.inventory], equipment: [...appData.jobEquipment] },
       totalValue: results.totalCost, 
       wallSettings: { ...appData.wallSettings },
       roofSettings: { ...appData.roofSettings },
@@ -277,8 +277,8 @@ export const useEstimates = () => {
     // previous materials for the first Draft → Work Order transition.
     const alreadyDeducted = existingRecord?.inventoryProcessed === true;
     const previousMaterials = alreadyDeducted
-      ? (existingRecord?.materials || { openCellSets: 0, closedCellSets: 0, inventory: [] })
-      : { openCellSets: 0, closedCellSets: 0, inventory: [] };
+      ? (existingRecord?.materials || { openCellSets: 0, closedCellSets: 0, openCellStrokes: 0, closedCellStrokes: 0, ocStrokesPerSet: 6600, ccStrokesPerSet: 6600, inventory: [] })
+      : { openCellSets: 0, closedCellSets: 0, openCellStrokes: 0, closedCellStrokes: 0, ocStrokesPerSet: 6600, ccStrokesPerSet: 6600, inventory: [] };
 
     // Deep copy warehouse so mutations don't affect the original state
     const newWarehouse = {

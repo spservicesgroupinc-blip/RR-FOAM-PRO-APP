@@ -67,10 +67,13 @@ export const EstimateStage: React.FC<EstimateStageProps> = ({
               lineCost = setsNeeded * costPerSet;
           }
 
+          const wallStrokesPerSet = type === FoamType.OPEN_CELL ? (state.yields?.openCellStrokes || 6600) : (state.yields?.closedCellStrokes || 6600);
+          const wallSets = results.wallBdFt / (type === FoamType.OPEN_CELL ? state.yields.openCell : state.yields.closedCell);
+          const wallStrokes = Math.round(wallSets * wallStrokesPerSet);
           lines.push({
               id: 'wall',
               item: 'Wall Insulation',
-              description: `Spray approximately ${state.wallSettings.thickness} inches of ${type} to walls.${descExtra}`,
+              description: `Spray approximately ${state.wallSettings.thickness} inches of ${type} to walls. Est. ${wallSets.toFixed(2)} Sets / ${wallStrokes.toLocaleString()} Strokes.${descExtra}`,
               qty: `${Math.round(results.totalWallArea).toLocaleString()} sqft`,
               amount: parseFloat(lineCost.toFixed(2))
           });
@@ -92,10 +95,13 @@ export const EstimateStage: React.FC<EstimateStageProps> = ({
               lineCost = setsNeeded * costPerSet;
           }
 
+          const roofStrokesPerSet = type === FoamType.OPEN_CELL ? (state.yields?.openCellStrokes || 6600) : (state.yields?.closedCellStrokes || 6600);
+          const roofSets = results.roofBdFt / (type === FoamType.OPEN_CELL ? state.yields.openCell : state.yields.closedCell);
+          const roofStrokes = Math.round(roofSets * roofStrokesPerSet);
           lines.push({
               id: 'roof',
               item: 'Roof Insulation',
-              description: `Spray approximately ${state.roofSettings.thickness} inches of ${type} to ceiling/roof deck.${descExtra}`,
+              description: `Spray approximately ${state.roofSettings.thickness} inches of ${type} to ceiling/roof deck. Est. ${roofSets.toFixed(2)} Sets / ${roofStrokes.toLocaleString()} Strokes.${descExtra}`,
               qty: `${Math.round(results.totalRoofArea).toLocaleString()} sqft`,
               amount: parseFloat(lineCost.toFixed(2))
           });

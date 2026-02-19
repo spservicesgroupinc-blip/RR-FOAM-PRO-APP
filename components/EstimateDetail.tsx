@@ -166,6 +166,58 @@ export const EstimateDetail: React.FC<EstimateDetailProps> = ({
                       </div>
                   </div>
 
+                  {/* Chemical Sets & Strokes */}
+                  {(results.openCellSets > 0 || results.closedCellSets > 0) && (
+                  <div>
+                      <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-3 flex items-center gap-2">
+                          <HardHat className="w-4 h-4 text-slate-400" /> Chemical Sets & Strokes
+                      </h3>
+                      <div className="space-y-2">
+                          {results.openCellSets > 0 && (
+                              <div className="flex justify-between p-3 bg-sky-50 rounded-xl border border-sky-100">
+                                  <div>
+                                      <span className="block text-sm font-bold text-slate-800">Open Cell</span>
+                                      <span className="text-xs text-slate-500 font-medium">{record.materials?.ocStrokesPerSet || 6600} strokes/set</span>
+                                  </div>
+                                  <div className="text-right">
+                                      <span className="block text-sm font-bold text-slate-800">{results.openCellSets.toFixed(2)} Sets</span>
+                                      <span className="text-xs text-sky-600 font-medium">~{results.openCellStrokes.toLocaleString()} Strokes</span>
+                                  </div>
+                              </div>
+                          )}
+                          {results.closedCellSets > 0 && (
+                              <div className="flex justify-between p-3 bg-sky-50 rounded-xl border border-sky-100">
+                                  <div>
+                                      <span className="block text-sm font-bold text-slate-800">Closed Cell</span>
+                                      <span className="text-xs text-slate-500 font-medium">{record.materials?.ccStrokesPerSet || 6600} strokes/set</span>
+                                  </div>
+                                  <div className="text-right">
+                                      <span className="block text-sm font-bold text-slate-800">{results.closedCellSets.toFixed(2)} Sets</span>
+                                      <span className="text-xs text-sky-600 font-medium">~{results.closedCellStrokes.toLocaleString()} Strokes</span>
+                                  </div>
+                              </div>
+                          )}
+                          {record.actuals && (
+                              <div className="mt-2 p-3 bg-emerald-50 rounded-xl border border-emerald-100">
+                                  <span className="block text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-1">Actuals</span>
+                                  {(record.actuals.openCellSets > 0 || (record.actuals.openCellStrokes || 0) > 0) && (
+                                      <div className="flex justify-between text-sm">
+                                          <span className="font-medium text-slate-600">OC</span>
+                                          <span className="font-bold text-emerald-800">{record.actuals.openCellSets.toFixed(2)} Sets / {(record.actuals.openCellStrokes || 0).toLocaleString()} Strokes</span>
+                                      </div>
+                                  )}
+                                  {(record.actuals.closedCellSets > 0 || (record.actuals.closedCellStrokes || 0) > 0) && (
+                                      <div className="flex justify-between text-sm">
+                                          <span className="font-medium text-slate-600">CC</span>
+                                          <span className="font-bold text-emerald-800">{record.actuals.closedCellSets.toFixed(2)} Sets / {(record.actuals.closedCellStrokes || 0).toLocaleString()} Strokes</span>
+                                      </div>
+                                  )}
+                              </div>
+                          )}
+                      </div>
+                  </div>
+                  )}
+
                   {/* Financial Breakdown */}
                   <div>
                       <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-3 flex items-center gap-2">
