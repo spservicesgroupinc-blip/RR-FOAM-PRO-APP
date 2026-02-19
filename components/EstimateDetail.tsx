@@ -11,10 +11,11 @@ import {
   Receipt, 
   User, 
   Phone,
-  DollarSign
+  DollarSign,
+  ArrowRight
 } from 'lucide-react';
 import { EstimateRecord, CalculationResults } from '../types';
-import { FeedbackButton } from './FeedbackButton';
+import { JobProgress } from './JobProgress';
 
 interface EstimateDetailProps {
   record: EstimateRecord;
@@ -23,7 +24,7 @@ interface EstimateDetailProps {
   onEdit: () => void;
   onGeneratePDF: () => void;
   onSold: () => void;
-  onInvoice: () => void; // New prop for correct routing
+  onInvoice: () => void;
 }
 
 export const EstimateDetail: React.FC<EstimateDetailProps> = ({ 
@@ -40,6 +41,17 @@ export const EstimateDetail: React.FC<EstimateDetailProps> = ({
     ? ((results.totalCost - (results.materialCost + results.laborCost + results.miscExpenses)) / results.totalCost) * 100 
     : 0;
 
+  // Single next-step logic matching the workflow
+  const getNextStep = () => {
+    if (record.status === 'Draft') return { label: 'Mark Sold', icon: CheckCircle2, action: onSold, style: 'bg-brand hover:bg-brand-hover text-white shadow-lg shadow-red-200' };
+    if (record.status === 'Work Order' && !record.scheduledDate) return { label: 'Schedule Job', icon: Calendar, action: onSold, style: 'bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-200' };
+    if (record.status === 'Work Order' && record.scheduledDate) return { label: 'Generate Invoice', icon: Receipt, action: onInvoice, style: 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg shadow-emerald-200' };
+    if (record.status === 'Invoiced') return { label: 'Record Payment', icon: CheckCircle2, action: onInvoice, style: 'bg-slate-900 hover:bg-slate-800 text-white shadow-lg shadow-slate-200' };
+    return null;
+  };
+
+  const nextStep = getNextStep();
+
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in zoom-in duration-200 pb-24">
       {/* Navigation */}
@@ -47,63 +59,86 @@ export const EstimateDetail: React.FC<EstimateDetailProps> = ({
         <button onClick={onBack} className="flex items-center gap-2 text-slate-500 hover:text-slate-900 text-xs font-black uppercase tracking-widest transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back to List
         </button>
-        <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest ${
-            record.status === 'Draft' ? 'bg-slate-100 text-slate-500' :
-            record.status === 'Work Order' ? 'bg-amber-100 text-amber-700' :
-            'bg-emerald-100 text-emerald-700'
-        }`}>
-            {record.status} #{record.invoiceNumber || record.id.substring(0,6).toUpperCase()}
-        </span>
+        <button onClick={onEdit} className="flex items-center gap-2 text-slate-400 hover:text-slate-700 text-xs font-black uppercase tracking-widest transition-colors">
+          <Pencil className="w-3 h-3" /> Edit
+        </button>
       </div>
 
-      {/* Main Card */}
-      <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
-          
-          {/* Header Section */}
-          <div className="bg-slate-900 text-white p-8 md:p-12 relative overflow-hidden">
-              <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
-                  <div>
-                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-                          <User className="w-3 h-3" /> Customer Profile
-                      </div>
-                      <h1 className="text-3xl md:text-4xl font-black text-white leading-tight mb-2">
-                          {record.customer.name}
-                      </h1>
-                      <div className="text-slate-400 font-medium flex flex-col gap-1 text-sm">
-                          <span className="flex items-center gap-2"><MapPin className="w-3 h-3"/> {record.customer.address}, {record.customer.city}</span>
-                          <span className="flex items-center gap-2"><Phone className="w-3 h-3"/> {record.customer.phone}</span>
-                      </div>
-                      <div className="mt-3"><FeedbackButton area="Estimate Detail" /></div>
-                  </div>
+      {/* Workflow Stepper Card — same pattern as Calculator */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between mb-4 gap-3">
+              <div>
+                <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">
+                    {record.customer.name}
+                </h2>
+                <p className="text-slate-400 font-medium text-sm flex items-center gap-2">
+                    <MapPin className="w-3 h-3"/> {record.customer.address}, {record.customer.city}
+                </p>
+              </div>
+              <div className="text-right">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Current Status</span>
+                  <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest inline-block ${
+                      record.status === 'Draft' ? 'bg-slate-100 text-slate-500' :
+                      record.status === 'Work Order' ? 'bg-amber-100 text-amber-700' :
+                      record.status === 'Invoiced' ? 'bg-sky-100 text-sky-700' :
+                      record.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' :
+                      'bg-slate-100 text-slate-500'
+                  }`}>
+                      {record.status}
+                  </span>
+              </div>
+          </div>
 
-                  <div className="text-left md:text-right bg-white/5 p-6 rounded-2xl border border-white/10 backdrop-blur-sm">
-                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Estimate Value</div>
-                      <div className="text-4xl font-black text-brand tracking-tight">
-                          ${Math.round(results.totalCost).toLocaleString()}
+          <div className="md:px-8">
+              <JobProgress status={record.status} scheduledDate={record.scheduledDate} />
+
+              {isPaid ? (
+                  <div className="mt-4 flex justify-center">
+                      <div className="flex items-center gap-2 px-8 py-3 rounded-full bg-emerald-100 text-emerald-700 font-black text-xs uppercase tracking-widest border border-emerald-200">
+                          <CheckCircle2 className="w-4 h-4" /> Paid in Full
                       </div>
-                      <div className="flex items-center gap-2 mt-2 md:justify-end">
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded ${margin > 30 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
-                              {margin.toFixed(1)}% Margin
-                          </span>
-                          <span className="text-xs text-slate-500 font-bold">Est. Profit: ${Math.round(results.totalCost - (results.materialCost + results.laborCost + results.miscExpenses)).toLocaleString()}</span>
-                      </div>
+                  </div>
+              ) : nextStep && (
+                  <div className="mt-4 flex justify-center">
+                      <button 
+                          onClick={nextStep.action}
+                          className={`flex items-center gap-2 px-8 py-3 rounded-full font-black text-xs uppercase tracking-widest transition-all transform hover:scale-105 active:scale-95 ${nextStep.style}`}
+                      >
+                          {nextStep.label} <ArrowRight className="w-4 h-4" />
+                      </button>
+                  </div>
+              )}
+          </div>
+      </div>
+
+      {/* Job Details Card */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          
+          {/* Value Header */}
+          <div className="bg-slate-900 text-white p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div>
+                  <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total Value</div>
+                  <div className="text-3xl font-black text-brand tracking-tight">
+                      ${Math.round(results.totalCost).toLocaleString()}
                   </div>
               </div>
-              
-              {/* Background Decor */}
-              <div className="absolute top-0 right-0 w-64 h-64 bg-brand rounded-full filter blur-[100px] opacity-10 transform translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
+              <div className="flex items-center gap-3">
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded ${margin > 30 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                      {margin.toFixed(1)}% Margin
+                  </span>
+                  <span className="text-xs text-slate-500 font-bold">Profit: ${Math.round(results.totalCost - (results.materialCost + results.laborCost + results.miscExpenses)).toLocaleString()}</span>
+              </div>
           </div>
 
           {/* Details Body */}
-          <div className="p-8">
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+          <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Scope Summary */}
                   <div>
-                      <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-3 flex items-center gap-2">
                           <HardHat className="w-4 h-4 text-slate-400" /> Installation Scope
                       </h3>
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                           {results.totalWallArea > 0 && (
                               <div className="flex justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
                                   <div>
@@ -131,9 +166,9 @@ export const EstimateDetail: React.FC<EstimateDetailProps> = ({
                       </div>
                   </div>
 
-                  {/* Financial Breakdown (Simplified) */}
+                  {/* Financial Breakdown */}
                   <div>
-                      <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest mb-3 flex items-center gap-2">
                           <Receipt className="w-4 h-4 text-slate-400" /> Cost Summary
                       </h3>
                       <div className="space-y-3">
@@ -153,39 +188,6 @@ export const EstimateDetail: React.FC<EstimateDetailProps> = ({
                       </div>
                   </div>
               </div>
-
-              {/* Action Buttons */}
-              <div className="flex flex-wrap gap-4 pt-6 border-t border-slate-100">
-                  <button onClick={onEdit} className="flex-1 min-w-[140px] flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-slate-100 font-bold text-slate-600 hover:bg-slate-50 hover:border-slate-200 transition-all uppercase text-xs tracking-widest">
-                      <Pencil className="w-4 h-4" /> Edit Estimate
-                  </button>
-                  <button onClick={onGeneratePDF} className="flex-1 min-w-[140px] flex items-center justify-center gap-2 p-4 rounded-xl border-2 border-slate-100 font-bold text-slate-600 hover:bg-slate-50 hover:border-slate-200 transition-all uppercase text-xs tracking-widest">
-                      <FileText className="w-4 h-4" /> View PDF
-                  </button>
-                  
-                  {/* Status-Based Actions */}
-                  {record.status === 'Draft' && (
-                      <button onClick={onSold} className="flex-[2] min-w-[200px] flex items-center justify-center gap-2 p-4 rounded-xl bg-brand text-white font-black hover:bg-brand-hover transition-all uppercase text-xs tracking-widest shadow-lg shadow-red-100">
-                          <CheckCircle2 className="w-4 h-4" /> Mark Sold
-                      </button>
-                  )}
-                  {record.status === 'Work Order' && (
-                      <>
-                        <button onClick={onSold} className="flex-1 min-w-[140px] flex items-center justify-center gap-2 p-4 rounded-xl bg-amber-500 text-white font-black hover:bg-amber-600 transition-all uppercase text-xs tracking-widest shadow-lg shadow-amber-100">
-                            <Calendar className="w-4 h-4" /> Edit Work Order
-                        </button>
-                        <button onClick={onInvoice} className="flex-1 min-w-[140px] flex items-center justify-center gap-2 p-4 rounded-xl bg-emerald-600 text-white font-black hover:bg-emerald-700 transition-all uppercase text-xs tracking-widest shadow-lg shadow-emerald-200">
-                            <DollarSign className="w-4 h-4" /> Generate Invoice
-                        </button>
-                      </>
-                  )}
-                  {(record.status === 'Invoiced' || record.status === 'Paid') && (
-                      <button onClick={onInvoice} className="flex-[2] min-w-[200px] flex items-center justify-center gap-2 p-4 rounded-xl bg-sky-600 text-white font-black hover:bg-sky-700 transition-all uppercase text-xs tracking-widest shadow-lg shadow-sky-100">
-                          <Receipt className="w-4 h-4" /> View Invoice
-                      </button>
-                  )}
-              </div>
-
           </div>
       </div>
     </div>

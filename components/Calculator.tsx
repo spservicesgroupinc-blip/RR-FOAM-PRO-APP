@@ -29,7 +29,6 @@ import {
   AdditionalArea
 } from '../types';
 import { JobProgress } from './JobProgress';
-import { FeedbackButton } from './FeedbackButton';
 
 interface CalculatorProps {
   state: CalculatorState;
@@ -43,13 +42,12 @@ interface CalculatorProps {
   onAddInventory: () => void;
   onRemoveInventory: (id: string) => void;
   onSaveEstimate: (status?: EstimateRecord['status']) => void;
-  onGeneratePDF: () => void;
   onStageWorkOrder: () => void;
   onStageInvoice: () => void;
-  onStageEstimate: () => void; // New Handler
+  onStageEstimate: () => void;
   onAddNewCustomer: () => void;
   onMarkPaid?: (id: string) => void; 
-    onCreateWarehouseItem?: (name: string, unit: string, cost: number) => string | null;
+  onCreateWarehouseItem?: (name: string, unit: string, cost: number) => string | null;
 }
 
 export const Calculator: React.FC<CalculatorProps> = ({
@@ -64,7 +62,6 @@ export const Calculator: React.FC<CalculatorProps> = ({
   onAddInventory,
   onRemoveInventory,
   onSaveEstimate,
-  onGeneratePDF,
   onStageWorkOrder,
   onStageInvoice,
   onStageEstimate,
@@ -173,7 +170,6 @@ export const Calculator: React.FC<CalculatorProps> = ({
                 </h2>
                 <p className="text-slate-500 font-medium text-sm">Follow the workflow to manage this job.</p>
               </div>
-              <FeedbackButton area="Calculator" />
               <div className="text-right hidden md:block">
                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">Current Status</span>
                   <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest inline-block ${
@@ -239,33 +235,16 @@ export const Calculator: React.FC<CalculatorProps> = ({
 
        {/* Crew Report Banner */}
        {isJobCompleted && currentRecord && currentStatus !== 'Paid' && (
-          <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-3xl animate-in slide-in-from-top-4">
-              <div className="flex items-start gap-4">
-                  <div className="bg-white p-3 rounded-full shadow-sm text-emerald-600"><CheckCircle2 className="w-6 h-6" /></div>
+          <div className="bg-emerald-50 border border-emerald-100 p-5 rounded-2xl animate-in slide-in-from-top-4">
+              <div className="flex items-center gap-4">
+                  <div className="bg-white p-2.5 rounded-full shadow-sm text-emerald-600"><CheckCircle2 className="w-5 h-5" /></div>
                   <div className="flex-1">
-                      <h3 className="text-emerald-900 font-black uppercase text-sm tracking-widest mb-1">Job Completed by Crew</h3>
-                      <p className="text-emerald-700 text-sm font-medium mb-4">
-                          The crew has finalized this work order. Review actual usage before generating the invoice.
-                      </p>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                          <div className="bg-white/60 p-3 rounded-xl">
-                              <span className="text-[10px] font-bold text-emerald-800 uppercase">Actual Labor</span>
-                              <div className="text-xl font-black text-emerald-900">{currentRecord.actuals?.laborHours || 0} hrs</div>
-                          </div>
-                           <div className="bg-white/60 p-3 rounded-xl">
-                              <span className="text-[10px] font-bold text-emerald-800 uppercase">Open Cell Used</span>
-                              <div className="text-xl font-black text-emerald-900">{currentRecord.actuals?.openCellSets.toFixed(2) || 0} Sets</div>
-                          </div>
-                           <div className="bg-white/60 p-3 rounded-xl">
-                              <span className="text-[10px] font-bold text-emerald-800 uppercase">Closed Cell Used</span>
-                              <div className="text-xl font-black text-emerald-900">{currentRecord.actuals?.closedCellSets.toFixed(2) || 0} Sets</div>
-                          </div>
+                      <h3 className="text-emerald-900 font-black uppercase text-xs tracking-widest">Job Completed by Crew</h3>
+                      <div className="flex gap-4 mt-2 text-xs font-bold text-emerald-700">
+                          <span>Labor: {currentRecord.actuals?.laborHours || 0} hrs</span>
+                          <span>OC: {currentRecord.actuals?.openCellSets?.toFixed(2) || 0} Sets</span>
+                          <span>CC: {currentRecord.actuals?.closedCellSets?.toFixed(2) || 0} Sets</span>
                       </div>
-
-                      <button onClick={onStageInvoice} className="bg-emerald-600 text-white px-6 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-emerald-700 shadow-lg shadow-emerald-200 flex items-center gap-2">
-                          <ClipboardList className="w-4 h-4" /> Review Actuals & Create Invoice
-                      </button>
                   </div>
               </div>
           </div>
@@ -736,26 +715,6 @@ export const Calculator: React.FC<CalculatorProps> = ({
 
            </div>
            
-           {/* ACTION BAR - SINGLE NEXT STEP */}
-           <div className="md:col-span-2 flex flex-col md:flex-row gap-4 pt-6 border-t border-slate-200 pb-12">
-               <button onClick={() => onSaveEstimate()} className="flex-1 bg-slate-900 hover:bg-slate-800 text-white p-4 rounded-xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg">
-                   <Save className="w-4 h-4" /> Save / Update
-               </button>
-               
-               {/* Single Next Step Button */}
-               {currentStatus === 'Paid' ? (
-                   <div className="flex-1 bg-emerald-100 text-emerald-700 p-4 rounded-xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 border border-emerald-200">
-                       <CheckCircle2 className="w-4 h-4" /> Paid in Full
-                   </div>
-               ) : nextStep && (
-                   <button 
-                       onClick={nextStep.action}
-                       className={`flex-1 ${nextStep.style} p-4 rounded-xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg transition-all hover:opacity-90`}
-                   >
-                       <nextStep.icon className="w-4 h-4" /> {nextStep.label} <ArrowRight className="w-4 h-4"/>
-                   </button>
-               )}
-           </div>
        </div>
     </div>
   );

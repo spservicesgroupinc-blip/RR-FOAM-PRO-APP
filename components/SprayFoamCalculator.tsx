@@ -8,13 +8,12 @@ import {
   CalculatorState,
   EquipmentItem,
   InvoiceLineItem,
-  DocumentType,
 } from '../types';
 import { useCalculator, DEFAULT_STATE } from '../context/CalculatorContext';
 import { useSync } from '../hooks/useSync';
 import { useEstimates } from '../hooks/useEstimates';
 import { calculateResults } from '../utils/calculatorHelpers';
-import { generateWorkOrderPDF } from '../utils/pdfGenerator';
+import { generateDocumentPDF, generateEstimatePDF, generateWorkOrderPDF } from '../utils/pdfGenerator';
 import { syncUp } from '../services/api';
 import { upsertInventoryItem } from '../services/supabaseService';
 import { getCurrentSession, signOut } from '../services/auth';
@@ -38,7 +37,6 @@ import { EquipmentTracker } from './EquipmentTracker';
 import { EquipmentMaintenance } from './EquipmentMaintenance';
 import { WalkthroughProvider, useWalkthrough } from '../context/WalkthroughContext';
 import { WalkthroughOverlay } from './Walkthrough';
-import PDFPreviewModal from './PDFPreviewModal';
 import UserManual from './UserManual';
 
 const SprayFoamCalculator: React.FC = () => {
@@ -56,17 +54,17 @@ const SprayFoamCalculator: React.FC = () => {
   // before saving estimates that reference temp IDs.
   const pendingWarehouseUUIDs = useRef<Map<string, Promise<string>>>(new Map());
 
-  // PDF Preview Modal state
-  const [pdfModal, setPdfModal] = useState<{
-    show: boolean;
-    record?: EstimateRecord;
-    docType?: DocumentType;
-  }>({ show: false });
+  // Helper to generate PDFs using the original pdfGenerator
+  const cloudOpts = () => ({
+    orgId: session?.organizationId,
+    customerId: appData.customerProfile?.id,
+    estimateId: ui.editingEstimateId || undefined,
+  });
 
-  const openPDFModal = (record?: EstimateRecord, docType?: DocumentType) => {
-    setPdfModal({ show: true, record, docType });
+  const generatePDF = async (type: 'ESTIMATE' | 'INVOICE' | 'RECEIPT', record?: EstimateRecord) => {
+    const rec = record || appData.savedEstimates.find(e => e.id === ui.editingEstimateId);
+    await generateDocumentPDF(appData, rec?.results || results, type, rec, cloudOpts());
   };
-  const closePDFModal = () => setPdfModal({ show: false });
 
   // Restore Supabase session on mount
   useEffect(() => {
@@ -304,9 +302,9 @@ const SprayFoamCalculator: React.FC = () => {
       }
   };
 
-  // Wrapper for mark paid that opens PDF modal for the receipt
+  // Wrapper for mark paid that generates receipt PDF
   const handleMarkPaidWithPDF = async (id: string) => {
-    await handleMarkPaid(id, (rec) => openPDFModal(rec, DocumentType.INVOICE));
+    await handleMarkPaid(id, (rec) => generatePDF('RECEIPT', rec));
   };
 
   const handleStageWorkOrder = () => {
@@ -341,12 +339,12 @@ const SprayFoamCalculator: React.FC = () => {
     const finalRecord = record || appData.savedEstimates.find(e => e.id === ui.editingEstimateId);
 
     if (finalRecord) {
-        openPDFModal(finalRecord, DocumentType.INVOICE);
+        await generatePDF('INVOICE', finalRecord);
         dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
     } else {
         const newRec = await saveEstimate(results, 'Invoiced');
         if (newRec) {
-            openPDFModal(newRec, DocumentType.INVOICE);
+            await generatePDF('INVOICE', newRec);
             dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
         }
     }
@@ -355,7 +353,7 @@ const SprayFoamCalculator: React.FC = () => {
   // Called after EstimateStage saves its lines
   const handleConfirmEstimate = async (record: EstimateRecord, shouldPrint: boolean) => {
       if (shouldPrint) {
-          openPDFModal(record, DocumentType.ESTIMATE);
+          await generatePDF('ESTIMATE', record);
       }
       dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
   };
@@ -503,7 +501,7 @@ const SprayFoamCalculator: React.FC = () => {
                 onMarkPaid={handleMarkPaidWithPDF}
                 initialFilter={initialDashboardFilter}
                 onGoToWarehouse={() => dispatch({ type: 'SET_VIEW', payload: 'warehouse' })}
-                onViewInvoice={(rec) => openPDFModal(rec, DocumentType.INVOICE)}
+                onViewInvoice={(rec) => generatePDF('INVOICE', rec)}
                 onSync={forceRefresh}
                 subscription={state.subscription}
             />
@@ -522,7 +520,6 @@ const SprayFoamCalculator: React.FC = () => {
                 onAddInventory={addInventoryItem}
                 onRemoveInventory={removeInventoryItem}
                 onSaveEstimate={(status) => saveEstimate(results, status)}
-                onGeneratePDF={() => openPDFModal(undefined, DocumentType.ESTIMATE)}
                 onStageWorkOrder={handleStageWorkOrder}
                 onStageInvoice={handleStageInvoice}
                 onStageEstimate={handleStageEstimate} // Pass new handler
@@ -538,7 +535,6 @@ const SprayFoamCalculator: React.FC = () => {
                 results={results} 
                 onBack={() => dispatch({ type: 'SET_VIEW', payload: 'dashboard' })}
                 onEdit={() => dispatch({ type: 'SET_VIEW', payload: 'calculator' })}
-                onGeneratePDF={() => openPDFModal(appData.savedEstimates.find(e => e.id === ui.editingEstimateId))}
                 onSold={handleStageWorkOrder}
                 onInvoice={handleStageInvoice}
             />
@@ -680,16 +676,7 @@ const SprayFoamCalculator: React.FC = () => {
             <UserManual />
         )}
 
-        {/* PDF Preview Modal — shown over any view */}
-        {pdfModal.show && (
-            <PDFPreviewModal
-                state={appData}
-                results={pdfModal.record?.results || results}
-                record={pdfModal.record}
-                initialDocumentType={pdfModal.docType}
-                onClose={closePDFModal}
-            />
-        )}
+
     </Layout>
     </WalkthroughProvider>
   );

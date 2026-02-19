@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import { CalculatorState, CalculationResults, EstimateRecord, InvoiceLineItem, FoamType } from '../types';
 import { useEstimates } from '../hooks/useEstimates';
-import { FeedbackButton } from './FeedbackButton';
 
 interface EstimateStageProps {
   state: CalculatorState;
@@ -194,7 +193,6 @@ export const EstimateStage: React.FC<EstimateStageProps> = ({
                       <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight">Finalize Estimate</h1>
                       <p className="text-slate-500 text-sm font-medium">Review and edit the customer-facing proposal.</p>
                   </div>
-                  <FeedbackButton area="Estimate Stage" />
               </div>
 
               {/* ACTION BUTTON */}
