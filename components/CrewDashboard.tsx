@@ -1,10 +1,10 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
     LogOut, RefreshCw, MapPin, Calendar, HardHat, FileText, 
     ChevronLeft, CheckCircle2, Package, AlertTriangle, User, 
     ArrowRight, Play, Square, Clock, Save, Loader2, Download,
-    MessageSquare, History
+    MessageSquare, History, Zap, RotateCcw, MousePointerClick
 } from 'lucide-react';
 import { CalculatorState, EstimateRecord } from '../types';
 import { crewUpdateJob } from '../services/supabaseService';
@@ -42,6 +42,134 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
       notes: ''
   });
   const [isCompleting, setIsCompleting] = useState(false);
+
+  // ── STROKE COUNTER STATE ─────────────────────────────────────────────
+  const [liveOCStrokes, setLiveOCStrokes] = useState(0);
+  const [liveCCStrokes, setLiveCCStrokes] = useState(0);
+  const [activeStrokeType, setActiveStrokeType] = useState<'oc' | 'cc'>('oc');
+  const [lastClickTime, setLastClickTime] = useState<number>(0);
+  const strokeFlashRef = useRef<HTMLDivElement>(null);
+
+  // Strokes per set from user preferences (Settings tab)
+  const ocStrokesPerSet = state.yields?.openCellStrokes || 6600;
+  const ccStrokesPerSet = state.yields?.closedCellStrokes || 6600;
+
+  // Persist stroke counts per job to localStorage
+  const strokeStorageKey = (jobId: string, type: string) => `foamPro_strokeCount_${jobId}_${type}`;
+
+  // Load stroke counts when a job is selected
+  useEffect(() => {
+    if (selectedJobId) {
+      const savedOC = localStorage.getItem(strokeStorageKey(selectedJobId, 'oc'));
+      const savedCC = localStorage.getItem(strokeStorageKey(selectedJobId, 'cc'));
+      setLiveOCStrokes(savedOC ? parseInt(savedOC) : 0);
+      setLiveCCStrokes(savedCC ? parseInt(savedCC) : 0);
+    }
+  }, [selectedJobId]);
+
+  // Save stroke counts whenever they change
+  useEffect(() => {
+    if (selectedJobId && (liveOCStrokes > 0 || liveCCStrokes > 0)) {
+      localStorage.setItem(strokeStorageKey(selectedJobId, 'oc'), liveOCStrokes.toString());
+      localStorage.setItem(strokeStorageKey(selectedJobId, 'cc'), liveCCStrokes.toString());
+    }
+  }, [selectedJobId, liveOCStrokes, liveCCStrokes]);
+
+  // Stroke increment handler — used by click AND keyboard/USB input
+  const incrementStroke = useCallback((type?: 'oc' | 'cc') => {
+    const target = type || activeStrokeType;
+    if (target === 'oc') {
+      setLiveOCStrokes(prev => prev + 1);
+    } else {
+      setLiveCCStrokes(prev => prev + 1);
+    }
+    setLastClickTime(Date.now());
+    // Visual flash feedback
+    if (strokeFlashRef.current) {
+      strokeFlashRef.current.classList.remove('animate-ping-once');
+      void strokeFlashRef.current.offsetWidth; // force reflow
+      strokeFlashRef.current.classList.add('animate-ping-once');
+    }
+  }, [activeStrokeType]);
+
+  const resetStrokes = useCallback((type: 'oc' | 'cc') => {
+    if (!selectedJobId) return;
+    if (window.confirm(`Reset ${type === 'oc' ? 'Open Cell' : 'Closed Cell'} stroke counter to 0?`)) {
+      if (type === 'oc') {
+        setLiveOCStrokes(0);
+        localStorage.setItem(strokeStorageKey(selectedJobId, 'oc'), '0');
+      } else {
+        setLiveCCStrokes(0);
+        localStorage.setItem(strokeStorageKey(selectedJobId, 'cc'), '0');
+      }
+    }
+  }, [selectedJobId]);
+
+  // Keyboard listener for USB HID stroke counters (sends Enter/Space/digit keys)
+  // Also supports: F9 = OC stroke, F10 = CC stroke (configurable for USB devices)
+  useEffect(() => {
+    if (!isTimerRunning || !selectedJobId) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in an input/textarea
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      // Space bar or Enter = increment active type
+      if (e.code === 'Space' || e.code === 'Enter') {
+        e.preventDefault();
+        incrementStroke();
+      }
+      // F9 = Open Cell stroke
+      if (e.code === 'F9') {
+        e.preventDefault();
+        incrementStroke('oc');
+      }
+      // F10 = Closed Cell stroke
+      if (e.code === 'F10') {
+        e.preventDefault();
+        incrementStroke('cc');
+      }
+      // Tab = switch active type
+      if (e.code === 'Tab' && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        setActiveStrokeType(prev => prev === 'oc' ? 'cc' : 'oc');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isTimerRunning, selectedJobId, incrementStroke]);
+
+  // ── GLOBAL MOUSE CLICK → STROKE (simulates USB/ESP32 sensor input) ──
+  // Any left-click anywhere on the page = +1 stroke on the active type.
+  // Clicks on buttons, inputs, links, and the completion modal are excluded
+  // so they don't accidentally double-count.
+  useEffect(() => {
+    if (!isTimerRunning || !selectedJobId || showCompletionModal) return;
+
+    const handleGlobalClick = (e: MouseEvent) => {
+      // Don't count clicks on interactive controls or inside the completion modal
+      const target = e.target as HTMLElement;
+      if (!target) return;
+
+      const tag = target.tagName;
+      // Skip if clicking on form inputs, buttons, links, selects, textareas
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'A') return;
+      // Skip if clicking on (or inside) a button or an anchor
+      if (target.closest('button') || target.closest('a') || target.closest('[role="button"]')) return;
+      // Skip if inside the completion modal overlay
+      if (target.closest('[data-completion-modal]')) return;
+
+      // Left-click only (button 0)
+      if (e.button !== 0) return;
+
+      incrementStroke();
+    };
+
+    window.addEventListener('click', handleGlobalClick);
+    return () => window.removeEventListener('click', handleGlobalClick);
+  }, [isTimerRunning, selectedJobId, showCompletionModal, incrementStroke]);
 
   // --- AUTOMATIC BACKGROUND SYNC ---
   useEffect(() => {
@@ -167,11 +295,23 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
               const ocSets = selectedJob.materials?.openCellSets || 0;
               const ccSets = selectedJob.materials?.closedCellSets || 0;
               
+              // Auto-populate stroke counts from the live counter
+              const finalOCStrokes = liveOCStrokes || selectedJob.actuals?.openCellStrokes || 0;
+              const finalCCStrokes = liveCCStrokes || selectedJob.actuals?.closedCellStrokes || 0;
+
+              // Calculate actual sets from live stroke counts if available
+              const actualOCSets = liveOCStrokes > 0 
+                ? round2(liveOCStrokes / ocStrokesPerSet) 
+                : (selectedJob.actuals?.openCellSets || round2(ocSets));
+              const actualCCSets = liveCCStrokes > 0 
+                ? round2(liveCCStrokes / ccStrokesPerSet) 
+                : (selectedJob.actuals?.closedCellSets || round2(ccSets));
+
               setActuals({
-                  openCellSets: selectedJob.actuals?.openCellSets || round2(ocSets),
-                  closedCellSets: selectedJob.actuals?.closedCellSets || round2(ccSets),
-                  openCellStrokes: selectedJob.actuals?.openCellStrokes || 0,
-                  closedCellStrokes: selectedJob.actuals?.closedCellStrokes || 0,
+                  openCellSets: actualOCSets,
+                  closedCellSets: actualCCSets,
+                  openCellStrokes: finalOCStrokes,
+                  closedCellStrokes: finalCCStrokes,
                   laborHours: selectedJob.actuals?.laborHours || round2(parseFloat((estLabor || sessionDurationHours).toFixed(2))),
                   inventory: selectedJob.actuals?.inventory || estInventory,
                   notes: selectedJob.actuals?.notes || ''
@@ -205,6 +345,12 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
         const success = await crewUpdateJob(organizationId, selectedJob.id, finalData, 'Completed');
         
         if (success) {
+            // Clear stroke counter localStorage for this job
+            localStorage.removeItem(strokeStorageKey(selectedJob.id, 'oc'));
+            localStorage.removeItem(strokeStorageKey(selectedJob.id, 'cc'));
+            setLiveOCStrokes(0);
+            setLiveCCStrokes(0);
+
             setShowCompletionModal(false);
             setSelectedJobId(null);
             
@@ -445,6 +591,194 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                     </div>
                 </div>
 
+                {/* ─── LIVE STROKE COUNTER ─────────────────────────────────── */}
+                {isTimerRunning && (
+                  <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-6 rounded-3xl shadow-2xl border border-slate-700 relative overflow-hidden">
+                    {/* Pulse flash on click */}
+                    <div ref={strokeFlashRef} className="absolute inset-0 bg-brand/10 rounded-3xl pointer-events-none opacity-0" />
+                    
+                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-brand-yellow" /> Live Stroke Counter
+                      <span className="ml-auto text-[9px] text-slate-500 normal-case tracking-normal font-medium">Any click anywhere = +1 stroke &bull; Tab = switch type &bull; F9=OC F10=CC</span>
+                    </h3>
+
+                    {/* Type Selector Tabs */}
+                    <div className="flex gap-2 mb-4">
+                      {(selectedJob.materials?.openCellSets > 0 || selectedJob.results.totalOpenCellBdFt > 0) && (
+                        <button
+                          onClick={() => setActiveStrokeType('oc')}
+                          className={`flex-1 py-2 px-4 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                            activeStrokeType === 'oc'
+                              ? 'bg-brand text-white shadow-lg shadow-red-900/30'
+                              : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                          }`}
+                        >
+                          Open Cell
+                        </button>
+                      )}
+                      {(selectedJob.materials?.closedCellSets > 0 || selectedJob.results.totalClosedCellBdFt > 0) && (
+                        <button
+                          onClick={() => setActiveStrokeType('cc')}
+                          className={`flex-1 py-2 px-4 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                            activeStrokeType === 'cc'
+                              ? 'bg-sky-500 text-white shadow-lg shadow-sky-900/30'
+                              : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                          }`}
+                        >
+                          Closed Cell
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Counter Cards */}
+                    <div className="grid grid-cols-1 gap-4">
+                      {/* Open Cell Counter */}
+                      {(selectedJob.materials?.openCellSets > 0 || selectedJob.results.totalOpenCellBdFt > 0) && (
+                        <div className={`rounded-2xl border-2 transition-all ${
+                          activeStrokeType === 'oc' ? 'border-brand bg-brand/5' : 'border-slate-700 bg-slate-800/50'
+                        }`}>
+                          <div className="p-4">
+                            <div className="flex justify-between items-center mb-3">
+                              <div className="text-[10px] font-black uppercase tracking-widest text-brand">Open Cell</div>
+                              <button
+                                onClick={() => resetStrokes('oc')}
+                                className="text-slate-500 hover:text-white p-1 rounded-lg hover:bg-slate-700 transition-colors"
+                                title="Reset OC counter"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            
+                            {/* Big Click Zone */}
+                            <button
+                              onClick={() => incrementStroke('oc')}
+                              className={`w-full rounded-2xl p-6 transition-all active:scale-95 select-none cursor-pointer ${
+                                activeStrokeType === 'oc'
+                                  ? 'bg-brand/20 hover:bg-brand/30 active:bg-brand/40 border-2 border-brand/30'
+                                  : 'bg-slate-700/50 hover:bg-slate-700 border-2 border-slate-600'
+                              }`}
+                            >
+                              <div className="text-5xl font-black text-white tabular-nums mb-1">
+                                {liveOCStrokes.toLocaleString()}
+                              </div>
+                              <div className="text-xs text-slate-400 font-bold flex items-center justify-center gap-1">
+                                <MousePointerClick className="w-3 h-3" /> TAP TO COUNT
+                              </div>
+                            </button>
+
+                            {/* Progress & Sets */}
+                            <div className="mt-3 space-y-2">
+                              <div className="flex justify-between text-xs font-bold">
+                                <span className="text-slate-400">{liveOCStrokes.toLocaleString()} / {ocStrokesPerSet.toLocaleString()} per set</span>
+                                <span className="text-brand font-black">{(liveOCStrokes / ocStrokesPerSet).toFixed(2)} Sets</span>
+                              </div>
+                              <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-brand to-brand-yellow rounded-full transition-all duration-300"
+                                  style={{ width: `${Math.min((liveOCStrokes % ocStrokesPerSet) / ocStrokesPerSet * 100, 100)}%` }}
+                                />
+                              </div>
+                              {selectedJob.results.openCellStrokes > 0 && (
+                                <div className="text-[10px] text-slate-500 font-medium text-right">
+                                  Estimated: {selectedJob.results.openCellStrokes.toLocaleString()} strokes ({selectedJob.materials?.openCellSets.toFixed(2)} sets)
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Closed Cell Counter */}
+                      {(selectedJob.materials?.closedCellSets > 0 || selectedJob.results.totalClosedCellBdFt > 0) && (
+                        <div className={`rounded-2xl border-2 transition-all ${
+                          activeStrokeType === 'cc' ? 'border-sky-500 bg-sky-500/5' : 'border-slate-700 bg-slate-800/50'
+                        }`}>
+                          <div className="p-4">
+                            <div className="flex justify-between items-center mb-3">
+                              <div className="text-[10px] font-black uppercase tracking-widest text-sky-400">Closed Cell</div>
+                              <button
+                                onClick={() => resetStrokes('cc')}
+                                className="text-slate-500 hover:text-white p-1 rounded-lg hover:bg-slate-700 transition-colors"
+                                title="Reset CC counter"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                            
+                            {/* Big Click Zone */}
+                            <button
+                              onClick={() => incrementStroke('cc')}
+                              className={`w-full rounded-2xl p-6 transition-all active:scale-95 select-none cursor-pointer ${
+                                activeStrokeType === 'cc'
+                                  ? 'bg-sky-500/20 hover:bg-sky-500/30 active:bg-sky-500/40 border-2 border-sky-500/30'
+                                  : 'bg-slate-700/50 hover:bg-slate-700 border-2 border-slate-600'
+                              }`}
+                            >
+                              <div className="text-5xl font-black text-white tabular-nums mb-1">
+                                {liveCCStrokes.toLocaleString()}
+                              </div>
+                              <div className="text-xs text-slate-400 font-bold flex items-center justify-center gap-1">
+                                <MousePointerClick className="w-3 h-3" /> TAP TO COUNT
+                              </div>
+                            </button>
+
+                            {/* Progress & Sets */}
+                            <div className="mt-3 space-y-2">
+                              <div className="flex justify-between text-xs font-bold">
+                                <span className="text-slate-400">{liveCCStrokes.toLocaleString()} / {ccStrokesPerSet.toLocaleString()} per set</span>
+                                <span className="text-sky-400 font-black">{(liveCCStrokes / ccStrokesPerSet).toFixed(2)} Sets</span>
+                              </div>
+                              <div className="h-2 bg-slate-700 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-sky-500 to-cyan-400 rounded-full transition-all duration-300"
+                                  style={{ width: `${Math.min((liveCCStrokes % ccStrokesPerSet) / ccStrokesPerSet * 100, 100)}%` }}
+                                />
+                              </div>
+                              {selectedJob.results.closedCellStrokes > 0 && (
+                                <div className="text-[10px] text-slate-500 font-medium text-right">
+                                  Estimated: {selectedJob.results.closedCellStrokes.toLocaleString()} strokes ({selectedJob.materials?.closedCellSets.toFixed(2)} sets)
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Rate indicator */}
+                    {lastClickTime > 0 && (
+                      <div className="mt-3 text-center text-[10px] text-slate-500 font-medium">
+                        Input mode: Click / Tap / Keyboard &bull; USB stroke counters send as key events
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Stroke Summary when NOT running but has data */}
+                {!isTimerRunning && (liveOCStrokes > 0 || liveCCStrokes > 0) && selectedJob.executionStatus !== 'Completed' && (
+                  <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
+                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-brand-yellow" /> Stroke Count (Paused)
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      {liveOCStrokes > 0 && (
+                        <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
+                          <div className="text-[10px] text-brand font-black uppercase tracking-widest mb-1">Open Cell</div>
+                          <div className="text-2xl font-black text-slate-900">{liveOCStrokes.toLocaleString()}</div>
+                          <div className="text-xs text-slate-500 font-bold">{(liveOCStrokes / ocStrokesPerSet).toFixed(2)} sets</div>
+                        </div>
+                      )}
+                      {liveCCStrokes > 0 && (
+                        <div className="p-4 bg-sky-50 rounded-2xl border border-sky-100">
+                          <div className="text-[10px] text-sky-600 font-black uppercase tracking-widest mb-1">Closed Cell</div>
+                          <div className="text-2xl font-black text-slate-900">{liveCCStrokes.toLocaleString()}</div>
+                          <div className="text-xs text-slate-500 font-bold">{(liveCCStrokes / ccStrokesPerSet).toFixed(2)} sets</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Notes Card */}
                 {selectedJob.notes && (
                     <div className="bg-amber-50 p-6 rounded-3xl shadow-sm border border-amber-100">
@@ -460,7 +794,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
             {/* Completion Modal */}
             {showCompletionModal && (
-                <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div data-completion-modal className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl animate-in fade-in zoom-in duration-300 max-h-[90vh] overflow-y-auto">
                         <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight mb-6">Complete Job</h3>
                         
