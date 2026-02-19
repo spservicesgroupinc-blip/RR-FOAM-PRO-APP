@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ESP32 USB Stroke Counter — Test</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #f1f5f9;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      padding: 24px;
+    }
+
+    h1 {
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: #64748b;
+    }
+
+    /* ── Status bar ── */
+    #status-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 999px;
+      padding: 8px 18px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    #status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #475569;
+      transition: background 0.3s;
+    }
+    #status-dot.connected { background: #22c55e; box-shadow: 0 0 8px #22c55e88; animation: pulse 2s infinite; }
+    #status-dot.error     { background: #ef4444; }
+    #status-dot.sim       { background: #f59e0b; box-shadow: 0 0 8px #f59e0b88; animation: pulse 2s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.5; }
+    }
+
+    /* ── Job selector ── */
+    #job-select {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 10px 14px;
+      color: #f1f5f9;
+      font-size: 14px;
+      font-weight: 600;
+      width: 100%;
+      max-width: 480px;
+      outline: none;
+      cursor: pointer;
+    }
+    #job-select:focus { border-color: #ef4444; }
+
+    /* ── Counter card ── */
+    .card {
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 24px;
+      padding: 28px 32px;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    .card-label {
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: #64748b;
+      margin-bottom: 20px;
+    }
+
+    .counter-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      gap: 12px;
+    }
+
+    .counter-label {
+      font-size: 13px;
+      font-weight: 700;
+      color: #94a3b8;
+      flex: 1;
+    }
+
+    .counter-display {
+      font-size: 36px;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+      min-width: 80px;
+      text-align: center;
+      line-height: 1;
+    }
+
+    .counter-display.open  { color: #ef4444; }
+    .counter-display.closed { color: #3b82f6; }
+
+    .hit-btn {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      font-size: 28px;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.08s, box-shadow 0.08s;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .hit-btn:active { transform: scale(0.88); }
+
+    .hit-btn.open {
+      background: #ef4444;
+      color: white;
+      box-shadow: 0 4px 24px #ef444440;
+    }
+    .hit-btn.open:active { box-shadow: 0 0 0 4px #ef444460; }
+
+    .hit-btn.closed {
+      background: #3b82f6;
+      color: white;
+      box-shadow: 0 4px 24px #3b82f640;
+    }
+    .hit-btn.closed:active { box-shadow: 0 0 0 4px #3b82f660; }
+
+    .undo-btn {
+      background: transparent;
+      border: 1px solid #334155;
+      color: #64748b;
+      border-radius: 8px;
+      padding: 6px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    .undo-btn:hover { border-color: #64748b; color: #94a3b8; }
+
+    /* ── Sets estimate bar ── */
+    .sets-bar {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #334155;
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: #64748b;
+      font-weight: 600;
+    }
+    .sets-bar span { font-weight: 900; color: #94a3b8; }
+
+    /* ── Log ── */
+    #log {
+      width: 100%;
+      max-width: 480px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 16px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      color: #64748b;
+      height: 120px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column-reverse;
+    }
+    #log .entry { color: #94a3b8; margin-bottom: 2px; }
+    #log .entry.sent { color: #22c55e; }
+    #log .entry.recv { color: #3b82f6; }
+    #log .entry.warn { color: #f59e0b; }
+    #log .entry.err  { color: #ef4444; }
+
+    /* ── Action buttons ── */
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      width: 100%;
+      max-width: 480px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 14px;
+      border-radius: 14px;
+      border: none;
+      font-size: 12px;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    .btn-connect  { background: #1e293b; color: #f1f5f9; border: 1px solid #334155; }
+    .btn-sim      { background: #f59e0b; color: #0f172a; }
+    .btn-send     { background: #ef4444; color: white; }
+    .btn-reset    { background: transparent; color: #64748b; border: 1px solid #334155; }
+
+    /* ── flash animation on tap ── */
+    @keyframes flashOpen {
+      0%   { background: #ef4444; }
+      50%  { background: #fca5a5; }
+      100% { background: #ef4444; }
+    }
+    @keyframes flashClosed {
+      0%   { background: #3b82f6; }
+      50%  { background: #93c5fd; }
+      100% { background: #3b82f6; }
+    }
+    .flash-open   { animation: flashOpen   0.15s ease; }
+    .flash-closed { animation: flashClosed 0.15s ease; }
+  </style>
+</head>
+<body>
+
+  <h1>ESP32 USB Stroke Counter — Test Bench</h1>
+
+  <!-- Status -->
+  <div id="status-bar">
+    <div id="status-dot"></div>
+    <span id="status-text">Not connected — click Connect or Simulate</span>
+  </div>
+
+  <!-- Job selector (simulates the job list from Supabase) -->
+  <select id="job-select">
+    <option value="">— Select a Work Order —</option>
+    <option value="job-abc12345" data-oc="4.50" data-cc="0">WO #ABC12345 — Smith Residence (4.5 OC sets)</option>
+    <option value="job-def67890" data-oc="2.25" data-cc="3.00">WO #DEF67890 — Jones Warehouse (2.25 OC + 3.0 CC sets)</option>
+    <option value="job-ghi11111" data-oc="0"    data-cc="6.75">WO #GHI11111 — Metro Cold Storage (6.75 CC sets)</option>
+  </select>
+
+  <!-- Stroke counters -->
+  <div class="card">
+    <div class="card-label">Stroke Counters — Click = 1 Machine Stroke</div>
+
+    <!-- Open Cell -->
+    <div class="counter-row">
+      <div class="counter-label">Open Cell</div>
+      <div id="oc-count" class="counter-display open">0</div>
+      <button class="hit-btn open" id="btn-oc" onclick="addStroke('oc')">+</button>
+    </div>
+    <div style="display:flex; justify-content:flex-end; margin-bottom:16px;">
+      <button class="undo-btn" onclick="undoStroke('oc')">↩ Undo</button>
+    </div>
+
+    <!-- Closed Cell -->
+    <div class="counter-row">
+      <div class="counter-label">Closed Cell</div>
+      <div id="cc-count" class="counter-display closed">0</div>
+      <button class="hit-btn closed" id="btn-cc" onclick="addStroke('cc')">+</button>
+    </div>
+    <div style="display:flex; justify-content:flex-end;">
+      <button class="undo-btn" onclick="undoStroke('cc')">↩ Undo</button>
+    </div>
+
+    <!-- Sets estimate -->
+    <div class="sets-bar">
+      <div>Open Cell Sets (÷ strokes/set): <span id="oc-sets">0.00</span></div>
+      <div>Closed Cell Sets: <span id="cc-sets">0.00</span></div>
+    </div>
+    <div style="font-size:10px; color:#475569; margin-top:8px; font-weight:600;">
+      * Strokes per set calibrated to your machine (default 480 strokes/set)
+    </div>
+  </div>
+
+  <!-- Action buttons -->
+  <div class="btn-row">
+    <button class="btn btn-connect" id="btn-connect" onclick="connectUSB()">🔌 Connect ESP32</button>
+    <button class="btn btn-sim"     id="btn-sim"     onclick="toggleSim()">⚡ Simulate</button>
+  </div>
+  <div class="btn-row">
+    <button class="btn btn-send"  id="btn-send"  onclick="sendToJob()" disabled>📤 Send to Job</button>
+    <button class="btn btn-reset" onclick="resetCounters()">✕ Reset</button>
+  </div>
+
+  <!-- Log -->
+  <div id="log">
+    <div class="entry warn">[ Ready ] Open this page over HTTPS or localhost for WebUSB access.</div>
+  </div>
+
+<script>
+  // ─── Constants ───────────────────────────────────────────────────
+  const ESPRESSIF_VID   = 0x303A;   // Espressif Systems vendor ID
+  const STROKES_PER_SET = 480;      // Calibrate to your actual machine
+  const INTERFACE_NUM   = 2;        // TinyUSB WebUSB interface (adjust after testing)
+  const ENDPOINT_OUT    = 2;        // Bulk OUT endpoint number
+  const ENDPOINT_IN     = 2;        // Bulk IN endpoint number
+  const MAX_PACKET      = 64;       // USB Full-Speed bulk max packet
+
+  // ─── State ───────────────────────────────────────────────────────
+  let usbDevice   = null;
+  let simMode     = false;
+  let simInterval = null;
+  let strokesOC   = 0;
+  let strokesCC   = 0;
+  let selectedJob = null;
+  let isListening = false;
+
+  // ─── DOM refs ────────────────────────────────────────────────────
+  const dot        = document.getElementById('status-dot');
+  const statusText = document.getElementById('status-text');
+  const logEl      = document.getElementById('log');
+  const ocDisplay  = document.getElementById('oc-count');
+  const ccDisplay  = document.getElementById('cc-count');
+  const ocSets     = document.getElementById('oc-sets');
+  const ccSets     = document.getElementById('cc-sets');
+  const btnSend    = document.getElementById('btn-send');
+  const btnConnect = document.getElementById('btn-connect');
+  const btnSim     = document.getElementById('btn-sim');
+  const jobSelect  = document.getElementById('job-select');
+
+  // ─── Logging ─────────────────────────────────────────────────────
+  function log(msg, type = '') {
+    const div = document.createElement('div');
+    div.className = 'entry ' + type;
+    div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    logEl.prepend(div);
+    // Keep last 100 entries
+    while (logEl.children.length > 100) logEl.removeChild(logEl.lastChild);
+  }
+
+  // ─── Status helpers ──────────────────────────────────────────────
+  function setStatus(state, msg) {
+    dot.className = state;
+    statusText.textContent = msg;
+  }
+
+  // ─── Job selector ────────────────────────────────────────────────
+  jobSelect.addEventListener('change', () => {
+    const opt = jobSelect.selectedOptions[0];
+    if (!opt.value) { selectedJob = null; btnSend.disabled = true; return; }
+
+    selectedJob = {
+      id:          opt.value,
+      label:       opt.textContent.trim(),
+      estOCSets:   parseFloat(opt.dataset.oc  || '0'),
+      estCCSets:   parseFloat(opt.dataset.cc  || '0'),
+    };
+
+    resetCounters(false);   // Reset counts when switching jobs
+    btnSend.disabled = false;
+    log(`Job selected: ${selectedJob.label}`, 'sent');
+    log(`Estimated → OC: ${selectedJob.estOCSets} sets  CC: ${selectedJob.estCCSets} sets`);
+  });
+
+  // ─── Stroke counter ──────────────────────────────────────────────
+  function addStroke(type) {
+    if (!selectedJob) { log('Select a work order first', 'warn'); return; }
+
+    if (type === 'oc') {
+      strokesOC++;
+      ocDisplay.textContent = strokesOC.toLocaleString();
+      ocSets.textContent    = (strokesOC / STROKES_PER_SET).toFixed(2);
+      flash('btn-oc', 'flash-open');
+    } else {
+      strokesCC++;
+      ccDisplay.textContent = strokesCC.toLocaleString();
+      ccSets.textContent    = (strokesCC / STROKES_PER_SET).toFixed(2);
+      flash('btn-cc', 'flash-closed');
+    }
+
+    // If USB device connected — send live stroke event
+    if (usbDevice) {
+      sendUSBPacket({ type: 'STROKE', foam: type, oc: strokesOC, cc: strokesCC });
+    }
+  }
+
+  function undoStroke(type) {
+    if (type === 'oc' && strokesOC > 0) {
+      strokesOC--;
+      ocDisplay.textContent = strokesOC.toLocaleString();
+      ocSets.textContent    = (strokesOC / STROKES_PER_SET).toFixed(2);
+      log('Undo: -1 Open Cell stroke');
+    } else if (type === 'cc' && strokesCC > 0) {
+      strokesCC--;
+      ccDisplay.textContent = strokesCC.toLocaleString();
+      ccSets.textContent    = (strokesCC / STROKES_PER_SET).toFixed(2);
+      log('Undo: -1 Closed Cell stroke');
+    }
+  }
+
+  function resetCounters(notify = true) {
+    strokesOC = strokesCC = 0;
+    ocDisplay.textContent = ccDisplay.textContent = '0';
+    ocSets.textContent = ccSets.textContent = '0.00';
+    if (notify) log('Counters reset');
+  }
+
+  function flash(btnId, cls) {
+    const btn = document.getElementById(btnId);
+    btn.classList.add(cls);
+    setTimeout(() => btn.classList.remove(cls), 150);
+  }
+
+  // ─── Send actuals to job (simulates crew_update_job payload) ─────
+  function sendToJob() {
+    if (!selectedJob) { log('No job selected', 'warn'); return; }
+
+    const payload = {
+      type:            'SUBMIT_ACTUALS',
+      jobId:           selectedJob.id,
+      openCellSets:    parseFloat((strokesOC / STROKES_PER_SET).toFixed(2)),
+      closedCellSets:  parseFloat((strokesCC / STROKES_PER_SET).toFixed(2)),
+      openCellStrokes: strokesOC,
+      closedCellStrokes: strokesCC,
+      completionDate:  new Date().toISOString(),
+      completedBy:     'ESP32-USB-Test'
+    };
+
+    log(`📤 SUBMIT → ${selectedJob.label}`, 'sent');
+    log(`   OC: ${payload.openCellSets} sets (${strokesOC} strokes)`, 'sent');
+    log(`   CC: ${payload.closedCellSets} sets (${strokesCC} strokes)`, 'sent');
+    log(`   Payload: ${JSON.stringify(payload).substring(0, 120)}...`);
+
+    if (usbDevice) {
+      sendUSBPacket(payload);
+    } else if (simMode) {
+      // In sim mode — just log what would have been sent over USB
+      log('[ SIM ] Would call: crew_update_job(orgId, jobId, actuals, "Completed")', 'warn');
+      setTimeout(() => log('[ SIM ] ✓ Backend response: { success: true }', 'recv'), 400);
+    } else {
+      log('Not connected. Connect ESP32 or enable Simulate.', 'warn');
+    }
+  }
+
+  // ─── WebUSB connection ───────────────────────────────────────────
+  async function connectUSB() {
+    if (!navigator.usb) {
+      log('WebUSB not supported in this browser. Use Chrome/Edge.', 'err');
+      setStatus('error', 'WebUSB not supported');
+      return;
+    }
+
+    try {
+      log('Requesting USB device...');
+      usbDevice = await navigator.usb.requestDevice({
+        filters: [{ vendorId: ESPRESSIF_VID }]
+      });
+
+      log(`Found: ${usbDevice.productName} (${usbDevice.manufacturerName})`, 'recv');
+      await usbDevice.open();
+      log('Device opened');
+
+      if (usbDevice.configuration === null) {
+        await usbDevice.selectConfiguration(1);
+        log('Configuration 1 selected');
+      }
+
+      await usbDevice.claimInterface(INTERFACE_NUM);
+      log(`Interface ${INTERFACE_NUM} claimed`, 'recv');
+
+      setStatus('connected', `Connected — ${usbDevice.productName}`);
+      btnConnect.textContent = '🔌 Disconnect';
+      btnConnect.onclick = disconnectUSB;
+      btnSend.disabled = !selectedJob;
+
+      // Start listening for inbound packets from ESP32
+      listenUSB();
+
+    } catch (err) {
+      if (err.name === 'NotFoundError') {
+        log('No device selected (user cancelled)', 'warn');
+      } else {
+        log(`USB Error: ${err.message}`, 'err');
+        setStatus('error', 'Connection failed');
+      }
+      usbDevice = null;
+    }
+  }
+
+  async function disconnectUSB() {
+    if (!usbDevice) return;
+    try {
+      isListening = false;
+      await usbDevice.close();
+      log('Device disconnected');
+    } catch (e) { /* already closed */ }
+    usbDevice = null;
+    setStatus('', 'Disconnected');
+    btnConnect.textContent = '🔌 Connect ESP32';
+    btnConnect.onclick = connectUSB;
+  }
+
+  // ─── Send a packet to the ESP32 ──────────────────────────────────
+  async function sendUSBPacket(obj) {
+    if (!usbDevice) return;
+    try {
+      const encoder = new TextEncoder();
+      const data    = encoder.encode(JSON.stringify(obj) + '\n');
+      const result  = await usbDevice.transferOut(ENDPOINT_OUT, data);
+      log(`→ USB sent ${result.bytesWritten}B: ${obj.type}`, 'sent');
+    } catch (e) {
+      log(`USB send error: ${e.message}`, 'err');
+    }
+  }
+
+  // ─── Listen for packets from ESP32 ───────────────────────────────
+  async function listenUSB() {
+    isListening = true;
+    log('Listening for ESP32 responses...');
+    while (isListening && usbDevice) {
+      try {
+        const result  = await usbDevice.transferIn(ENDPOINT_IN, MAX_PACKET);
+        const decoder = new TextDecoder();
+        const raw     = decoder.decode(result.data).trim();
+        if (!raw) continue;
+        log(`← ESP32: ${raw}`, 'recv');
+
+        // Parse and react to ESP32 messages
+        try {
+          const msg = JSON.parse(raw);
+          handleESP32Message(msg);
+        } catch { /* raw string, not JSON */ }
+
+      } catch (e) {
+        if (isListening) log(`USB recv error: ${e.message}`, 'err');
+        break;
+      }
+    }
+  }
+
+  // ─── Handle messages coming FROM the ESP32 ───────────────────────
+  // This is what the ESP32 would send when its physical button is tapped.
+  // In the final version, this replaces the mouse click.
+  function handleESP32Message(msg) {
+    switch (msg.type) {
+      case 'STROKE':
+        // ESP32 physical button pressed — count it here on the browser side
+        addStroke(msg.foam); // msg.foam = 'oc' | 'cc'
+        break;
+      case 'ACK':
+        log(`ESP32 ACK: ${msg.message}`, 'recv');
+        break;
+      case 'HELLO':
+        log(`ESP32 ready. FW: ${msg.version}`, 'recv');
+        break;
+      default:
+        log(`ESP32 msg: ${JSON.stringify(msg)}`, 'recv');
+    }
+  }
+
+  // ─── Simulate mode (no physical ESP32 needed) ────────────────────
+  // Fires random strokes every 2s to test the counter + send flow
+  function toggleSim() {
+    simMode = !simMode;
+    if (simMode) {
+      if (!selectedJob) { log('Select a job first to simulate', 'warn'); simMode = false; return; }
+      setStatus('sim', 'Simulating ESP32 strokes...');
+      btnSim.textContent = '⏹ Stop Sim';
+      log('[ SIM ] Started — random strokes every 1.5s', 'warn');
+      simInterval = setInterval(() => {
+        const type = Math.random() > 0.4 ? 'oc' : 'cc';
+        addStroke(type);
+        log(`[ SIM ] ESP32 stroke → ${type.toUpperCase()}`, 'warn');
+      }, 1500);
+    } else {
+      clearInterval(simInterval);
+      setStatus('', 'Simulation stopped');
+      btnSim.textContent = '⚡ Simulate';
+      log('[ SIM ] Stopped');
+    }
+  }
+
+  // ─── Keyboard shortcut support (for testing on keyboard) ─────────
+  // O = open cell stroke, C = closed cell stroke, Enter = send to job
+  document.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'SELECT') return;
+    if (e.key === 'o' || e.key === 'O') addStroke('oc');
+    if (e.key === 'c' || e.key === 'C') addStroke('cc');
+    if (e.key === 'Enter' && selectedJob)   sendToJob();
+    if (e.key === 'Escape') resetCounters();
+  });
+
+  // ─── Auto-reconnect previously paired device ─────────────────────
+  window.addEventListener('load', async () => {
+    if (!navigator.usb) return;
+    const devices = await navigator.usb.getDevices();
+    if (devices.length > 0) {
+      log(`Previously paired ESP32 found: ${devices[0].productName}. Click Connect to reconnect.`, 'warn');
+    }
+  });
+
+  log('Page loaded. Select a job, then click a counter button or Connect ESP32.');
+</script>
+</body>
+</html>
