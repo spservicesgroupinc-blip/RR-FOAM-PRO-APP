@@ -767,6 +767,9 @@ const buildCrewResult = (
     companyProfile,
     customers,
     savedEstimates: estimates,
+    // Include org-level settings so crew gets admin's strokes-per-set config
+    yields: settings.yields || undefined,
+    costs: settings.costs || undefined,
   };
 };
 
