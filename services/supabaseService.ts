@@ -990,3 +990,50 @@ export const updatePassword = async (newPassword: string): Promise<boolean> => {
   }
   return true;
 };
+
+// ─── CREW REALTIME BROADCAST ────────────────────────────────────────────────
+
+/**
+ * Broadcast a work-order-update event to all crew members for this org.
+ * Uses Supabase Realtime Broadcast which works without Supabase auth,
+ * making it suitable for PIN-based crew sessions.
+ */
+export const broadcastWorkOrderUpdate = (orgId: string): void => {
+  const channelName = `crew-updates-${orgId}`;
+  const BROADCAST_CLEANUP_DELAY_MS = 2000;
+  const channel = supabase.channel(channelName);
+
+  channel.subscribe((status) => {
+    if (status === 'SUBSCRIBED') {
+      channel.send({
+        type: 'broadcast',
+        event: 'work_order_update',
+        payload: { orgId, timestamp: Date.now() },
+      }).catch((err) => console.warn(`[Broadcast] send error for org ${orgId}:`, err));
+      // Clean up after a short delay (enough for the message to be delivered)
+      setTimeout(() => supabase.removeChannel(channel), BROADCAST_CLEANUP_DELAY_MS);
+    }
+  });
+};
+
+/**
+ * Subscribe to work-order-update broadcast events for a given org.
+ * Intended for crew dashboard — requires no Supabase auth.
+ * Returns an unsubscribe function.
+ */
+export const subscribeToWorkOrderUpdates = (
+  orgId: string,
+  onUpdate: () => void
+): (() => void) => {
+  const channelName = `crew-updates-${orgId}`;
+  const channel = supabase
+    .channel(channelName)
+    .on('broadcast', { event: 'work_order_update' }, () => {
+      onUpdate();
+    })
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+};
