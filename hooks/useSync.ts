@@ -8,6 +8,7 @@ import {
   fetchWarehouseState,
   syncAppDataToSupabase,
   subscribeToOrgChanges,
+  subscribeToWorkOrderUpdates,
   updateOrgSettings,
   updateWarehouseStock,
   upsertInventoryItem,
@@ -285,8 +286,34 @@ export const useSync = () => {
   // 3. REALTIME SUBSCRIPTIONS — live updates from admin↔crew
   useEffect(() => {
     if (!session?.organizationId || !ui.isInitialized) return;
-    // Crew uses polling (45s interval in CrewDashboard) — skip realtime subscriptions
-    if (session.role === 'crew') return;
+
+    // Crew: subscribe to broadcast work-order-update events so new jobs appear
+    // immediately without waiting for the 45-second polling interval.
+    // Supabase Realtime Broadcast works without Supabase auth, which is
+    // required for PIN-based crew sessions that have no auth.uid().
+    if (session.role === 'crew') {
+      const unsubscribe = subscribeToWorkOrderUpdates(
+        session.organizationId,
+        async () => {
+          console.log('[Crew Realtime] Work order update received — refreshing...');
+          try {
+            const cloudData = await fetchCrewWorkOrders(session.organizationId);
+            if (cloudData?.savedEstimates !== undefined) {
+              dispatch({ type: 'UPDATE_DATA', payload: { savedEstimates: cloudData.savedEstimates } });
+            }
+          } catch (e) {
+            console.error('[Crew Realtime] Refresh failed:', e);
+          }
+        }
+      );
+      unsubscribeRef.current = unsubscribe;
+      return () => {
+        if (unsubscribeRef.current) {
+          unsubscribeRef.current();
+          unsubscribeRef.current = null;
+        }
+      };
+    }
 
     // Clean up previous subscription
     if (unsubscribeRef.current) {

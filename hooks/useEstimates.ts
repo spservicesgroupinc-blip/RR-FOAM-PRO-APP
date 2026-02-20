@@ -15,6 +15,7 @@ import {
   insertMaterialLogs,
   insertPurchaseOrder,
   updateEstimateActuals,
+  broadcastWorkOrderUpdate,
 } from '../services/supabaseService';
 import { generateWorkOrderPDF, SaveToCloudOptions } from '../utils/pdfGenerator';
 import { setInventorySyncLock } from './useSync';
@@ -504,6 +505,9 @@ export const useEstimates = () => {
       
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' });
       dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Work Order Synced Successfully' } });
+
+      // Notify crew members in real-time so they see the new work order immediately
+      broadcastWorkOrderUpdate(session.organizationId);
 
     } catch (e) {
       console.error('Background WO Sync Error:', e);
