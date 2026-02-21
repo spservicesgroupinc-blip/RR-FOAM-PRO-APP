@@ -25,15 +25,22 @@ export const signUpAdmin = async (
   if (error) throw new Error(error.message);
   if (!data.user) throw new Error('Signup failed. Please try again.');
 
-  // Wait briefly for trigger to create profile + org
-  await new Promise((r) => setTimeout(r, 1500));
-
-  // Fetch the created profile to get company_id
-  let { data: profile, error: profileError } = await supabase
-    .from('profiles')
-    .select('*, organizations(*)')
-    .eq('id', data.user.id)
-    .single();
+  // Wait for the DB trigger to create profile + org, polling up to 3 seconds.
+  // The trigger runs asynchronously after auth.users INSERT, so we poll
+  // rather than using a fixed delay to handle variable DB/network latency.
+  let profile: any = null;
+  let profileError: any = null;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    await new Promise((r) => setTimeout(r, 500));
+    const res = await supabase
+      .from('profiles')
+      .select('*, organizations(*)')
+      .eq('id', data.user.id)
+      .single();
+    profile = res.data;
+    profileError = res.error;
+    if (profile?.organization_id) break;
+  }
 
   // If the trigger didn't create the profile/org, create them manually.
   // This handles deployments where the handle_new_user trigger is missing.
@@ -121,12 +128,12 @@ export const signInAdmin = async (
     const meta = data.user.user_metadata;
     const companyName = meta?.company_name || email;
     try {
-      // Try to find existing org by company name
+      // Try to find existing org by exact company name (case-insensitive trim)
       let orgId: string | null = null;
       const { data: existingOrg } = await supabase
         .from('organizations')
         .select('id')
-        .ilike('name', companyName)
+        .eq('name', companyName)
         .limit(1)
         .single();
 

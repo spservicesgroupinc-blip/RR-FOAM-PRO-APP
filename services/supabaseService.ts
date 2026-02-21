@@ -307,8 +307,8 @@ export const upsertEstimate = async (record: EstimateRecord, orgId: string): Pro
   // the entire estimate upsert from failing with a UUID type cast error.
   // This can happen when upsertCustomer fails and customerId is still a
   // temp local ID (e.g. "a1b2c3d4e").
-  const isValidUuid = (val: any) => typeof val === 'string' && val.length > 20 && val.includes('-');
-  if ((dbRow as any).customer_id && !isValidUuid((dbRow as any).customer_id)) {
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if ((dbRow as any).customer_id && !UUID_RE.test((dbRow as any).customer_id)) {
     console.warn('[upsertEstimate] customer_id is not a valid UUID, setting to null:', (dbRow as any).customer_id);
     (dbRow as any).customer_id = null;
   }
