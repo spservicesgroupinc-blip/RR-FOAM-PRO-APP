@@ -64,8 +64,8 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
       try {
         const savedOC = localStorage.getItem(strokeStorageKey(selectedJobId, 'oc'));
         const savedCC = localStorage.getItem(strokeStorageKey(selectedJobId, 'cc'));
-        setLiveOCStrokes(savedOC ? parseInt(savedOC) : 0);
-        setLiveCCStrokes(savedCC ? parseInt(savedCC) : 0);
+        setLiveOCStrokes(savedOC ? parseInt(savedOC, 10) : 0);
+        setLiveCCStrokes(savedCC ? parseInt(savedCC, 10) : 0);
       } catch { /* storage unavailable */ }
     }
   }, [selectedJobId]);
