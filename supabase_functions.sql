@@ -202,17 +202,23 @@ BEGIN
         v_item_diff := COALESCE((v_est_item->>'quantity')::numeric, 0) 
                      - COALESCE((v_act_item->>'quantity')::numeric, 0);
 
-        IF v_item_diff != 0 AND v_wh_item_id IS NOT NULL THEN
+        IF v_item_diff != 0 THEN
           -- Try matching by UUID first (only if the ID is a valid UUID format)
-          IF v_wh_item_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+          IF v_wh_item_id IS NOT NULL AND v_wh_item_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
             UPDATE inventory_items
             SET quantity = COALESCE(quantity, 0) + v_item_diff
             WHERE id = v_wh_item_id::uuid
               AND organization_id = p_org_id;
-          END IF;
-
-          -- Fallback: match by name if UUID didn't match or wasn't valid
-          IF NOT FOUND AND v_item_name IS NOT NULL THEN
+          
+            -- If UUID match failed, fallback to name matching
+            IF NOT FOUND AND v_item_name IS NOT NULL THEN
+              UPDATE inventory_items
+              SET quantity = COALESCE(quantity, 0) + v_item_diff
+              WHERE LOWER(TRIM(name)) = LOWER(TRIM(v_item_name))
+                AND organization_id = p_org_id;
+            END IF;
+          ELSIF v_item_name IS NOT NULL THEN
+            -- No valid UUID provided, match by name only
             UPDATE inventory_items
             SET quantity = COALESCE(quantity, 0) + v_item_diff
             WHERE LOWER(TRIM(name)) = LOWER(TRIM(v_item_name))
@@ -245,22 +251,26 @@ BEGIN
         IF v_est_item IS NULL AND COALESCE((v_act_item->>'quantity')::numeric, 0) > 0 THEN
           v_item_diff := -1 * COALESCE((v_act_item->>'quantity')::numeric, 0);
           
-          IF v_wh_item_id IS NOT NULL THEN
-            -- Try matching by UUID first (only if the ID is a valid UUID format)
-            IF v_wh_item_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
-              UPDATE inventory_items
-              SET quantity = COALESCE(quantity, 0) + v_item_diff
-              WHERE id = v_wh_item_id::uuid
-                AND organization_id = p_org_id;
-            END IF;
-
-            -- Fallback: match by name if UUID didn't match or wasn't valid
+          -- Try matching by UUID first (only if the ID is a valid UUID format)
+          IF v_wh_item_id IS NOT NULL AND v_wh_item_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+            UPDATE inventory_items
+            SET quantity = COALESCE(quantity, 0) + v_item_diff
+            WHERE id = v_wh_item_id::uuid
+              AND organization_id = p_org_id;
+          
+            -- If UUID match failed, fallback to name matching
             IF NOT FOUND AND v_item_name IS NOT NULL THEN
               UPDATE inventory_items
               SET quantity = COALESCE(quantity, 0) + v_item_diff
               WHERE LOWER(TRIM(name)) = LOWER(TRIM(v_item_name))
                 AND organization_id = p_org_id;
             END IF;
+          ELSIF v_item_name IS NOT NULL THEN
+            -- No valid UUID provided, match by name only
+            UPDATE inventory_items
+            SET quantity = COALESCE(quantity, 0) + v_item_diff
+            WHERE LOWER(TRIM(name)) = LOWER(TRIM(v_item_name))
+              AND organization_id = p_org_id;
           END IF;
         END IF;
       END LOOP;
