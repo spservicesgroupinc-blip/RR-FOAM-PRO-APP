@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useRef } from 'react';
 import { useCalculator, DEFAULT_STATE } from '../context/CalculatorContext';
 import { EstimateRecord, CalculationResults, CustomerProfile, PurchaseOrder, InvoiceLineItem, MaterialUsageLogEntry } from '../types';
 import { checkPlanLimit } from '../services/subscriptionService';
@@ -23,6 +23,11 @@ import { setInventorySyncLock } from './useSync';
 export const useEstimates = () => {
   const { state, dispatch } = useCalculator();
   const { appData, ui, session } = state;
+
+  // Tracks the in-flight upsertEstimate promise so handleBackgroundWorkOrderSync
+  // can await it before broadcasting to crew (prevents race condition where
+  // broadcast fires before the estimate row exists in the DB).
+  const pendingEstimateUpsertRef = useRef<Promise<EstimateRecord | null> | null>(null);
   const subscription = state.subscription;
 
   const loadEstimateForEditing = (record: EstimateRecord) => {
@@ -147,9 +152,14 @@ export const useEstimates = () => {
                         targetStatus === 'Paid' ? 'Payment Recorded' : 'Estimate Saved';
     dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: actionLabel } });
 
-    // Persist to Supabase in background (non-blocking)
+    // Persist to Supabase in background (non-blocking).
+    // Store the promise so handleBackgroundWorkOrderSync can await it
+    // before broadcasting to crew (prevents race condition).
     if (session?.organizationId) {
-      upsertEstimate(newEstimate, session.organizationId).then(saved => {
+      const upsertPromise = upsertEstimate(newEstimate, session.organizationId);
+      pendingEstimateUpsertRef.current = upsertPromise;
+      upsertPromise.then(saved => {
+        pendingEstimateUpsertRef.current = null;
         if (saved && saved.id !== newEstimate.id) {
           // DB assigned a new UUID — update local state
           const fixedEstimates = updatedEstimates.map(e => 
@@ -159,6 +169,7 @@ export const useEstimates = () => {
           dispatch({ type: 'SET_EDITING_ESTIMATE', payload: saved.id });
         }
       }).catch(err => {
+        pendingEstimateUpsertRef.current = null;
         console.error('Supabase estimate save failed:', err);
         dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Cloud save failed. Data saved locally.' } });
       });
@@ -437,6 +448,30 @@ export const useEstimates = () => {
     setInventorySyncLock(true);
     
     try {
+      // 0. Ensure the estimate is persisted to Supabase BEFORE broadcasting.
+      //    saveEstimate fires upsertEstimate as non-blocking; if the promise
+      //    is still pending, await it here so the crew's fetchCrewWorkOrders
+      //    call will find the new work order in the DB.
+      let persistedJobId = record.id;
+      if (pendingEstimateUpsertRef.current) {
+        try {
+          const saved = await pendingEstimateUpsertRef.current;
+          pendingEstimateUpsertRef.current = null;
+          if (saved) {
+            persistedJobId = saved.id;
+          }
+        } catch {
+          // saveEstimate's .catch() already handled UI notification;
+          // retry the upsert so the estimate reaches Supabase
+          try {
+            const retried = await upsertEstimate(record, session.organizationId);
+            if (retried) persistedJobId = retried.id;
+          } catch (retryErr) {
+            console.error('[WO Sync] Estimate upsert retry failed:', retryErr);
+          }
+        }
+      }
+
       // 1. Update warehouse stock in Supabase (foam chemical sets)
       await updateWarehouseStock(
         session.organizationId,
@@ -457,13 +492,14 @@ export const useEstimates = () => {
       }
 
       // 4. Create material usage log entries (estimated)
+      //    Use persistedJobId (DB UUID) instead of local record.id
       const logEntries: MaterialUsageLogEntry[] = [];
       const now = new Date().toISOString();
       
       if (results.openCellSets > 0) {
         logEntries.push({
           date: now,
-          jobId: record.id,
+          jobId: persistedJobId,
           customerName: record.customer?.name || 'Unknown',
           materialName: 'Open Cell Foam',
           quantity: results.openCellSets,
@@ -475,7 +511,7 @@ export const useEstimates = () => {
       if (results.closedCellSets > 0) {
         logEntries.push({
           date: now,
-          jobId: record.id,
+          jobId: persistedJobId,
           customerName: record.customer?.name || 'Unknown',
           materialName: 'Closed Cell Foam',
           quantity: results.closedCellSets,
@@ -488,7 +524,7 @@ export const useEstimates = () => {
         if (inv.quantity > 0) {
           logEntries.push({
             date: now,
-            jobId: record.id,
+            jobId: persistedJobId,
             customerName: record.customer?.name || 'Unknown',
             materialName: inv.name,
             quantity: inv.quantity,

@@ -176,16 +176,18 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
   useEffect(() => {
     // Poll for new jobs every 45 seconds
     const syncInterval = setInterval(() => {
-        // Only sync if we aren't in the middle of a critical action (Timer/Modal)
-        // This prevents UI resets while typing notes or tracking time
-        if (!isTimerRunning && !showCompletionModal && !isCompleting) {
+        // Skip sync only during completion flow (modal open or submitting)
+        // to prevent UI disruption while entering actuals.
+        // Timer-running state is safe because timer/stroke state lives in
+        // local useState and is not affected by the context data refresh.
+        if (!showCompletionModal && !isCompleting) {
             console.log("Auto-syncing crew dashboard...");
             onSync();
         }
     }, 45000);
 
     return () => clearInterval(syncInterval);
-  }, [isTimerRunning, showCompletionModal, isCompleting, onSync]);
+  }, [showCompletionModal, isCompleting, onSync]);
 
   // Restore timer state on load
   useEffect(() => {
