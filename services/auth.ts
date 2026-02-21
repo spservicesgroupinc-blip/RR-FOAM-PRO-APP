@@ -26,17 +26,59 @@ export const signUpAdmin = async (
   if (!data.user) throw new Error('Signup failed. Please try again.');
 
   // Wait briefly for trigger to create profile + org
-  await new Promise((r) => setTimeout(r, 500));
+  await new Promise((r) => setTimeout(r, 1500));
 
   // Fetch the created profile to get company_id
-  const { data: profile, error: profileError } = await supabase
+  let { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('*, organizations(*)')
     .eq('id', data.user.id)
     .single();
 
+  // If the trigger didn't create the profile/org, create them manually.
+  // This handles deployments where the handle_new_user trigger is missing.
   if (profileError || !profile) {
+    console.warn('[Auth] Profile not found after signup — creating org + profile manually.');
+    try {
+      // Create organization
+      const { data: newOrg, error: orgErr } = await supabase
+        .from('organizations')
+        .insert({ name: companyName, crew_pin: '' })
+        .select()
+        .single();
+      if (orgErr) throw orgErr;
+
+      // Create profile linked to user + org
+      const { error: profErr } = await supabase
+        .from('profiles')
+        .insert({
+          id: data.user.id,
+          organization_id: newOrg.id,
+          role: 'admin',
+          full_name: fullName,
+        });
+      if (profErr) throw profErr;
+
+      // Re-fetch complete profile
+      const { data: retryProfile } = await supabase
+        .from('profiles')
+        .select('*, organizations(*)')
+        .eq('id', data.user.id)
+        .single();
+      profile = retryProfile;
+    } catch (manualErr) {
+      console.error('[Auth] Manual profile/org creation failed:', manualErr);
+      throw new Error('Account created but profile setup failed. Please login or contact support.');
+    }
+  }
+
+  if (!profile) {
     throw new Error('Account created but profile setup failed. Please login.');
+  }
+
+  // Validate organization_id is present
+  if (!profile.organization_id) {
+    throw new Error('Account created but not linked to a company. Contact support.');
   }
 
   return {
@@ -44,8 +86,8 @@ export const signUpAdmin = async (
     email: data.user.email || email,
     username: email,
     companyName: companyName,
-    organizationId: profile.organization_id || '',
-    spreadsheetId: profile.organization_id || '', // backward compat
+    organizationId: profile.organization_id,
+    spreadsheetId: profile.organization_id, // backward compat
     role: 'admin',
     token: data.session?.access_token,
   };
@@ -67,14 +109,100 @@ export const signInAdmin = async (
   if (!data.user) throw new Error('Login failed.');
 
   // Fetch profile with company
-  const { data: profile, error: profileError } = await supabase
+  let { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('*, organizations(*)')
     .eq('id', data.user.id)
     .single();
 
+  // Recovery: if profile exists but has no organization_id, try to find or create the org
+  if (profile && !profile.organization_id) {
+    console.warn('[Auth] Profile exists but missing organization_id — attempting recovery.');
+    const meta = data.user.user_metadata;
+    const companyName = meta?.company_name || email;
+    try {
+      // Try to find existing org by company name
+      let orgId: string | null = null;
+      const { data: existingOrg } = await supabase
+        .from('organizations')
+        .select('id')
+        .ilike('name', companyName)
+        .limit(1)
+        .single();
+
+      if (existingOrg) {
+        orgId = existingOrg.id;
+      } else {
+        // Create a new organization
+        const { data: newOrg, error: orgErr } = await supabase
+          .from('organizations')
+          .insert({ name: companyName, crew_pin: '' })
+          .select()
+          .single();
+        if (!orgErr && newOrg) orgId = newOrg.id;
+      }
+
+      if (orgId) {
+        await supabase
+          .from('profiles')
+          .update({ organization_id: orgId })
+          .eq('id', data.user.id);
+        // Re-fetch profile
+        const { data: updated } = await supabase
+          .from('profiles')
+          .select('*, organizations(*)')
+          .eq('id', data.user.id)
+          .single();
+        if (updated) profile = updated;
+      }
+    } catch (recoveryErr) {
+      console.error('[Auth] Organization recovery failed:', recoveryErr);
+    }
+  }
+
+  // Recovery: if no profile at all, try to create one
   if (profileError || !profile) {
+    console.warn('[Auth] No profile found — attempting to create one.');
+    const meta = data.user.user_metadata;
+    const companyName = meta?.company_name || email;
+    try {
+      // Create org
+      const { data: newOrg, error: orgErr } = await supabase
+        .from('organizations')
+        .insert({ name: companyName, crew_pin: '' })
+        .select()
+        .single();
+      if (orgErr) throw orgErr;
+
+      // Create profile
+      const { error: profErr } = await supabase
+        .from('profiles')
+        .insert({
+          id: data.user.id,
+          organization_id: newOrg.id,
+          role: 'admin',
+          full_name: meta?.full_name || '',
+        });
+      if (profErr) throw profErr;
+
+      const { data: created } = await supabase
+        .from('profiles')
+        .select('*, organizations(*)')
+        .eq('id', data.user.id)
+        .single();
+      profile = created;
+    } catch (createErr) {
+      console.error('[Auth] Profile creation during login failed:', createErr);
+      throw new Error('Profile not found and auto-creation failed. Contact support.');
+    }
+  }
+
+  if (!profile) {
     throw new Error('Profile not found. Contact support.');
+  }
+
+  if (!profile.organization_id) {
+    throw new Error('Your account is not linked to a company. Contact support.');
   }
 
   const company = (profile as any).organizations;
@@ -84,8 +212,8 @@ export const signInAdmin = async (
     email: data.user.email || email,
     username: email,
     companyName: company?.name || '',
-    organizationId: profile.organization_id || '',
-    spreadsheetId: profile.organization_id || '',
+    organizationId: profile.organization_id,
+    spreadsheetId: profile.organization_id,
     role: (profile.role as 'admin' | 'crew') || 'admin',
     token: data.session?.access_token,
   };
@@ -142,7 +270,14 @@ export const getCurrentSession = async (): Promise<UserSession | null> => {
     const crewSession = localStorage.getItem('foamProCrewSession');
     if (crewSession) {
       try {
-        return JSON.parse(crewSession) as UserSession;
+        const parsed = JSON.parse(crewSession) as UserSession;
+        // Validate crew session has organizationId
+        if (!parsed.organizationId) {
+          console.warn('[Auth] Crew session missing organizationId — clearing.');
+          localStorage.removeItem('foamProCrewSession');
+          return null;
+        }
+        return parsed;
       } catch {
         return null;
       }
@@ -157,6 +292,12 @@ export const getCurrentSession = async (): Promise<UserSession | null> => {
     .single();
 
   if (!profile) return null;
+
+  // Warn if organizationId is missing (broken admin-crew link)
+  if (!profile.organization_id) {
+    console.error('[Auth] Profile exists but organization_id is null for user', session.user.id,
+      '— the admin-crew link is broken. User should log out and back in to trigger auto-recovery.');
+  }
 
   const company = (profile as any).organizations;
 

@@ -303,6 +303,16 @@ export const upsertEstimate = async (record: EstimateRecord, orgId: string): Pro
     delete (dbRow as any).id;
   }
 
+  // Sanitize customer_id: if it's not a valid UUID, set to null to prevent
+  // the entire estimate upsert from failing with a UUID type cast error.
+  // This can happen when upsertCustomer fails and customerId is still a
+  // temp local ID (e.g. "a1b2c3d4e").
+  const isValidUuid = (val: any) => typeof val === 'string' && val.length > 20 && val.includes('-');
+  if ((dbRow as any).customer_id && !isValidUuid((dbRow as any).customer_id)) {
+    console.warn('[upsertEstimate] customer_id is not a valid UUID, setting to null:', (dbRow as any).customer_id);
+    (dbRow as any).customer_id = null;
+  }
+
   const { data, error } = await supabase
     .from('estimates')
     .upsert(dbRow, { onConflict: 'id' })
@@ -805,6 +815,10 @@ export const fetchCrewWorkOrders = async (orgId: string): Promise<Partial<Calcul
   }
 
   // ── Attempt 2: Direct queries as fallback ──
+  // NOTE: Crew users have no auth.uid() (PIN-based login), so direct queries
+  // are typically blocked by RLS. This fallback only works if anon/crew
+  // policies exist on the tables. If RLS blocks everything, we return null
+  // so the UI shows a clear error to run supabase_functions.sql.
   console.log('[Crew Sync] Trying direct query fallback...');
   try {
     const [orgRes, custRes, estRes] = await Promise.all([
@@ -823,6 +837,19 @@ export const fetchCrewWorkOrders = async (orgId: string): Promise<Partial<Calcul
     const rawEstimates = estRes.data || [];
 
     console.log(`[Crew Sync] Fallback results — org: ${org.name || 'N/A'}, customers: ${rawCustomers.length}, estimates: ${rawEstimates.length}`);
+
+    // Detect RLS-blocked fallback: if the org itself couldn't be read, RLS
+    // is blocking crew access and the fallback is useless. Return null so
+    // the UI shows the "run supabase_functions.sql" error message.
+    if (!orgRes.data || orgRes.error) {
+      console.error(
+        '[Crew Sync] CRITICAL: Cannot read organization data. ' +
+        'Crew users have no auth.uid(), so direct queries are blocked by RLS. ' +
+        'The get_crew_work_orders RPC function is required. ' +
+        'Run supabase_functions.sql in the Supabase SQL Editor to fix this.'
+      );
+      return null;
+    }
 
     if (rawEstimates.length === 0 && estRes.error) {
       // Both RPC and direct query failed — likely RLS blocking everything
