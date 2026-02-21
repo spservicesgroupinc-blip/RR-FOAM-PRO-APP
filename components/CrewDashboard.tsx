@@ -267,7 +267,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
           if (selectedJob.id) {
             let user = "Crew";
             try {
-                const s = localStorage.getItem('foamProSession');
+                const s = localStorage.getItem('foamProCrewSession') || localStorage.getItem('foamProSession');
                 if (s) user = JSON.parse(s).username;
             } catch(e) {
                 console.warn("Could not retrieve session user for timer log");

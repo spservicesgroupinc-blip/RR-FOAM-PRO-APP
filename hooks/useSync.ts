@@ -208,7 +208,21 @@ export const useSync = () => {
 
   // 2. CLOUD-FIRST INITIALIZATION — fetch all org data from Supabase
   useEffect(() => {
-    if (!session?.organizationId) return;
+    if (!session) return;
+
+    // Validate organizationId — empty/missing means the admin-crew link is broken
+    if (!session.organizationId) {
+      console.error('[Sync] CRITICAL: session.organizationId is empty. Work orders will NOT sync to Supabase.');
+      dispatch({ type: 'SET_LOADING', payload: false });
+      dispatch({ type: 'SET_INITIALIZED', payload: true });
+      dispatch({ type: 'SET_NOTIFICATION', payload: {
+        type: 'error',
+        message: session.role === 'admin'
+          ? 'Account not linked to a company. Please log out, then log back in to fix this automatically.'
+          : 'Crew session invalid. Please log out and re-enter your company name and PIN.'
+      }});
+      return;
+    }
 
     const initializeApp = async () => {
       dispatch({ type: 'SET_LOADING', payload: true });
