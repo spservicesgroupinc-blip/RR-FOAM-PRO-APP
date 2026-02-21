@@ -456,19 +456,21 @@ export const useEstimates = () => {
       if (pendingEstimateUpsertRef.current) {
         try {
           const saved = await pendingEstimateUpsertRef.current;
-          pendingEstimateUpsertRef.current = null;
           if (saved) {
             persistedJobId = saved.id;
           }
-        } catch {
+        } catch (upsertErr) {
           // saveEstimate's .catch() already handled UI notification;
           // retry the upsert so the estimate reaches Supabase
+          console.warn('[WO Sync] Initial estimate upsert failed, retrying:', upsertErr);
           try {
             const retried = await upsertEstimate(record, session.organizationId);
             if (retried) persistedJobId = retried.id;
           } catch (retryErr) {
             console.error('[WO Sync] Estimate upsert retry failed:', retryErr);
           }
+        } finally {
+          pendingEstimateUpsertRef.current = null;
         }
       }
 
