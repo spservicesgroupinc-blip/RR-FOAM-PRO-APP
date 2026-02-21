@@ -274,20 +274,24 @@ export const getCurrentSession = async (): Promise<UserSession | null> => {
 
   if (!session?.user) {
     // Check for crew session in localStorage
-    const crewSession = localStorage.getItem('foamProCrewSession');
-    if (crewSession) {
-      try {
-        const parsed = JSON.parse(crewSession) as UserSession;
-        // Validate crew session has organizationId
-        if (!parsed.organizationId) {
-          console.warn('[Auth] Crew session missing organizationId — clearing.');
-          localStorage.removeItem('foamProCrewSession');
+    try {
+      const crewSession = localStorage.getItem('foamProCrewSession');
+      if (crewSession) {
+        try {
+          const parsed = JSON.parse(crewSession) as UserSession;
+          // Validate crew session has organizationId
+          if (!parsed.organizationId) {
+            console.warn('[Auth] Crew session missing organizationId — clearing.');
+            localStorage.removeItem('foamProCrewSession');
+            return null;
+          }
+          return parsed;
+        } catch {
           return null;
         }
-        return parsed;
-      } catch {
-        return null;
       }
+    } catch {
+      // localStorage unavailable (e.g. mobile Safari private browsing)
     }
     return null;
   }

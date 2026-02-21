@@ -38,7 +38,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, installPrompt, on
           return;
         }
         const session = await signInCrew(formData.crewCompany, formData.crewPin);
-        localStorage.setItem('foamProCrewSession', JSON.stringify(session));
+        try { localStorage.setItem('foamProCrewSession', JSON.stringify(session)); } catch { /* storage unavailable */ }
         onLoginSuccess(session);
       } else {
         if (isSignup) {

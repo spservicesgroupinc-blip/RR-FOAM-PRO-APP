@@ -61,18 +61,22 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
   // Load stroke counts when a job is selected
   useEffect(() => {
     if (selectedJobId) {
-      const savedOC = localStorage.getItem(strokeStorageKey(selectedJobId, 'oc'));
-      const savedCC = localStorage.getItem(strokeStorageKey(selectedJobId, 'cc'));
-      setLiveOCStrokes(savedOC ? parseInt(savedOC) : 0);
-      setLiveCCStrokes(savedCC ? parseInt(savedCC) : 0);
+      try {
+        const savedOC = localStorage.getItem(strokeStorageKey(selectedJobId, 'oc'));
+        const savedCC = localStorage.getItem(strokeStorageKey(selectedJobId, 'cc'));
+        setLiveOCStrokes(savedOC ? parseInt(savedOC, 10) : 0);
+        setLiveCCStrokes(savedCC ? parseInt(savedCC, 10) : 0);
+      } catch { /* storage unavailable */ }
     }
   }, [selectedJobId]);
 
   // Save stroke counts whenever they change
   useEffect(() => {
     if (selectedJobId && (liveOCStrokes > 0 || liveCCStrokes > 0)) {
-      localStorage.setItem(strokeStorageKey(selectedJobId, 'oc'), liveOCStrokes.toString());
-      localStorage.setItem(strokeStorageKey(selectedJobId, 'cc'), liveCCStrokes.toString());
+      try {
+        localStorage.setItem(strokeStorageKey(selectedJobId, 'oc'), liveOCStrokes.toString());
+        localStorage.setItem(strokeStorageKey(selectedJobId, 'cc'), liveCCStrokes.toString());
+      } catch { /* storage unavailable */ }
     }
   }, [selectedJobId, liveOCStrokes, liveCCStrokes]);
 
@@ -98,10 +102,10 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
     if (window.confirm(`Reset ${type === 'oc' ? 'Open Cell' : 'Closed Cell'} stroke counter to 0?`)) {
       if (type === 'oc') {
         setLiveOCStrokes(0);
-        localStorage.setItem(strokeStorageKey(selectedJobId, 'oc'), '0');
+        try { localStorage.setItem(strokeStorageKey(selectedJobId, 'oc'), '0'); } catch { /* storage unavailable */ }
       } else {
         setLiveCCStrokes(0);
-        localStorage.setItem(strokeStorageKey(selectedJobId, 'cc'), '0');
+        try { localStorage.setItem(strokeStorageKey(selectedJobId, 'cc'), '0'); } catch { /* storage unavailable */ }
       }
     }
   }, [selectedJobId]);
@@ -191,14 +195,16 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
   // Restore timer state on load
   useEffect(() => {
-      const savedStart = localStorage.getItem('foamPro_crewStartTime');
-      const savedJobId = localStorage.getItem('foamPro_crewActiveJob');
-      
-      if (savedStart && savedJobId) {
-          setJobStartTime(savedStart);
-          setIsTimerRunning(true);
-          setSelectedJobId(savedJobId);
-      }
+      try {
+        const savedStart = localStorage.getItem('foamPro_crewStartTime');
+        const savedJobId = localStorage.getItem('foamPro_crewActiveJob');
+        
+        if (savedStart && savedJobId) {
+            setJobStartTime(savedStart);
+            setIsTimerRunning(true);
+            setSelectedJobId(savedJobId);
+        }
+      } catch { /* storage unavailable */ }
   }, []);
 
   // Timer Tick
@@ -233,8 +239,10 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
       const now = new Date().toISOString();
       setJobStartTime(now);
       setIsTimerRunning(true);
-      localStorage.setItem('foamPro_crewStartTime', now);
-      if (selectedJobId) localStorage.setItem('foamPro_crewActiveJob', selectedJobId);
+      try {
+        localStorage.setItem('foamPro_crewStartTime', now);
+        if (selectedJobId) localStorage.setItem('foamPro_crewActiveJob', selectedJobId);
+      } catch { /* storage unavailable */ }
 
       // Notify backend that crew started the job
       try {
@@ -288,8 +296,10 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
           setIsTimerRunning(false);
           setJobStartTime(null);
           setElapsedSeconds(0);
-          localStorage.removeItem('foamPro_crewStartTime');
-          localStorage.removeItem('foamPro_crewActiveJob');
+          try {
+            localStorage.removeItem('foamPro_crewStartTime');
+            localStorage.removeItem('foamPro_crewActiveJob');
+          } catch { /* storage unavailable */ }
           
           if (isCompletion) {
               const estLabor = selectedJob.expenses?.manHours || 0;

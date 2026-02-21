@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'rfe-foam-pro-v14-desktop';
+const CACHE_NAME = 'rfe-foam-pro-v15';
 const URLS_TO_CACHE = [
   '/',
   '/index.html',
@@ -41,6 +41,15 @@ self.addEventListener('activate', (event) => {
 
 // Fetch Event: Stale-While-Revalidate Strategy
 self.addEventListener('fetch', (event) => {
+  const url = event.request.url;
+
+  // 0. NEVER cache Supabase API / Realtime calls — always go to network.
+  //    This is critical for mobile Safari where the SW can otherwise serve
+  //    stale cached API responses, breaking data sync on iPhones.
+  if (url.includes('supabase.co') || url.includes('supabase.in')) {
+    return; // Let the browser handle the request normally (network-only)
+  }
+
   // 1. Handle Navigation (HTML) - Network First for freshness, Fallback to Cache
   if (event.request.mode === 'navigate') {
     event.respondWith(
