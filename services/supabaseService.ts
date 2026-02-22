@@ -321,7 +321,9 @@ export const upsertEstimate = async (record: EstimateRecord, orgId: string): Pro
 
   if (error) {
     console.error('upsertEstimate error:', error);
-    return null;
+    // Throw so callers' .catch() handlers fire and can display error notifications.
+    // Previously returned null which silently swallowed the error on iOS auth failures.
+    throw new Error(error.message || 'Failed to save estimate to cloud');
   }
 
   return dbEstimateToRecord(data, [record.customer]);

@@ -27,8 +27,9 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
-    // Faster token refresh cycle helps iOS connections that drop silently
-    flowType: 'implicit',
+    // PKCE is recommended for PWA/mobile — more reliable token refresh on iOS
+    // than implicit flow, which relies on URL hash fragments that iOS handles poorly
+    flowType: 'pkce',
   },
   global: {
     headers: {

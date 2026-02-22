@@ -2,6 +2,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useCalculator, DEFAULT_STATE } from '../context/CalculatorContext';
 import { EstimateRecord, MaterialUsageLogEntry } from '../types';
+import { supabase } from '../src/lib/supabase';
 import {
   fetchOrgData,
   fetchCrewWorkOrders,
@@ -593,6 +594,22 @@ export const useSync = () => {
 
       console.log('[iOS Resume] App became visible — re-syncing...');
 
+      // For admin users: proactively refresh the Supabase JWT before any data fetch.
+      // iOS can suspend the app for hours, allowing the access token to expire.
+      // autoRefreshToken only fires on a timer which doesn't run while suspended.
+      if (session.role === 'admin') {
+        try {
+          const { error: refreshError } = await supabase.auth.refreshSession();
+          if (refreshError) {
+            console.warn('[iOS Resume] Session refresh failed:', refreshError.message);
+          } else {
+            console.log('[iOS Resume] Auth session refreshed successfully');
+          }
+        } catch (e) {
+          console.warn('[iOS Resume] Session refresh error:', e);
+        }
+      }
+
       // Flush any queued offline crew updates first
       try {
         const flushed = await flushOfflineCrewQueue();
@@ -641,7 +658,6 @@ export const useSync = () => {
         handleVisibilityChange();
       }
     };
-
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('pageshow', handlePageShow);
 
