@@ -591,11 +591,20 @@ export const useSync = () => {
           const { error: refreshError } = await supabase.auth.refreshSession();
           if (refreshError) {
             console.warn('[iOS Resume] Session refresh failed:', refreshError.message);
+            // Token is unrecoverable — surface a re-login prompt
+            dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Session expired. Please log in again.' } });
+            safeStorage.removeItem('foamProSession');
+            dispatch({ type: 'LOGOUT' });
+            return; // Skip data re-fetch — user must re-authenticate
           } else {
             console.log('[iOS Resume] Auth session refreshed successfully');
           }
         } catch (e) {
           console.warn('[iOS Resume] Session refresh error:', e);
+          dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Session expired. Please log in again.' } });
+          safeStorage.removeItem('foamProSession');
+          dispatch({ type: 'LOGOUT' });
+          return;
         }
       }
 

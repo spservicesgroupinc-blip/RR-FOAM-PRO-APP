@@ -12,7 +12,8 @@ import {
   User, 
   Phone,
   DollarSign,
-  ArrowRight
+  ArrowRight,
+  Download
 } from 'lucide-react';
 import { EstimateRecord, CalculationResults } from '../types';
 import { JobProgress } from './JobProgress';
@@ -22,7 +23,7 @@ interface EstimateDetailProps {
   results: CalculationResults;
   onBack: () => void;
   onEdit: () => void;
-  onGeneratePDF: () => void;
+  onDownloadPDF?: (type: 'ESTIMATE' | 'INVOICE' | 'RECEIPT') => void;
   onSold: () => void;
   onInvoice: () => void;
 }
@@ -32,7 +33,7 @@ export const EstimateDetail: React.FC<EstimateDetailProps> = ({
   results, 
   onBack, 
   onEdit, 
-  onGeneratePDF,
+  onDownloadPDF,
   onSold,
   onInvoice
 }) => {
@@ -59,9 +60,22 @@ export const EstimateDetail: React.FC<EstimateDetailProps> = ({
         <button onClick={onBack} className="flex items-center gap-2 text-slate-500 hover:text-slate-900 text-xs font-black uppercase tracking-widest transition-colors">
           <ArrowLeft className="w-4 h-4" /> Back to List
         </button>
-        <button onClick={onEdit} className="flex items-center gap-2 text-slate-400 hover:text-slate-700 text-xs font-black uppercase tracking-widest transition-colors">
-          <Pencil className="w-3 h-3" /> Edit
-        </button>
+        <div className="flex items-center gap-3">
+          {onDownloadPDF && (
+            <button
+              onClick={() => onDownloadPDF(
+                record.status === 'Paid' ? 'RECEIPT' :
+                record.status === 'Invoiced' ? 'INVOICE' : 'ESTIMATE'
+              )}
+              className="flex items-center gap-2 text-slate-400 hover:text-blue-600 text-xs font-black uppercase tracking-widest transition-colors"
+            >
+              <Download className="w-3 h-3" /> Download PDF
+            </button>
+          )}
+          <button onClick={onEdit} className="flex items-center gap-2 text-slate-400 hover:text-slate-700 text-xs font-black uppercase tracking-widest transition-colors">
+            <Pencil className="w-3 h-3" /> Edit
+          </button>
+        </div>
       </div>
 
       {/* Workflow Stepper Card — same pattern as Calculator */}

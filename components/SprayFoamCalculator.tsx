@@ -509,6 +509,7 @@ const SprayFoamCalculator: React.FC = () => {
                     loadEstimateForEditing(rec);
                     dispatch({ type: 'SET_VIEW', payload: 'invoice_stage' });
                 }}
+                onDownloadPDF={(rec, type) => generatePDF(type, rec)}
                 onSync={forceRefresh}
                 subscription={state.subscription}
             />
@@ -542,6 +543,7 @@ const SprayFoamCalculator: React.FC = () => {
                 results={results} 
                 onBack={() => dispatch({ type: 'SET_VIEW', payload: 'dashboard' })}
                 onEdit={() => dispatch({ type: 'SET_VIEW', payload: 'calculator' })}
+                onDownloadPDF={(type) => generatePDF(type)}
                 onSold={handleStageWorkOrder}
                 onInvoice={handleStageInvoice}
             />
@@ -568,6 +570,7 @@ const SprayFoamCalculator: React.FC = () => {
                 onConfirm={handleConfirmInvoice}
                 onMarkPaid={handleMarkPaidWithPDF}
                 onSaveAndMarkPaid={handleSaveAndMarkPaid}
+                onDownloadPDF={(type) => generatePDF(type)}
             />
         )}
 
@@ -580,6 +583,7 @@ const SprayFoamCalculator: React.FC = () => {
                 onUpdateState={handleInputChange}
                 onCancel={() => dispatch({ type: 'SET_VIEW', payload: 'calculator' })}
                 onConfirm={handleConfirmEstimate}
+                onDownloadPDF={() => generatePDF('ESTIMATE')}
             />
         )}
 

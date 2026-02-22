@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { DollarSign, HardHat, Receipt, Filter, Plus, Trash, CheckCircle2, AlertCircle, Clock, TrendingUp, TrendingDown, Wallet, PieChart, Fuel, ArrowRight, AlertTriangle, BarChart3, RefreshCw, Droplet, Zap, Crown } from 'lucide-react';
+import { DollarSign, HardHat, Receipt, Filter, Plus, Trash, CheckCircle2, AlertCircle, Clock, TrendingUp, TrendingDown, Wallet, PieChart, Fuel, ArrowRight, AlertTriangle, BarChart3, RefreshCw, Droplet, Zap, Crown, Download } from 'lucide-react';
 import { CalculatorState, EstimateRecord, SubscriptionInfo } from '../types';
 import { getTrialDaysRemaining } from '../services/subscriptionService';
 import { usePagination } from '../hooks/usePagination';
@@ -16,6 +16,7 @@ interface DashboardProps {
   initialFilter?: 'all' | 'work_orders' | 'invoices';
   onGoToWarehouse: () => void;
   onViewInvoice?: (record: EstimateRecord) => Promise<void> | void;
+  onDownloadPDF?: (record: EstimateRecord, type: 'ESTIMATE' | 'INVOICE' | 'RECEIPT') => void;
   onSync: () => void;
   subscription?: SubscriptionInfo | null;
 }
@@ -29,6 +30,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   initialFilter = 'all',
   onGoToWarehouse,
   onViewInvoice,
+  onDownloadPDF,
   onSync,
   subscription
 }) => {
@@ -419,6 +421,15 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                             <td className="px-6 py-4 font-mono font-bold text-slate-600">${est.totalValue.toLocaleString()}</td>
                                             <td className="px-6 py-4 text-right" onClick={e => e.stopPropagation()}>
                                                 <div className="flex justify-end items-center gap-2">
+                                                    {onDownloadPDF && ['Draft', 'Invoiced', 'Paid'].includes(est.status) && (
+                                                        <button
+                                                            onClick={() => onDownloadPDF(est, est.status === 'Paid' ? 'RECEIPT' : est.status === 'Invoiced' ? 'INVOICE' : 'ESTIMATE')}
+                                                            className="p-2 text-slate-300 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                                                            title="Download PDF"
+                                                        >
+                                                            <Download className="w-4 h-4" />
+                                                        </button>
+                                                    )}
                                                     {est.status === 'Invoiced' && (
                                                         <button 
                                                             onClick={async (e) => {
