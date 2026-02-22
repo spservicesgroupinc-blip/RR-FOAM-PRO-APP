@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { CalculatorState, EstimateRecord } from '../types';
 import { crewUpdateJob } from '../services/supabaseService';
+import safeStorage from '../utils/safeStorage';
 import { FeedbackButton } from './FeedbackButton';
 
 interface CrewDashboardProps {
@@ -62,8 +63,8 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
   useEffect(() => {
     if (selectedJobId) {
       try {
-        const savedOC = localStorage.getItem(strokeStorageKey(selectedJobId, 'oc'));
-        const savedCC = localStorage.getItem(strokeStorageKey(selectedJobId, 'cc'));
+        const savedOC = safeStorage.getItem(strokeStorageKey(selectedJobId, 'oc'));
+        const savedCC = safeStorage.getItem(strokeStorageKey(selectedJobId, 'cc'));
         setLiveOCStrokes(savedOC ? parseInt(savedOC, 10) : 0);
         setLiveCCStrokes(savedCC ? parseInt(savedCC, 10) : 0);
       } catch { /* storage unavailable */ }
@@ -74,8 +75,8 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
   useEffect(() => {
     if (selectedJobId && (liveOCStrokes > 0 || liveCCStrokes > 0)) {
       try {
-        localStorage.setItem(strokeStorageKey(selectedJobId, 'oc'), liveOCStrokes.toString());
-        localStorage.setItem(strokeStorageKey(selectedJobId, 'cc'), liveCCStrokes.toString());
+        safeStorage.setItem(strokeStorageKey(selectedJobId, 'oc'), liveOCStrokes.toString());
+        safeStorage.setItem(strokeStorageKey(selectedJobId, 'cc'), liveCCStrokes.toString());
       } catch { /* storage unavailable */ }
     }
   }, [selectedJobId, liveOCStrokes, liveCCStrokes]);
@@ -102,10 +103,10 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
     if (window.confirm(`Reset ${type === 'oc' ? 'Open Cell' : 'Closed Cell'} stroke counter to 0?`)) {
       if (type === 'oc') {
         setLiveOCStrokes(0);
-        try { localStorage.setItem(strokeStorageKey(selectedJobId, 'oc'), '0'); } catch { /* storage unavailable */ }
+        safeStorage.setItem(strokeStorageKey(selectedJobId, 'oc'), '0');
       } else {
         setLiveCCStrokes(0);
-        try { localStorage.setItem(strokeStorageKey(selectedJobId, 'cc'), '0'); } catch { /* storage unavailable */ }
+        safeStorage.setItem(strokeStorageKey(selectedJobId, 'cc'), '0');
       }
     }
   }, [selectedJobId]);
@@ -196,8 +197,8 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
   // Restore timer state on load
   useEffect(() => {
       try {
-        const savedStart = localStorage.getItem('foamPro_crewStartTime');
-        const savedJobId = localStorage.getItem('foamPro_crewActiveJob');
+        const savedStart = safeStorage.getItem('foamPro_crewStartTime');
+        const savedJobId = safeStorage.getItem('foamPro_crewActiveJob');
         
         if (savedStart && savedJobId) {
             setJobStartTime(savedStart);
@@ -240,8 +241,8 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
       setJobStartTime(now);
       setIsTimerRunning(true);
       try {
-        localStorage.setItem('foamPro_crewStartTime', now);
-        if (selectedJobId) localStorage.setItem('foamPro_crewActiveJob', selectedJobId);
+        safeStorage.setItem('foamPro_crewStartTime', now);
+        if (selectedJobId) safeStorage.setItem('foamPro_crewActiveJob', selectedJobId);
       } catch { /* iOS storage full — timer still works in memory */ }
 
       // Notify backend that crew started the job (with retry via crewUpdateJob)
@@ -278,7 +279,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
             let user = "Crew";
             try {
                 // Check both session keys — iOS can evict one or both
-                const s = localStorage.getItem('foamProCrewSession') || localStorage.getItem('foamProSession');
+                const s = safeStorage.getItem('foamProCrewSession') || safeStorage.getItem('foamProSession');
                 if (s) {
                   const parsed = JSON.parse(s);
                   user = parsed.username || parsed.companyName || 'Crew';
@@ -303,8 +304,8 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
           setJobStartTime(null);
           setElapsedSeconds(0);
           try {
-            localStorage.removeItem('foamPro_crewStartTime');
-            localStorage.removeItem('foamPro_crewActiveJob');
+            safeStorage.removeItem('foamPro_crewStartTime');
+            safeStorage.removeItem('foamPro_crewActiveJob');
           } catch { /* storage unavailable */ }
           
           if (isCompletion) {
@@ -354,7 +355,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
         let sessionUser = 'Crew';
         let sessionOrgId = organizationId;
         try {
-          const sessionStr = localStorage.getItem('foamProCrewSession') || localStorage.getItem('foamProSession');
+          const sessionStr = safeStorage.getItem('foamProCrewSession') || safeStorage.getItem('foamProSession');
           if (sessionStr) {
             const parsed = JSON.parse(sessionStr);
             sessionUser = parsed.username || parsed.companyName || 'Crew';
@@ -377,8 +378,8 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
         
         if (success) {
             // Clear stroke counter localStorage for this job
-            localStorage.removeItem(strokeStorageKey(selectedJob.id, 'oc'));
-            localStorage.removeItem(strokeStorageKey(selectedJob.id, 'cc'));
+            safeStorage.removeItem(strokeStorageKey(selectedJob.id, 'oc'));
+            safeStorage.removeItem(strokeStorageKey(selectedJob.id, 'cc'));
             setLiveOCStrokes(0);
             setLiveCCStrokes(0);
 

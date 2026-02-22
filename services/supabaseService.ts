@@ -20,6 +20,7 @@ import {
   MaterialUsageLogEntry,
   CompanyProfile,
 } from '../types';
+import safeStorage from '../utils/safeStorage';
 
 // ─── TYPES ──────────────────────────────────────────────────────────────────
 
@@ -913,11 +914,11 @@ const OFFLINE_QUEUE_KEY = 'foamPro_offlineCrewQueue';
 
 const queueOfflineCrewUpdate = (orgId: string, estimateId: string, actuals: any, executionStatus: string) => {
   try {
-    const queue = JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || '[]');
+    const queue = JSON.parse(safeStorage.getItem(OFFLINE_QUEUE_KEY) || '[]');
     queue.push({ orgId, estimateId, actuals, executionStatus, timestamp: Date.now() });
-    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+    safeStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
     console.log(`[Offline Queue] Queued crew update for ${estimateId}`);
-  } catch { /* localStorage full — silently fail */ }
+  } catch { /* storage full — silently fail */ }
 };
 
 /**
@@ -925,7 +926,7 @@ const queueOfflineCrewUpdate = (orgId: string, estimateId: string, actuals: any,
  */
 export const flushOfflineCrewQueue = async (): Promise<number> => {
   try {
-    const raw = localStorage.getItem(OFFLINE_QUEUE_KEY);
+    const raw = safeStorage.getItem(OFFLINE_QUEUE_KEY);
     if (!raw) return 0;
     const queue = JSON.parse(raw);
     if (!queue.length) return 0;
@@ -955,7 +956,7 @@ export const flushOfflineCrewQueue = async (): Promise<number> => {
       }
     }
 
-    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(remaining));
+    safeStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(remaining));
     if (flushed > 0) console.log(`[Offline Queue] Successfully flushed ${flushed} update(s)`);
     return flushed;
   } catch {

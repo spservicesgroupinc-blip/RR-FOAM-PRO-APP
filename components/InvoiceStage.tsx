@@ -8,7 +8,8 @@ import {
   Loader2,
   MessageSquare,
   Plus,
-  Trash2
+  Trash2,
+  Download
 } from 'lucide-react';
 import { CalculatorState, CalculationResults, EstimateRecord, InvoiceLineItem, FoamType } from '../types';
 import { useEstimates } from '../hooks/useEstimates';
@@ -23,6 +24,7 @@ interface InvoiceStageProps {
   onConfirm: (record?: EstimateRecord) => Promise<void>;
   onMarkPaid?: (id: string) => Promise<void>;
   onSaveAndMarkPaid: (lines: InvoiceLineItem[]) => Promise<void>;
+  onDownloadPDF?: (type: 'INVOICE' | 'RECEIPT') => void;
 }
 
 export const InvoiceStage: React.FC<InvoiceStageProps> = ({ 
@@ -32,7 +34,8 @@ export const InvoiceStage: React.FC<InvoiceStageProps> = ({
   onUpdateState, 
   onCancel, 
   onConfirm,
-  onSaveAndMarkPaid
+  onSaveAndMarkPaid,
+  onDownloadPDF
 }) => {
   const { saveEstimate } = useEstimates();
   const [isProcessing, setIsProcessing] = useState(false);
@@ -246,8 +249,18 @@ export const InvoiceStage: React.FC<InvoiceStageProps> = ({
                   </div>
               </div>
 
-              {/* ACTION BUTTON */}
-              <div className="w-full md:w-auto">
+              {/* ACTION BUTTONS */}
+              <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                  {onDownloadPDF && (
+                    <button
+                      onClick={() => onDownloadPDF(isPaid ? 'RECEIPT' : 'INVOICE')}
+                      disabled={isProcessing}
+                      className="px-6 py-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 transition-all w-full md:w-auto border border-slate-200"
+                    >
+                      <Download className="w-5 h-5" />
+                      Download PDF
+                    </button>
+                  )}
                   {isPaid ? (
                       <div className="px-8 py-4 bg-emerald-50 border border-emerald-100 text-emerald-700 rounded-xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 w-full md:w-auto">
                           <CheckCircle2 className="w-5 h-5" /> Payment Recorded
@@ -268,7 +281,7 @@ export const InvoiceStage: React.FC<InvoiceStageProps> = ({
                           className="px-8 py-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-slate-200 transition-all w-full md:w-auto"
                       >
                           {isProcessing ? <Loader2 className="w-5 h-5 animate-spin"/> : <Receipt className="w-5 h-5" />}
-                          Save & Generate Invoice
+                          Save Invoice
                       </button>
                   )}
               </div>

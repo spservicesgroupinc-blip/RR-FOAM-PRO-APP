@@ -1,5 +1,6 @@
 import { supabase } from '../src/lib/supabase';
 import { UserSession } from '../types';
+import safeStorage from '../utils/safeStorage';
 
 /**
  * Sign up a new admin user with company
@@ -273,16 +274,16 @@ export const getCurrentSession = async (): Promise<UserSession | null> => {
   } = await supabase.auth.getSession();
 
   if (!session?.user) {
-    // Check for crew session in localStorage
+    // Check for crew session (safeStorage handles iOS eviction gracefully)
     try {
-      const crewSession = localStorage.getItem('foamProCrewSession');
+      const crewSession = safeStorage.getItem('foamProCrewSession');
       if (crewSession) {
         try {
           const parsed = JSON.parse(crewSession) as UserSession;
           // Validate crew session has organizationId
           if (!parsed.organizationId) {
             console.warn('[Auth] Crew session missing organizationId — clearing.');
-            localStorage.removeItem('foamProCrewSession');
+            safeStorage.removeItem('foamProCrewSession');
             return null;
           }
           return parsed;

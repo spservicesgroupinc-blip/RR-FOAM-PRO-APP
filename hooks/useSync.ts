@@ -18,6 +18,7 @@ import {
   flushOfflineCrewQueue,
 } from '../services/supabaseService';
 import { fetchSubscriptionStatus } from '../services/subscriptionService';
+import safeStorage from '../utils/safeStorage';
 
 // Module-level guard: prevents the realtime subscription from overwriting
 // locally-deducted warehouse inventory while a background work-order sync
@@ -284,7 +285,7 @@ export const useSync = () => {
         console.error('Cloud sync failed:', e);
         // Fallback: try localStorage
         try {
-          const localData = localStorage.getItem(`foamProState_${session.username}`);
+          const localData = safeStorage.getItem(`foamProState_${session.username}`);
           if (localData) {
             dispatch({ type: 'LOAD_DATA', payload: JSON.parse(localData) });
           }
@@ -300,13 +301,17 @@ export const useSync = () => {
   }, [session?.organizationId, session?.username, dispatch, computeHash]);
 
   // 3. REALTIME SUBSCRIPTIONS — live updates from admin↔crew
-  useEffect(() => {
+  // Extracted into a callable function so visibility-change handler can
+  // re-establish the connection after iOS kills the WebSocket in background.
+  const setupRealtimeSubscription = useCallback(() => {
     if (!session?.organizationId || !ui.isInitialized) return;
 
-    // Crew: subscribe to broadcast work-order-update events so new jobs appear
-    // immediately without waiting for the 45-second polling interval.
-    // Supabase Realtime Broadcast works without Supabase auth, which is
-    // required for PIN-based crew sessions that have no auth.uid().
+    // Tear down any existing subscription first
+    if (unsubscribeRef.current) {
+      unsubscribeRef.current();
+      unsubscribeRef.current = null;
+    }
+
     if (session.role === 'crew') {
       const unsubscribe = subscribeToWorkOrderUpdates(
         session.organizationId,
@@ -323,17 +328,7 @@ export const useSync = () => {
         }
       );
       unsubscribeRef.current = unsubscribe;
-      return () => {
-        if (unsubscribeRef.current) {
-          unsubscribeRef.current();
-          unsubscribeRef.current = null;
-        }
-      };
-    }
-
-    // Clean up previous subscription
-    if (unsubscribeRef.current) {
-      unsubscribeRef.current();
+      return;
     }
 
     unsubscribeRef.current = subscribeToOrgChanges(
@@ -346,16 +341,10 @@ export const useSync = () => {
             if (data) {
               const updatePayload: any = {};
               if (data.savedEstimates) updatePayload.savedEstimates = data.savedEstimates;
-              // Always refresh warehouse when estimates change so that
-              // crew_update_job stock adjustments are reflected locally
-              // before the next auto-sync writes to Supabase.
               if (data.warehouse && !isInventorySyncLocked()) {
                 updatePayload.warehouse = data.warehouse;
-                // Mark this warehouse state as "from server" so auto-sync doesn't
-                // treat it as a local admin change and blindly write it back.
                 lastSyncedWarehouseRef.current = computeWarehouseHash(data.warehouse);
               } else if (data.warehouse) {
-                // Lock is held — queue a deferred refresh after lock is released
                 pendingWarehouseRefreshRef.current = true;
               }
               if (Object.keys(updatePayload).length > 0) {
@@ -377,17 +366,12 @@ export const useSync = () => {
       },
       // Inventory changes
       (payload) => {
-        // Skip refetch if we are in the middle of our own background sync
-        // (each upsertInventoryItem triggers a realtime event; refetching now
-        //  would overwrite locally-deducted quantities with stale server data).
         if (isInventorySyncLocked()) {
           pendingWarehouseRefreshRef.current = true;
           return;
         }
         if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
           fetchOrgData(session.organizationId).then(data => {
-            // Double-check the lock; the fetch is async and the lock may have
-            // been acquired while the request was in flight.
             if (isInventorySyncLocked()) {
               pendingWarehouseRefreshRef.current = true;
               return;
@@ -400,14 +384,19 @@ export const useSync = () => {
         }
       }
     );
+  }, [session?.organizationId, session?.role, ui.isInitialized, dispatch, computeWarehouseHash]);
 
+  // Initial realtime subscription setup
+  useEffect(() => {
+    if (!session?.organizationId || !ui.isInitialized) return;
+    setupRealtimeSubscription();
     return () => {
       if (unsubscribeRef.current) {
         unsubscribeRef.current();
         unsubscribeRef.current = null;
       }
     };
-  }, [session?.organizationId, ui.isInitialized, dispatch]);
+  }, [session?.organizationId, ui.isInitialized, setupRealtimeSubscription]);
 
   // 4. AUTO-SYNC (debounced write to Supabase) — admin only
   useEffect(() => {
@@ -418,7 +407,7 @@ export const useSync = () => {
 
     // Always backup to localStorage
     try {
-      localStorage.setItem(`foamProState_${session.username}`, JSON.stringify(appData));
+      safeStorage.setItem(`foamProState_${session.username}`, JSON.stringify(appData));
     } catch { /* quota exceeded — ignore */ }
 
     if (currentHash === lastSyncedHashRef.current) return;
@@ -649,6 +638,11 @@ export const useSync = () => {
         console.warn('[iOS Resume] Re-sync failed:', e);
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
       }
+
+      // Re-establish Realtime subscription — iOS kills WebSockets when
+      // the app is backgrounded, so the existing channel is dead.
+      console.log('[iOS Resume] Re-establishing Realtime subscription...');
+      setupRealtimeSubscription();
     };
 
     // Also handle the iOS-specific pageshow event (fires on back/forward cache restore)
@@ -679,7 +673,7 @@ export const useSync = () => {
       window.removeEventListener('pageshow', handlePageShow);
       window.removeEventListener('online', handleOnline);
     };
-  }, [session?.organizationId, session?.role, ui.isInitialized, dispatch, computeHash, computeWarehouseHash]);
+  }, [session?.organizationId, session?.role, ui.isInitialized, dispatch, computeHash, computeWarehouseHash, setupRealtimeSubscription]);
 
   return { handleManualSync, forceRefresh, refreshSubscription };
 };

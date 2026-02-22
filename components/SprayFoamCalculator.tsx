@@ -17,6 +17,7 @@ import { generateDocumentPDF, generateEstimatePDF, generateWorkOrderPDF } from '
 import { syncUp } from '../services/api';
 import { upsertInventoryItem } from '../services/supabaseService';
 import { getCurrentSession, signOut } from '../services/auth';
+import safeStorage from '../utils/safeStorage';
 
 import LoginPage from './LoginPage';
 import { Layout } from './Layout';
@@ -145,8 +146,8 @@ const SprayFoamCalculator: React.FC = () => {
     } catch (err) {
       console.error('Sign out error:', err);
     }
-    localStorage.removeItem('foamProSession');
-    localStorage.removeItem('foamProCrewSession');
+    safeStorage.removeItem('foamProSession');
+    safeStorage.removeItem('foamProCrewSession');
     dispatch({ type: 'LOGOUT' });
   };
 
@@ -298,13 +299,14 @@ const SprayFoamCalculator: React.FC = () => {
              };
              await syncUp(stateSnapshot, session.spreadsheetId);
           }
-          await handleMarkPaidWithPDF(savedRecord.id);
+          // Just mark paid — no auto PDF
+          await handleMarkPaid(savedRecord.id);
       }
   };
 
-  // Wrapper for mark paid that generates receipt PDF
+  // Wrapper for mark paid — just marks paid, no auto-PDF
   const handleMarkPaidWithPDF = async (id: string) => {
-    await handleMarkPaid(id, (rec) => generatePDF('RECEIPT', rec));
+    await handleMarkPaid(id);
   };
 
   const handleStageWorkOrder = () => {
@@ -339,13 +341,13 @@ const SprayFoamCalculator: React.FC = () => {
     const finalRecord = record || appData.savedEstimates.find(e => e.id === ui.editingEstimateId);
 
     if (finalRecord) {
-        // Fire PDF without awaiting — iOS Safari blocks doc.save() in async chains
-        generatePDF('INVOICE', finalRecord).catch(err => console.error('[PDF] Invoice PDF failed:', err));
+        // Data is already saved — just navigate to dashboard
+        dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Invoice saved successfully.' } });
         dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
     } else {
         const newRec = await saveEstimate(results, 'Invoiced');
         if (newRec) {
-            generatePDF('INVOICE', newRec).catch(err => console.error('[PDF] Invoice PDF failed:', err));
+            dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Invoice saved successfully.' } });
             dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
         }
     }
@@ -353,12 +355,9 @@ const SprayFoamCalculator: React.FC = () => {
 
   // Called after EstimateStage saves its lines
   const handleConfirmEstimate = async (record: EstimateRecord, shouldPrint: boolean) => {
-      // Fire PDF generation without awaiting — on iOS Safari, doc.save() can hang
-      // indefinitely (popup blocked) in an async chain where the user gesture has expired.
-      // The estimate is already saved at this point, so navigate immediately.
-      if (shouldPrint) {
-          generatePDF('ESTIMATE', record).catch(err => console.error('[PDF] Estimate PDF failed:', err));
-      }
+      // Data is already saved — just navigate to dashboard.
+      // PDF is only generated when user explicitly requests it via a download button.
+      dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Estimate saved successfully.' } });
       dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
   };
 
@@ -437,7 +436,7 @@ const SprayFoamCalculator: React.FC = () => {
       return <LoginPage 
           onLoginSuccess={(s) => { 
               dispatch({ type: 'SET_SESSION', payload: s }); 
-              localStorage.setItem('foamProSession', JSON.stringify(s)); 
+              safeStorage.setItem('foamProSession', JSON.stringify(s)); 
           }} 
           installPrompt={deferredPrompt}
           onInstall={handleInstallApp}
@@ -505,7 +504,11 @@ const SprayFoamCalculator: React.FC = () => {
                 onMarkPaid={handleMarkPaidWithPDF}
                 initialFilter={initialDashboardFilter}
                 onGoToWarehouse={() => dispatch({ type: 'SET_VIEW', payload: 'warehouse' })}
-                onViewInvoice={(rec) => generatePDF('INVOICE', rec)}
+                onViewInvoice={(rec) => {
+                    dispatch({ type: 'SET_EDITING_ESTIMATE', payload: rec.id });
+                    loadEstimateForEditing(rec);
+                    dispatch({ type: 'SET_VIEW', payload: 'invoice_stage' });
+                }}
                 onSync={forceRefresh}
                 subscription={state.subscription}
             />
