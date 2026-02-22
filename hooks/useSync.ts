@@ -13,6 +13,7 @@ import {
   upsertInventoryItem,
   insertMaterialLogs,
   markEstimateInventoryProcessed,
+  flushOfflineCrewQueue,
 } from '../services/supabaseService';
 import { fetchSubscriptionStatus } from '../services/subscriptionService';
 
@@ -538,6 +539,90 @@ export const useSync = () => {
     const sub = await fetchSubscriptionStatus(session.organizationId);
     if (sub) dispatch({ type: 'SET_SUBSCRIPTION', payload: sub });
   };
+
+  // 8. iOS VISIBILITY CHANGE — re-fetch data when app comes back to foreground
+  // iOS Safari/WebKit freezes JS execution when the app is backgrounded.
+  // When the user returns, stale data is displayed. This listener re-syncs
+  // immediately on resume, and also flushes any queued offline crew updates.
+  useEffect(() => {
+    if (!session?.organizationId || !ui.isInitialized) return;
+
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState !== 'visible') return;
+
+      console.log('[iOS Resume] App became visible — re-syncing...');
+
+      // Flush any queued offline crew updates first
+      try {
+        const flushed = await flushOfflineCrewQueue();
+        if (flushed > 0) {
+          dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: `Synced ${flushed} queued update(s)` } });
+        }
+      } catch (e) {
+        console.warn('[iOS Resume] Offline queue flush error:', e);
+      }
+
+      // Re-fetch fresh data from server
+      try {
+        dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
+        const cloudData = session.role === 'crew'
+          ? await fetchCrewWorkOrders(session.organizationId)
+          : await fetchOrgData(session.organizationId);
+
+        if (cloudData) {
+          const updatePayload: any = {};
+          if (cloudData.savedEstimates) updatePayload.savedEstimates = cloudData.savedEstimates;
+          if (cloudData.customers) updatePayload.customers = cloudData.customers;
+          if (cloudData.warehouse && !isInventorySyncLocked()) {
+            updatePayload.warehouse = cloudData.warehouse;
+            lastSyncedWarehouseRef.current = computeWarehouseHash(cloudData.warehouse);
+          }
+          if (Object.keys(updatePayload).length > 0) {
+            dispatch({ type: 'UPDATE_DATA', payload: updatePayload });
+            lastSyncedHashRef.current = computeHash({ ...appData, ...updatePayload });
+          }
+          dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
+          setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 2000);
+          console.log('[iOS Resume] Data refreshed successfully');
+        } else {
+          dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' });
+        }
+      } catch (e) {
+        console.warn('[iOS Resume] Re-sync failed:', e);
+        dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
+      }
+    };
+
+    // Also handle the iOS-specific pageshow event (fires on back/forward cache restore)
+    const handlePageShow = (e: PageTransitionEvent) => {
+      if (e.persisted) {
+        console.log('[iOS Resume] Page restored from bfcache — re-syncing...');
+        handleVisibilityChange();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pageshow', handlePageShow);
+
+    // Also listen for online events — iOS can lose connectivity silently
+    const handleOnline = () => {
+      console.log('[iOS Resume] Device came online — flushing queue...');
+      flushOfflineCrewQueue().then(flushed => {
+        if (flushed > 0) {
+          dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: `Synced ${flushed} queued update(s)` } });
+          // Also pull fresh data
+          handleVisibilityChange();
+        }
+      });
+    };
+    window.addEventListener('online', handleOnline);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pageshow', handlePageShow);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [session?.organizationId, session?.role, ui.isInitialized, dispatch, computeHash, computeWarehouseHash]);
 
   return { handleManualSync, forceRefresh, refreshSubscription };
 };

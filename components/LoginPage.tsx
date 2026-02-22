@@ -38,7 +38,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, installPrompt, on
           return;
         }
         const session = await signInCrew(formData.crewCompany, formData.crewPin);
-        localStorage.setItem('foamProCrewSession', JSON.stringify(session));
+        // Store crew session in both keys for iOS resilience.
+        // iOS WebKit can evict localStorage entries under memory pressure;
+        // storing in both keys gives us a fallback.
+        try {
+          localStorage.setItem('foamProCrewSession', JSON.stringify(session));
+          localStorage.setItem('foamProSession', JSON.stringify(session));
+        } catch { /* iOS storage quota — session still works in memory */ }
         onLoginSuccess(session);
       } else {
         if (isSignup) {

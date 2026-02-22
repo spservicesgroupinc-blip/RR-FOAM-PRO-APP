@@ -841,8 +841,102 @@ export const fetchCrewWorkOrders = async (orgId: string): Promise<Partial<Calcul
   }
 };
 
+// ─── iOS RETRY / OFFLINE QUEUE HELPERS ──────────────────────────────────────
+
+/**
+ * Retry a Supabase RPC call with exponential backoff.
+ * iOS drops network connections when the app is backgrounded; this ensures
+ * critical writes (job start, timer save, completion) are not silently lost.
+ */
+const retryRPC = async <T>(
+  fn: () => Promise<{ data: T; error: any }>,
+  maxRetries = 3,
+  label = 'RPC'
+): Promise<{ data: T; error: any }> => {
+  let lastError: any = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await fn();
+      if (!result.error) return result;
+      lastError = result.error;
+      // Don't retry on auth/permission errors — only transient network issues
+      if (result.error?.code === 'PGRST301' || result.error?.code === '42501') {
+        console.error(`[${label}] Auth/permission error — not retrying:`, result.error);
+        return result;
+      }
+    } catch (err) {
+      lastError = err;
+    }
+    if (attempt < maxRetries) {
+      const delay = Math.min(1000 * Math.pow(2, attempt), 8000);
+      console.warn(`[${label}] Attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  return { data: null as any, error: lastError };
+};
+
+/**
+ * Queue a failed crew update for later retry when the device comes back online.
+ * Stored in localStorage so it survives app backgrounding on iOS.
+ */
+const OFFLINE_QUEUE_KEY = 'foamPro_offlineCrewQueue';
+
+const queueOfflineCrewUpdate = (orgId: string, estimateId: string, actuals: any, executionStatus: string) => {
+  try {
+    const queue = JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || '[]');
+    queue.push({ orgId, estimateId, actuals, executionStatus, timestamp: Date.now() });
+    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
+    console.log(`[Offline Queue] Queued crew update for ${estimateId}`);
+  } catch { /* localStorage full — silently fail */ }
+};
+
+/**
+ * Flush any queued offline crew updates. Called on visibility change / app resume.
+ */
+export const flushOfflineCrewQueue = async (): Promise<number> => {
+  try {
+    const raw = localStorage.getItem(OFFLINE_QUEUE_KEY);
+    if (!raw) return 0;
+    const queue = JSON.parse(raw);
+    if (!queue.length) return 0;
+
+    console.log(`[Offline Queue] Flushing ${queue.length} queued update(s)...`);
+    let flushed = 0;
+    const remaining: any[] = [];
+
+    for (const item of queue) {
+      const { data, error } = await retryRPC(
+        () => supabase.rpc('crew_update_job', {
+          p_org_id: item.orgId,
+          p_estimate_id: item.estimateId,
+          p_actuals: item.actuals,
+          p_execution_status: item.executionStatus,
+        }),
+        2,
+        'OfflineFlush'
+      );
+      if (!error && data === true) {
+        flushed++;
+      } else {
+        // Keep items less than 24 hours old for another attempt
+        if (Date.now() - item.timestamp < 86400000) {
+          remaining.push(item);
+        }
+      }
+    }
+
+    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(remaining));
+    if (flushed > 0) console.log(`[Offline Queue] Successfully flushed ${flushed} update(s)`);
+    return flushed;
+  } catch {
+    return 0;
+  }
+};
+
 /**
  * Crew updates job actuals + execution status via RPC (no auth.uid() needed).
+ * Includes retry logic for iOS network drops and offline queue fallback.
  */
 export const crewUpdateJob = async (
   orgId: string,
@@ -850,24 +944,25 @@ export const crewUpdateJob = async (
   actuals: any,
   executionStatus: string
 ): Promise<boolean> => {
-  try {
-    const { data, error } = await supabase.rpc('crew_update_job', {
+  const { data, error } = await retryRPC(
+    () => supabase.rpc('crew_update_job', {
       p_org_id: orgId,
       p_estimate_id: estimateId,
       p_actuals: actuals,
       p_execution_status: executionStatus,
-    });
+    }),
+    3,
+    'crewUpdateJob'
+  );
 
-    if (error) {
-      console.error('crewUpdateJob RPC error:', error);
-      return false;
-    }
-
-    return data === true;
-  } catch (err) {
-    console.error('crewUpdateJob exception:', err);
+  if (error) {
+    console.error('crewUpdateJob failed after retries:', error);
+    // Queue for later retry (iOS offline / backgrounded scenario)
+    queueOfflineCrewUpdate(orgId, estimateId, actuals, executionStatus);
     return false;
   }
+
+  return data === true;
 };
 
 // ─── LIGHTWEIGHT WAREHOUSE FETCH ────────────────────────────────────────────

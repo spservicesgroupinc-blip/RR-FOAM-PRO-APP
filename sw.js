@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'rfe-foam-pro-v14-desktop';
+const CACHE_NAME = 'rfe-foam-pro-v15-ios-fix';
 const URLS_TO_CACHE = [
   '/',
   '/index.html',
@@ -8,6 +8,22 @@ const URLS_TO_CACHE = [
   '/icons/icon-512.svg',
   '/icons/icon-maskable.svg'
 ];
+
+// URLs that must NEVER be cached or intercepted (Supabase API, auth, realtime)
+const API_URL_PATTERNS = [
+  'supabase.co',
+  'supabase.in',
+  'supabase.net',
+  '/rest/v1/',
+  '/auth/v1/',
+  '/realtime/',
+  '/storage/v1/',
+  '/functions/v1/',
+];
+
+function isAPIRequest(url) {
+  return API_URL_PATTERNS.some(pattern => url.includes(pattern));
+}
 
 // Install Event: Cache critical app shell
 self.addEventListener('install', (event) => {
@@ -39,36 +55,48 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch Event: Stale-While-Revalidate Strategy
+// Fetch Event: Network-first for APIs, Stale-While-Revalidate for assets
 self.addEventListener('fetch', (event) => {
-  // 1. Handle Navigation (HTML) - Network First for freshness, Fallback to Cache
+  const url = event.request.url;
+
+  // ── CRITICAL: Never intercept Supabase / API requests ──
+  // iOS Safari aggressively caches fetch responses through the SW.
+  // Letting API calls bypass the SW entirely ensures fresh data.
+  if (isAPIRequest(url)) {
+    return; // Let the browser handle it natively — no event.respondWith()
+  }
+
+  // ── Skip non-GET requests (POST/PUT/DELETE for APIs) ──
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
+  // 1. Handle Navigation (HTML) - Network First, Fallback to Cache
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-            return caches.open(CACHE_NAME).then((cache) => {
-                cache.put(event.request, response.clone());
-                return response;
-            });
+            if (response && response.status === 200) {
+              const clone = response.clone();
+              caches.open(CACHE_NAME).then((cache) => {
+                cache.put(event.request, clone);
+              });
+            }
+            return response;
         })
         .catch(() => {
-          return caches.match('./index.html');
+          return caches.match('/index.html');
         })
     );
     return;
   }
 
-  // 2. Handle API calls (Google Script) - Network Only (Don't cache dynamic data)
-  // Google Script API handling removed.
-
-  // 3. Handle Assets (JS, CSS, Images) - Stale-While-Revalidate
-  // Serve from cache immediately, then update cache from network in background
+  // 2. Handle Assets (JS, CSS, Images) - Stale-While-Revalidate
   event.respondWith(
     caches.match(event.request)
       .then((cachedResponse) => {
         const fetchPromise = fetch(event.request).then((networkResponse) => {
-           // Check if valid response
-           if(networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+           if (networkResponse && networkResponse.status === 200) {
                const responseToCache = networkResponse.clone();
                caches.open(CACHE_NAME).then((cache) => {
                    cache.put(event.request, responseToCache);
@@ -76,10 +104,10 @@ self.addEventListener('fetch', (event) => {
            }
            return networkResponse;
         }).catch(() => {
-            // Network failed, nothing to do (we already returned cache if available)
+            // Network failed — return undefined so cachedResponse is used
+            return cachedResponse;
         });
 
-        // Return cached response immediately if available, otherwise wait for network
         return cachedResponse || fetchPromise;
       })
   );

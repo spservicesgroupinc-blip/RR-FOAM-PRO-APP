@@ -231,10 +231,12 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
       const now = new Date().toISOString();
       setJobStartTime(now);
       setIsTimerRunning(true);
-      localStorage.setItem('foamPro_crewStartTime', now);
-      if (selectedJobId) localStorage.setItem('foamPro_crewActiveJob', selectedJobId);
+      try {
+        localStorage.setItem('foamPro_crewStartTime', now);
+        if (selectedJobId) localStorage.setItem('foamPro_crewActiveJob', selectedJobId);
+      } catch { /* iOS storage full — timer still works in memory */ }
 
-      // Notify backend that crew started the job
+      // Notify backend that crew started the job (with retry via crewUpdateJob)
       try {
           if (selectedJobId) {
               const success = await crewUpdateJob(
@@ -245,6 +247,8 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
               );
               if (success) {
                   console.log('Backend notified: job started');
+              } else {
+                  console.warn('Backend notification queued for retry');
               }
           }
       } catch (e) {
@@ -265,8 +269,12 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
           if (selectedJob.id) {
             let user = "Crew";
             try {
-                const s = localStorage.getItem('foamProSession');
-                if (s) user = JSON.parse(s).username;
+                // Check both session keys — iOS can evict one or both
+                const s = localStorage.getItem('foamProCrewSession') || localStorage.getItem('foamProSession');
+                if (s) {
+                  const parsed = JSON.parse(s);
+                  user = parsed.username || parsed.companyName || 'Crew';
+                }
             } catch(e) {
                 console.warn("Could not retrieve session user for timer log");
             }
@@ -331,11 +339,21 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
       setIsCompleting(true);
       
       try {
-        const sessionStr = localStorage.getItem('foamProCrewSession');
-        if (!sessionStr) throw new Error("Session expired. Please log out and back in.");
+        // iOS WebKit can evict localStorage under memory pressure.
+        // Try both session keys and fall back to the organizationId prop.
+        let sessionUser = 'Crew';
+        let sessionOrgId = organizationId;
+        try {
+          const sessionStr = localStorage.getItem('foamProCrewSession') || localStorage.getItem('foamProSession');
+          if (sessionStr) {
+            const parsed = JSON.parse(sessionStr);
+            sessionUser = parsed.username || parsed.companyName || 'Crew';
+            sessionOrgId = parsed.organizationId || organizationId;
+          }
+        } catch { /* use fallbacks */ }
+        if (!sessionOrgId) throw new Error("Session expired. Please log out and back in.");
         
-        const session = JSON.parse(sessionStr);
-        if (!session.organizationId) throw new Error("Invalid session data. Please log out and back in.");
+        const session = { username: sessionUser, organizationId: sessionOrgId };
 
         const finalData = {
             ...actuals,
