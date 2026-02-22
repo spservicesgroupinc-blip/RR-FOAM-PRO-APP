@@ -48,6 +48,17 @@ See [NETLIFY_DEPLOY.md](./NETLIFY_DEPLOY.md) for detailed deployment instruction
 2. Set `GEMINI_API_KEY` environment variable
 3. Deploy! (Auto-configured with `netlify.toml`)
 
+## Deploy to Google Cloud Run
+
+See [CLOUDRUN_DEPLOY.md](./CLOUDRUN_DEPLOY.md) for detailed deployment instructions.
+
+**Quick Deploy:**
+1. Build and deploy container to Cloud Run
+2. Configure Supabase redirect URLs with your Cloud Run URL
+3. Your app is live!
+
+> **Important**: After deploying, you must add your deployment URL to Supabase's allowed redirect URLs for authentication to work. See the Cloud Run deployment guide for details.
+
 ## PWA Installation
 
 Once deployed or running locally, you can install the app:
