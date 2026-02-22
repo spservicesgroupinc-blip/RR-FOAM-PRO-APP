@@ -197,20 +197,25 @@ export const InvoiceStage: React.FC<InvoiceStageProps> = ({
   const handleUpdateClick = async () => {
       setProcessingAction('save');
       setIsProcessing(true);
-      
-      // Update record with lines first
-      // We wait for the save to complete and return the fresh record
-      const updatedRecord = await saveEstimate(results, 'Invoiced', {
-          invoiceLines: invoiceLines,
-          totalValue: invoiceTotal
-      }, false);
 
-      if (updatedRecord) {
-          await onConfirm(updatedRecord); // Pass fresh record to parent for PDF gen
+      try {
+          // Update record with lines first
+          // We wait for the save to complete and return the fresh record
+          const updatedRecord = await saveEstimate(results, 'Invoiced', {
+              invoiceLines: invoiceLines,
+              totalValue: invoiceTotal
+          }, false);
+
+          if (updatedRecord) {
+              await onConfirm(updatedRecord); // Pass fresh record to parent for PDF gen
+          }
+      } catch (err) {
+          console.error('Error saving invoice:', err);
+          alert('Something went wrong saving the invoice. Please try again.');
+      } finally {
+          setIsProcessing(false);
+          setProcessingAction(null);
       }
-      
-      setIsProcessing(false);
-      setProcessingAction(null);
   };
 
   const invoiceNum = state.invoiceNumber || currentRecord?.invoiceNumber || "DRAFT";

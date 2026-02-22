@@ -339,12 +339,13 @@ const SprayFoamCalculator: React.FC = () => {
     const finalRecord = record || appData.savedEstimates.find(e => e.id === ui.editingEstimateId);
 
     if (finalRecord) {
-        await generatePDF('INVOICE', finalRecord);
+        // Fire PDF without awaiting — iOS Safari blocks doc.save() in async chains
+        generatePDF('INVOICE', finalRecord).catch(err => console.error('[PDF] Invoice PDF failed:', err));
         dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
     } else {
         const newRec = await saveEstimate(results, 'Invoiced');
         if (newRec) {
-            await generatePDF('INVOICE', newRec);
+            generatePDF('INVOICE', newRec).catch(err => console.error('[PDF] Invoice PDF failed:', err));
             dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
         }
     }
@@ -352,8 +353,11 @@ const SprayFoamCalculator: React.FC = () => {
 
   // Called after EstimateStage saves its lines
   const handleConfirmEstimate = async (record: EstimateRecord, shouldPrint: boolean) => {
+      // Fire PDF generation without awaiting — on iOS Safari, doc.save() can hang
+      // indefinitely (popup blocked) in an async chain where the user gesture has expired.
+      // The estimate is already saved at this point, so navigate immediately.
       if (shouldPrint) {
-          await generatePDF('ESTIMATE', record);
+          generatePDF('ESTIMATE', record).catch(err => console.error('[PDF] Estimate PDF failed:', err));
       }
       dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
   };

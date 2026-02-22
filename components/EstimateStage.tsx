@@ -170,18 +170,23 @@ export const EstimateStage: React.FC<EstimateStageProps> = ({
 
   const handleContinue = async () => {
       setIsProcessing(true);
-      
-      // Save record with lines, then generate PDF and advance
-      const updatedRecord = await saveEstimate(results, undefined, {
-          estimateLines: estimateLines,
-          totalValue: estimateTotal
-      }, false);
 
-      if (updatedRecord) {
-          await onConfirm(updatedRecord, true);
+      try {
+          // Save record with lines, then generate PDF and advance
+          const updatedRecord = await saveEstimate(results, undefined, {
+              estimateLines: estimateLines,
+              totalValue: estimateTotal
+          }, false);
+
+          if (updatedRecord) {
+              await onConfirm(updatedRecord, true);
+          }
+      } catch (err) {
+          console.error('Error saving estimate:', err);
+          alert('Something went wrong saving the estimate. Please try again.');
+      } finally {
+          setIsProcessing(false);
       }
-      
-      setIsProcessing(false);
   };
 
   return (
