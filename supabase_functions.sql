@@ -202,17 +202,23 @@ BEGIN
         v_item_diff := COALESCE((v_est_item->>'quantity')::numeric, 0) 
                      - COALESCE((v_act_item->>'quantity')::numeric, 0);
 
-        IF v_item_diff != 0 AND v_wh_item_id IS NOT NULL THEN
+        IF v_item_diff != 0 THEN
           -- Try matching by UUID first (only if the ID is a valid UUID format)
-          IF v_wh_item_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+          IF v_wh_item_id IS NOT NULL AND v_wh_item_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
             UPDATE inventory_items
             SET quantity = COALESCE(quantity, 0) + v_item_diff
             WHERE id = v_wh_item_id::uuid
               AND organization_id = p_org_id;
-          END IF;
-
-          -- Fallback: match by name if UUID didn't match or wasn't valid
-          IF NOT FOUND AND v_item_name IS NOT NULL THEN
+          
+            -- If UUID match failed, fallback to name matching
+            IF NOT FOUND AND v_item_name IS NOT NULL THEN
+              UPDATE inventory_items
+              SET quantity = COALESCE(quantity, 0) + v_item_diff
+              WHERE LOWER(TRIM(name)) = LOWER(TRIM(v_item_name))
+                AND organization_id = p_org_id;
+            END IF;
+          ELSIF v_item_name IS NOT NULL THEN
+            -- No valid UUID provided, match by name only
             UPDATE inventory_items
             SET quantity = COALESCE(quantity, 0) + v_item_diff
             WHERE LOWER(TRIM(name)) = LOWER(TRIM(v_item_name))
@@ -245,22 +251,26 @@ BEGIN
         IF v_est_item IS NULL AND COALESCE((v_act_item->>'quantity')::numeric, 0) > 0 THEN
           v_item_diff := -1 * COALESCE((v_act_item->>'quantity')::numeric, 0);
           
-          IF v_wh_item_id IS NOT NULL THEN
-            -- Try matching by UUID first (only if the ID is a valid UUID format)
-            IF v_wh_item_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
-              UPDATE inventory_items
-              SET quantity = COALESCE(quantity, 0) + v_item_diff
-              WHERE id = v_wh_item_id::uuid
-                AND organization_id = p_org_id;
-            END IF;
-
-            -- Fallback: match by name if UUID didn't match or wasn't valid
+          -- Try matching by UUID first (only if the ID is a valid UUID format)
+          IF v_wh_item_id IS NOT NULL AND v_wh_item_id ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+            UPDATE inventory_items
+            SET quantity = COALESCE(quantity, 0) + v_item_diff
+            WHERE id = v_wh_item_id::uuid
+              AND organization_id = p_org_id;
+          
+            -- If UUID match failed, fallback to name matching
             IF NOT FOUND AND v_item_name IS NOT NULL THEN
               UPDATE inventory_items
               SET quantity = COALESCE(quantity, 0) + v_item_diff
               WHERE LOWER(TRIM(name)) = LOWER(TRIM(v_item_name))
                 AND organization_id = p_org_id;
             END IF;
+          ELSIF v_item_name IS NOT NULL THEN
+            -- No valid UUID provided, match by name only
+            UPDATE inventory_items
+            SET quantity = COALESCE(quantity, 0) + v_item_diff
+            WHERE LOWER(TRIM(name)) = LOWER(TRIM(v_item_name))
+              AND organization_id = p_org_id;
           END IF;
         END IF;
       END LOOP;
@@ -341,7 +351,55 @@ END;
 $$;
 
 
--- ─── 5. GRANT EXECUTE TO ANON + AUTHENTICATED ──────────────────────────────
+-- ─── 5. HANDLE NEW USER TRIGGER ──────────────────────────────────────────────
+-- Automatically creates an organization and profile when a new user signs up.
+-- This is REQUIRED for the admin-crew link to function properly.
+-- Without this trigger, admin signup creates the auth user but not the
+-- profile/organization, causing organizationId to be empty and preventing
+-- work orders from reaching the crew dashboard.
+
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  new_org_id uuid;
+  v_company_name text;
+  v_role text;
+  v_full_name text;
+BEGIN
+  v_company_name := COALESCE(NEW.raw_user_meta_data->>'company_name', NEW.email);
+  v_role := COALESCE(NEW.raw_user_meta_data->>'role', 'admin');
+  v_full_name := COALESCE(NEW.raw_user_meta_data->>'full_name', '');
+
+  -- Create a new organization for this user
+  INSERT INTO organizations (name, crew_pin)
+  VALUES (v_company_name, '')
+  RETURNING id INTO new_org_id;
+
+  -- Create the profile linking user to organization
+  INSERT INTO profiles (id, organization_id, role, full_name)
+  VALUES (NEW.id, new_org_id, v_role, v_full_name);
+
+  -- Create an empty warehouse_stock row for the organization
+  INSERT INTO warehouse_stock (organization_id, open_cell_sets, closed_cell_sets)
+  VALUES (new_org_id, 0, 0)
+  ON CONFLICT (organization_id) DO NOTHING;
+
+  RETURN NEW;
+END;
+$$;
+
+-- Create the trigger (drop first to be idempotent)
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+
+
+-- ─── 6. GRANT EXECUTE TO ANON + AUTHENTICATED ──────────────────────────────
 -- Required so the Supabase JS client can call these RPCs.
 -- Crew uses anon key (no auth session), admin uses authenticated.
 

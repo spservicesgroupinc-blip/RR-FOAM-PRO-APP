@@ -12,7 +12,7 @@ interface LandingPageProps {
 export const LandingPage: React.FC<LandingPageProps> = ({ onEnterApp }) => {
   
   const handleEnter = () => {
-    localStorage.setItem('foamProTrialAccess', 'true');
+    try { localStorage.setItem('foamProTrialAccess', 'true'); } catch { /* storage unavailable */ }
     onEnterApp();
   };
 

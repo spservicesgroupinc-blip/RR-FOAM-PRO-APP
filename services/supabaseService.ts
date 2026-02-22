@@ -303,6 +303,16 @@ export const upsertEstimate = async (record: EstimateRecord, orgId: string): Pro
     delete (dbRow as any).id;
   }
 
+  // Sanitize customer_id: if it's not a valid UUID, set to null to prevent
+  // the entire estimate upsert from failing with a UUID type cast error.
+  // This can happen when upsertCustomer fails and customerId is still a
+  // temp local ID (e.g. "a1b2c3d4e").
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if ((dbRow as any).customer_id && !UUID_RE.test((dbRow as any).customer_id)) {
+    console.warn('[upsertEstimate] customer_id is not a valid UUID, setting to null:', (dbRow as any).customer_id);
+    (dbRow as any).customer_id = null;
+  }
+
   const { data, error } = await supabase
     .from('estimates')
     .upsert(dbRow, { onConflict: 'id' })
@@ -805,6 +815,10 @@ export const fetchCrewWorkOrders = async (orgId: string): Promise<Partial<Calcul
   }
 
   // ── Attempt 2: Direct queries as fallback ──
+  // NOTE: Crew users have no auth.uid() (PIN-based login), so direct queries
+  // are typically blocked by RLS. This fallback only works if anon/crew
+  // policies exist on the tables. If RLS blocks everything, we return null
+  // so the UI shows a clear error to run supabase_functions.sql.
   console.log('[Crew Sync] Trying direct query fallback...');
   try {
     const [orgRes, custRes, estRes] = await Promise.all([
@@ -823,6 +837,19 @@ export const fetchCrewWorkOrders = async (orgId: string): Promise<Partial<Calcul
     const rawEstimates = estRes.data || [];
 
     console.log(`[Crew Sync] Fallback results — org: ${org.name || 'N/A'}, customers: ${rawCustomers.length}, estimates: ${rawEstimates.length}`);
+
+    // Detect RLS-blocked fallback: if the org itself couldn't be read, RLS
+    // is blocking crew access and the fallback is useless. Return null so
+    // the UI shows the "run supabase_functions.sql" error message.
+    if (!orgRes.data || orgRes.error) {
+      console.error(
+        '[Crew Sync] CRITICAL: Cannot read organization data. ' +
+        'Crew users have no auth.uid(), so direct queries are blocked by RLS. ' +
+        'The get_crew_work_orders RPC function is required. ' +
+        'Run supabase_functions.sql in the Supabase SQL Editor to fix this.'
+      );
+      return null;
+    }
 
     if (rawEstimates.length === 0 && estRes.error) {
       // Both RPC and direct query failed — likely RLS blocking everything
@@ -1084,4 +1111,51 @@ export const updatePassword = async (newPassword: string): Promise<boolean> => {
     return false;
   }
   return true;
+};
+
+// ─── CREW REALTIME BROADCAST ────────────────────────────────────────────────
+
+/**
+ * Broadcast a work-order-update event to all crew members for this org.
+ * Uses Supabase Realtime Broadcast which works without Supabase auth,
+ * making it suitable for PIN-based crew sessions.
+ */
+export const broadcastWorkOrderUpdate = (orgId: string): void => {
+  const channelName = `crew-updates-${orgId}`;
+  const BROADCAST_CLEANUP_DELAY_MS = 2000;
+  const channel = supabase.channel(channelName);
+
+  channel.subscribe((status) => {
+    if (status === 'SUBSCRIBED') {
+      channel.send({
+        type: 'broadcast',
+        event: 'work_order_update',
+        payload: { orgId, timestamp: Date.now() },
+      }).catch((err) => console.warn(`[Broadcast] send error for org ${orgId}:`, err));
+      // Clean up after a short delay (enough for the message to be delivered)
+      setTimeout(() => supabase.removeChannel(channel), BROADCAST_CLEANUP_DELAY_MS);
+    }
+  });
+};
+
+/**
+ * Subscribe to work-order-update broadcast events for a given org.
+ * Intended for crew dashboard — requires no Supabase auth.
+ * Returns an unsubscribe function.
+ */
+export const subscribeToWorkOrderUpdates = (
+  orgId: string,
+  onUpdate: () => void
+): (() => void) => {
+  const channelName = `crew-updates-${orgId}`;
+  const channel = supabase
+    .channel(channelName)
+    .on('broadcast', { event: 'work_order_update' }, () => {
+      onUpdate();
+    })
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 };
