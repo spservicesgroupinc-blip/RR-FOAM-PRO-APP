@@ -15,7 +15,7 @@ import { useEstimates } from '../hooks/useEstimates';
 import { calculateResults } from '../utils/calculatorHelpers';
 import { generateDocumentPDF, generateEstimatePDF, generateWorkOrderPDF } from '../utils/pdfGenerator';
 import { syncUp } from '../services/api';
-import { upsertInventoryItem } from '../services/supabaseService';
+import { upsertInventoryItem, upsertEquipment, deleteEquipmentItem } from '../services/supabaseService';
 import { getCurrentSession, signOut } from '../services/auth';
 
 import LoginPage from './LoginPage';
@@ -269,15 +269,44 @@ const SprayFoamCalculator: React.FC = () => {
   };
 
   const addEquipment = () => {
-      const newEq: EquipmentItem = { id: Math.random().toString(36).substr(2,9), name: '', status: 'Available' };
+      // Use crypto.randomUUID for proper unique ID generation (fallback for older browsers)
+      const generateId = () => {
+          if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+              return crypto.randomUUID();
+          }
+          // Fallback for environments without crypto.randomUUID
+          return `eq-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      };
+      const newEq: EquipmentItem = { id: generateId(), name: '', status: 'Available' };
       dispatch({ type: 'UPDATE_DATA', payload: { equipment: [...(appData.equipment || []), newEq] } });
+      // Persist to Supabase in background
+      if (session?.organizationId) {
+        upsertEquipment(newEq, session.organizationId).catch(err => {
+          console.error('Failed to save equipment to cloud:', err);
+        });
+      }
   };
   const removeEquipment = (id: string) => {
       dispatch({ type: 'UPDATE_DATA', payload: { equipment: appData.equipment.filter(e => e.id !== id) } });
+      // Delete from Supabase in background
+      if (session?.organizationId) {
+        deleteEquipmentItem(id).catch(err => {
+          console.error('Failed to delete equipment from cloud:', err);
+        });
+      }
   };
   const updateEquipment = (id: string, field: keyof EquipmentItem, value: any) => {
       const updated = appData.equipment.map(e => e.id === id ? { ...e, [field]: value } : e);
       dispatch({ type: 'UPDATE_DATA', payload: { equipment: updated } });
+      // Persist to Supabase in background
+      if (session?.organizationId) {
+        const updatedItem = updated.find(e => e.id === id);
+        if (updatedItem) {
+          upsertEquipment(updatedItem, session.organizationId).catch(err => {
+            console.error('Failed to update equipment in cloud:', err);
+          });
+        }
+      }
   };
 
   const handleSaveAndMarkPaid = async (lines: InvoiceLineItem[]) => {

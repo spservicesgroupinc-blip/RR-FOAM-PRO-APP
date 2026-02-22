@@ -46,6 +46,7 @@ export const useEstimates = () => {
             roofSettings: record.roofSettings,
             expenses: { ...record.expenses, laborRate: record.expenses?.laborRate ?? appData.costs.laborRate },
             inventory: record.materials.inventory,
+            jobEquipment: record.materials.equipment || [],
             customerProfile: record.customer,
             jobNotes: record.notes || '',
             scheduledDate: record.scheduledDate || '',
@@ -139,6 +140,70 @@ export const useEstimates = () => {
     if (!appData.customers.find(c => c.id === appData.customerProfile.id)) {
         const newCustomer = { ...appData.customerProfile, id: appData.customerProfile.id || Math.random().toString(36).substr(2, 9) };
         saveCustomer(newCustomer);
+    }
+
+    // Update equipment tracking when saving as Work Order
+    if (newStatus === 'Work Order') {
+        const assignedAt = new Date().toISOString();
+        const lastSeen = {
+            customerName: newEstimate.customer?.name || 'Unknown',
+            date: assignedAt,
+            crewMember: session?.username || 'Admin',
+            jobId: estimateId
+        };
+        
+        // Get equipment that was previously assigned to this job (if editing)
+        const previousEquipmentIds = existingRecord?.materials?.equipment?.map((e: EquipmentItem) => e.id) || [];
+        const currentEquipmentIds = appData.jobEquipment.map(e => e.id);
+        const removedEquipmentIds = previousEquipmentIds.filter((id: string) => !currentEquipmentIds.includes(id));
+        
+        const updatedEquipment = appData.equipment.map(eq => {
+            // Equipment currently assigned to this job
+            if (appData.jobEquipment.find(tool => tool.id === eq.id)) {
+                return { ...eq, status: 'In Use' as const, lastSeen };
+            }
+            // Equipment that was removed from this job - reset to Available if it was assigned to THIS job
+            if (removedEquipmentIds.includes(eq.id) && eq.lastSeen?.jobId === estimateId) {
+                return { ...eq, status: 'Available' as const, lastSeen: undefined };
+            }
+            return eq;
+        });
+        dispatch({ type: 'UPDATE_DATA', payload: { equipment: updatedEquipment } });
+        
+        // Persist equipment status updates to Supabase
+        if (session?.organizationId) {
+            const equipmentMap = new Map(appData.equipment.map(e => [e.id, e]));
+            const updatePromises: Promise<boolean>[] = [];
+            
+            // Update currently assigned equipment
+            appData.jobEquipment.forEach(tool => {
+                updatePromises.push(
+                    updateEquipmentStatus(tool.id, 'In Use', lastSeen).catch(err => {
+                        console.error('Failed to update equipment status:', err);
+                        return false;
+                    })
+                );
+            });
+            
+            // Clear status for removed equipment
+            removedEquipmentIds.forEach((id: string) => {
+                const eq = equipmentMap.get(id);
+                if (eq?.lastSeen?.jobId === estimateId) {
+                    updatePromises.push(
+                        updateEquipmentStatus(id, 'Available', undefined).catch(err => {
+                            console.error('Failed to clear equipment status:', err);
+                            return false;
+                        })
+                    );
+                }
+            });
+            
+            // Execute all updates concurrently (fire-and-forget for non-blocking save)
+            // Equipment status updates are secondary; we don't block the UI on them
+            Promise.all(updatePromises).catch(err => {
+                console.error('Equipment status updates failed:', err);
+            });
+        }
     }
 
     // Redirect control
