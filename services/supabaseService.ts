@@ -645,6 +645,9 @@ export const updateCompanyProfile = async (
   orgId: string,
   profile: CompanyProfile
 ): Promise<boolean> => {
+  // NOTE: Do NOT include `settings` here — settings (yields, costs, pricingMode,
+  // sqFtRates, lifetimeUsage, website) are managed exclusively by updateOrgSettings.
+  // Overwriting `settings` here would destroy all those values on every sync.
   const { error } = await supabase
     .from('organizations')
     .update({
@@ -659,9 +662,6 @@ export const updateCompanyProfile = async (
         city: profile.city || '',
         state: profile.state || '',
         zip: profile.zip || '',
-      },
-      settings: {
-        website: profile.website || '',
       },
     })
     .eq('id', orgId);

@@ -471,13 +471,14 @@ export const useSync = () => {
 
         acquireInventorySyncLock();
         try {
-          // Always sync settings
+          // Always sync settings (website lives here too, not in updateCompanyProfile)
           await updateOrgSettings(session.organizationId, {
             yields: appData.yields,
             costs: appData.costs,
             pricingMode: appData.pricingMode,
             sqFtRates: appData.sqFtRates,
             lifetimeUsage: appData.lifetimeUsage,
+            website: appData.companyProfile?.website || '',
           });
 
           // Always sync company profile (name, address, logo, etc.)
@@ -595,7 +596,15 @@ export const useSync = () => {
         ? await fetchCrewWorkOrders(session.organizationId)
         : await fetchOrgData(session.organizationId);
       if (cloudData) {
-        const mergedState = { ...appData, ...cloudData };
+        // Merge cloudData into appData, but skip undefined/null values so that
+        // default state (yields, costs, etc.) is never overwritten with undefined
+        // when settings were previously corrupted or not yet saved.
+        const mergedState = { ...appData };
+        for (const key of Object.keys(cloudData) as (keyof typeof cloudData)[]) {
+          if ((cloudData as any)[key] !== undefined && (cloudData as any)[key] !== null) {
+            (mergedState as any)[key] = (cloudData as any)[key];
+          }
+        }
         const estimateCount = mergedState.savedEstimates?.length || 0;
         console.log(`[Refresh] Got ${estimateCount} estimates`);
         dispatch({ type: 'LOAD_DATA', payload: mergedState });
