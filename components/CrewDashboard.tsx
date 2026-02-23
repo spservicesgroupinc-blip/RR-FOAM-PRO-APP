@@ -759,20 +759,20 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                         <HardHat className="w-4 h-4"/> Install Specifications
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {selectedJob.results.totalWallArea > 0 && (
+                        {(selectedJob.results?.totalWallArea ?? 0) > 0 && (
                             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                                 <div className="text-[10px] text-brand font-black uppercase tracking-widest mb-1">Walls</div>
-                                <div className="text-slate-900 font-bold text-lg leading-tight">{selectedJob.wallSettings.type}</div>
-                                <div className="text-slate-600 font-medium text-sm mt-1">@ {selectedJob.wallSettings.thickness}" Depth</div>
-                                <div className="mt-3 pt-3 border-t border-slate-200 text-xs font-bold text-slate-400 text-right">{Math.round(selectedJob.results.totalWallArea).toLocaleString()} sqft</div>
+                                <div className="text-slate-900 font-bold text-lg leading-tight">{selectedJob.wallSettings?.type}</div>
+                                <div className="text-slate-600 font-medium text-sm mt-1">@ {selectedJob.wallSettings?.thickness}" Depth</div>
+                                <div className="mt-3 pt-3 border-t border-slate-200 text-xs font-bold text-slate-400 text-right">{Math.round(selectedJob.results?.totalWallArea ?? 0).toLocaleString()} sqft</div>
                             </div>
                         )}
-                        {selectedJob.results.totalRoofArea > 0 && (
+                        {(selectedJob.results?.totalRoofArea ?? 0) > 0 && (
                             <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
                                 <div className="text-[10px] text-brand font-black uppercase tracking-widest mb-1">Roof / Ceiling</div>
-                                <div className="text-slate-900 font-bold text-lg leading-tight">{selectedJob.roofSettings.type}</div>
-                                <div className="text-slate-600 font-medium text-sm mt-1">@ {selectedJob.roofSettings.thickness}" Depth</div>
-                                <div className="mt-3 pt-3 border-t border-slate-200 text-xs font-bold text-slate-400 text-right">{Math.round(selectedJob.results.totalRoofArea).toLocaleString()} sqft</div>
+                                <div className="text-slate-900 font-bold text-lg leading-tight">{selectedJob.roofSettings?.type}</div>
+                                <div className="text-slate-600 font-medium text-sm mt-1">@ {selectedJob.roofSettings?.thickness}" Depth</div>
+                                <div className="mt-3 pt-3 border-t border-slate-200 text-xs font-bold text-slate-400 text-right">{Math.round(selectedJob.results?.totalRoofArea ?? 0).toLocaleString()} sqft</div>
                             </div>
                         )}
                     </div>
@@ -789,7 +789,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                  <div>
                                      <span className="font-bold text-slate-700 block">Open Cell Foam</span>
                                      <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider">
-                                         Est. {selectedJob.results.openCellStrokes?.toLocaleString()} Strokes
+                                         Est. {selectedJob.results?.openCellStrokes?.toLocaleString()} Strokes
                                      </span>
                                  </div>
                                  <span className="bg-white px-3 py-1 rounded-lg border border-slate-200 text-brand font-black shadow-sm">{selectedJob.materials.openCellSets.toFixed(2)} Sets</span>
@@ -800,7 +800,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                  <div>
                                      <span className="font-bold text-slate-700 block">Closed Cell Foam</span>
                                      <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider">
-                                         Est. {selectedJob.results.closedCellStrokes?.toLocaleString()} Strokes
+                                         Est. {selectedJob.results?.closedCellStrokes?.toLocaleString()} Strokes
                                      </span>
                                  </div>
                                  <span className="bg-white px-3 py-1 rounded-lg border border-slate-200 text-brand font-black shadow-sm">{selectedJob.materials.closedCellSets.toFixed(2)} Sets</span>
@@ -881,7 +881,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                             <div className="p-4 bg-sky-50 rounded-2xl border border-sky-100 space-y-4">
                                 <h4 className="text-xs font-black text-sky-900 uppercase tracking-widest border-b border-sky-200 pb-2">Machine Counters (Strokes)</h4>
                                 <div>
-                                    <label className="text-xs font-bold text-sky-700 flex justify-between mb-1"><span>Open Cell Strokes</span> <span>Est: {selectedJob.results.openCellStrokes?.toLocaleString()}</span></label>
+                                    <label className="text-xs font-bold text-sky-700 flex justify-between mb-1"><span>Open Cell Strokes</span> <span>Est: {selectedJob.results?.openCellStrokes?.toLocaleString()}</span></label>
                                     <input 
                                         type="number"
                                         value={actuals.openCellStrokes || ''} 
@@ -896,7 +896,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                     {actuals.openCellStrokes > 0 && <p className="text-[10px] text-sky-500 mt-1 text-right">= {(actuals.openCellStrokes / ocStrokesPerSet).toFixed(2)} Sets ({ocStrokesPerSet} strokes/set)</p>}
                                 </div>
                                 <div>
-                                    <label className="text-xs font-bold text-sky-700 flex justify-between mb-1"><span>Closed Cell Strokes</span> <span>Est: {selectedJob.results.closedCellStrokes?.toLocaleString()}</span></label>
+                                    <label className="text-xs font-bold text-sky-700 flex justify-between mb-1"><span>Closed Cell Strokes</span> <span>Est: {selectedJob.results?.closedCellStrokes?.toLocaleString()}</span></label>
                                     <input 
                                         type="number"
                                         value={actuals.closedCellStrokes || ''} 
