@@ -72,10 +72,10 @@ alter table inventory_items enable row level security;
 
 -- Policy: Admins can do everything for their org
 create policy "Admins can do everything" on organizations
-  for all using (
+  for all to authenticated using (
     exists (
       select 1 from profiles
-      where profiles.id = auth.uid()
+      where profiles.id = (select auth.uid())
       and profiles.organization_id = organizations.id
       and profiles.role = 'admin'
     )
@@ -83,27 +83,27 @@ create policy "Admins can do everything" on organizations
 
 -- Policy: Users can view their own profile
 create policy "Users can view own profile" on profiles
-  for select using ( auth.uid() = id );
+  for select to authenticated using ( (select auth.uid()) = id );
 
--- Policy: Admin read/write customers
-create policy "Admins read/write customers" on customers
-  for all using (
+-- Policy: Admins + crew can read customers (single SELECT policy)
+create policy "Authenticated read customers" on customers
+  for select to authenticated using (
     exists (
       select 1 from profiles
-      where profiles.id = auth.uid()
+      where profiles.id = (select auth.uid())
       and profiles.organization_id = customers.organization_id
-      and profiles.role = 'admin'
+      and profiles.role in ('admin', 'crew')
     )
   );
 
--- Policy: Crew read-only customers (for Work Orders)
-create policy "Crew read customers" on customers
-  for select using (
+-- Policy: Only admins can insert/update/delete customers
+create policy "Admins write customers" on customers
+  for all to authenticated using (
     exists (
       select 1 from profiles
-      where profiles.id = auth.uid()
+      where profiles.id = (select auth.uid())
       and profiles.organization_id = customers.organization_id
-      and profiles.role = 'crew'
+      and profiles.role = 'admin'
     )
   );
 
@@ -131,23 +131,23 @@ create index idx_documents_created on documents(created_at desc);
 
 alter table documents enable row level security;
 
-create policy "Admins full access to documents" on documents
-  for all using (
+create policy "Authenticated read documents" on documents
+  for select to authenticated using (
     exists (
       select 1 from profiles
-      where profiles.id = auth.uid()
+      where profiles.id = (select auth.uid())
       and profiles.organization_id = documents.organization_id
-      and profiles.role = 'admin'
+      and profiles.role in ('admin', 'crew')
     )
   );
 
-create policy "Crew read documents" on documents
-  for select using (
+create policy "Admins write documents" on documents
+  for all to authenticated using (
     exists (
       select 1 from profiles
-      where profiles.id = auth.uid()
+      where profiles.id = (select auth.uid())
       and profiles.organization_id = documents.organization_id
-      and profiles.role = 'crew'
+      and profiles.role = 'admin'
     )
   );
 
@@ -243,3 +243,51 @@ create table maintenance_job_usage (
   applied boolean default false,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
+
+-- ============================================
+-- RLS for maintenance tables
+-- ============================================
+alter table maintenance_equipment enable row level security;
+alter table maintenance_service_items enable row level security;
+alter table maintenance_service_logs enable row level security;
+alter table maintenance_job_usage enable row level security;
+
+create policy "Admin full access maintenance_equipment" on maintenance_equipment
+  for all to authenticated using (
+    exists (
+      select 1 from profiles
+      where profiles.id = (select auth.uid())
+      and profiles.organization_id = maintenance_equipment.organization_id
+      and profiles.role = 'admin'
+    )
+  );
+
+create policy "Admin full access maintenance_service_items" on maintenance_service_items
+  for all to authenticated using (
+    exists (
+      select 1 from profiles
+      where profiles.id = (select auth.uid())
+      and profiles.organization_id = maintenance_service_items.organization_id
+      and profiles.role = 'admin'
+    )
+  );
+
+create policy "Admin full access maintenance_service_logs" on maintenance_service_logs
+  for all to authenticated using (
+    exists (
+      select 1 from profiles
+      where profiles.id = (select auth.uid())
+      and profiles.organization_id = maintenance_service_logs.organization_id
+      and profiles.role = 'admin'
+    )
+  );
+
+create policy "Admin full access maintenance_job_usage" on maintenance_job_usage
+  for all to authenticated using (
+    exists (
+      select 1 from profiles
+      where profiles.id = (select auth.uid())
+      and profiles.organization_id = maintenance_job_usage.organization_id
+      and profiles.role = 'admin'
+    )
+  );

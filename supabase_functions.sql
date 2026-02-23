@@ -562,10 +562,10 @@ ALTER TABLE purchase_orders ENABLE ROW LEVEL SECURITY;
 -- Admin full access policies (drop + recreate to be idempotent)
 DROP POLICY IF EXISTS "Admin equipment access" ON equipment;
 CREATE POLICY "Admin equipment access" ON equipment
-  FOR ALL USING (
+  FOR ALL TO authenticated USING (
     EXISTS (
       SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
+      WHERE profiles.id = (SELECT auth.uid())
       AND profiles.organization_id = equipment.organization_id
       AND profiles.role = 'admin'
     )
@@ -573,10 +573,10 @@ CREATE POLICY "Admin equipment access" ON equipment
 
 DROP POLICY IF EXISTS "Admin warehouse_stock access" ON warehouse_stock;
 CREATE POLICY "Admin warehouse_stock access" ON warehouse_stock
-  FOR ALL USING (
+  FOR ALL TO authenticated USING (
     EXISTS (
       SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
+      WHERE profiles.id = (SELECT auth.uid())
       AND profiles.organization_id = warehouse_stock.organization_id
       AND profiles.role = 'admin'
     )
@@ -584,10 +584,10 @@ CREATE POLICY "Admin warehouse_stock access" ON warehouse_stock
 
 DROP POLICY IF EXISTS "Admin material_logs access" ON material_logs;
 CREATE POLICY "Admin material_logs access" ON material_logs
-  FOR ALL USING (
+  FOR ALL TO authenticated USING (
     EXISTS (
       SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
+      WHERE profiles.id = (SELECT auth.uid())
       AND profiles.organization_id = material_logs.organization_id
       AND profiles.role = 'admin'
     )
@@ -595,10 +595,10 @@ CREATE POLICY "Admin material_logs access" ON material_logs
 
 DROP POLICY IF EXISTS "Admin purchase_orders access" ON purchase_orders;
 CREATE POLICY "Admin purchase_orders access" ON purchase_orders
-  FOR ALL USING (
+  FOR ALL TO authenticated USING (
     EXISTS (
       SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
+      WHERE profiles.id = (SELECT auth.uid())
       AND profiles.organization_id = purchase_orders.organization_id
       AND profiles.role = 'admin'
     )
@@ -607,10 +607,10 @@ CREATE POLICY "Admin purchase_orders access" ON purchase_orders
 -- Admin full access for estimates
 DROP POLICY IF EXISTS "Admin estimates access" ON estimates;
 CREATE POLICY "Admin estimates access" ON estimates
-  FOR ALL USING (
+  FOR ALL TO authenticated USING (
     EXISTS (
       SELECT 1 FROM profiles
-      WHERE profiles.id = auth.uid()
+      WHERE profiles.id = (SELECT auth.uid())
       AND profiles.organization_id = estimates.organization_id
       AND profiles.role = 'admin'
     )
