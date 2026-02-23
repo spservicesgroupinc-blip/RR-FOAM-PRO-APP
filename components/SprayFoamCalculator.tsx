@@ -15,7 +15,7 @@ import { useEstimates } from '../hooks/useEstimates';
 import { calculateResults } from '../utils/calculatorHelpers';
 import { generateDocumentPDF, generateEstimatePDF, generateWorkOrderPDF } from '../utils/pdfGenerator';
 import { syncUp } from '../services/api';
-import { upsertInventoryItem } from '../services/supabaseService';
+import { upsertInventoryItem, upsertEquipment, deleteEquipmentItem, upsertCustomer, deleteInventoryItem, updateCompanyProfile } from '../services/supabaseService';
 import { getCurrentSession, signOut } from '../services/auth';
 import safeStorage from '../utils/safeStorage';
 
@@ -240,8 +240,21 @@ const SprayFoamCalculator: React.FC = () => {
 
   const archiveCustomer = (id: string) => {
     if (confirm("Archive this customer?")) {
+        const archivedCustomer = appData.customers.find(c => c.id === id);
         const updated = appData.customers.map(c => c.id === id ? { ...c, status: 'Archived' as const } : c);
         dispatch({ type: 'UPDATE_DATA', payload: { customers: updated } });
+
+        // Persist archive status to Supabase
+        if (session?.organizationId && archivedCustomer) {
+          upsertCustomer({ ...archivedCustomer, status: 'Archived' }, session.organizationId)
+            .then(saved => {
+              if (saved) console.log('[Archive] Customer archived in Supabase:', id);
+            })
+            .catch(err => {
+              console.error('Failed to archive customer in Supabase:', err);
+              dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Failed to save archive status to cloud. Change may revert on refresh.' } });
+            });
+        }
     }
   };
 
@@ -270,15 +283,51 @@ const SprayFoamCalculator: React.FC = () => {
   };
 
   const addEquipment = () => {
-      const newEq: EquipmentItem = { id: Math.random().toString(36).substr(2,9), name: '', status: 'Available' };
+      const tempId = Math.random().toString(36).substr(2,9);
+      const newEq: EquipmentItem = { id: tempId, name: '', status: 'Available' };
       dispatch({ type: 'UPDATE_DATA', payload: { equipment: [...(appData.equipment || []), newEq] } });
+
+      // Persist to Supabase immediately to get a real UUID
+      if (session?.organizationId) {
+        upsertEquipment(newEq, session.organizationId).then(saved => {
+          if (saved && saved.id !== tempId) {
+            const fixedEquipment = (appData.equipment || []).map(e =>
+              e.id === tempId ? { ...e, id: saved.id } : e
+            );
+            const hasItem = fixedEquipment.some(e => e.id === saved.id);
+            const finalEquipment = hasItem ? fixedEquipment : [...fixedEquipment, { ...newEq, id: saved.id }];
+            dispatch({ type: 'UPDATE_DATA', payload: { equipment: finalEquipment } });
+          }
+        }).catch(err => {
+          console.error('Failed to save new equipment to Supabase:', err);
+          dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Failed to save equipment to cloud.' } });
+        });
+      }
   };
   const removeEquipment = (id: string) => {
       dispatch({ type: 'UPDATE_DATA', payload: { equipment: appData.equipment.filter(e => e.id !== id) } });
+
+      // Persist deletion to Supabase
+      if (session?.organizationId && id.includes('-') && id.length > 20) {
+        deleteEquipmentItem(id).catch(err => {
+          console.error('Failed to delete equipment from Supabase:', err);
+          dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Failed to delete equipment from cloud. It may reappear on refresh.' } });
+        });
+      }
   };
   const updateEquipment = (id: string, field: keyof EquipmentItem, value: any) => {
       const updated = appData.equipment.map(e => e.id === id ? { ...e, [field]: value } : e);
       dispatch({ type: 'UPDATE_DATA', payload: { equipment: updated } });
+
+      // Persist update to Supabase (debounced via the equipment item itself)
+      if (session?.organizationId) {
+        const updatedItem = updated.find(e => e.id === id);
+        if (updatedItem) {
+          upsertEquipment(updatedItem, session.organizationId).catch(err => {
+            console.error('Failed to update equipment in Supabase:', err);
+          });
+        }
+      }
   };
 
   const handleSaveAndMarkPaid = async (lines: InvoiceLineItem[]) => {
@@ -612,7 +661,16 @@ const SprayFoamCalculator: React.FC = () => {
                 state={appData}
                 onStockChange={handleWarehouseStockChange}
                 onAddItem={() => dispatch({ type: 'UPDATE_DATA', payload: { warehouse: { ...appData.warehouse, items: [...appData.warehouse.items, { id: Math.random().toString(36).substr(2,9), name: '', quantity: 0, unit: 'pcs', unitCost: 0 }] } } })}
-                onRemoveItem={(id) => dispatch({ type: 'UPDATE_DATA', payload: { warehouse: { ...appData.warehouse, items: appData.warehouse.items.filter(i => i.id !== id) } } })}
+                onRemoveItem={(id) => {
+                  dispatch({ type: 'UPDATE_DATA', payload: { warehouse: { ...appData.warehouse, items: appData.warehouse.items.filter(i => i.id !== id) } } });
+                  // Persist deletion to Supabase so item doesn't reappear on refresh
+                  if (id.includes('-') && id.length > 20) {
+                    deleteInventoryItem(id).catch(err => {
+                      console.error('Failed to delete inventory item from Supabase:', err);
+                      dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Failed to remove item from cloud. It may reappear on refresh.' } });
+                    });
+                  }
+                }}
                 onUpdateItem={updateWarehouseItem}
                 onFinishSetup={() => dispatch({ type: 'SET_VIEW', payload: 'dashboard' })}
                 onViewReport={() => dispatch({ type: 'SET_VIEW', payload: 'material_report' })}

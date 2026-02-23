@@ -238,6 +238,7 @@ export const useEstimates = () => {
         await markEstimatePaid(id, financials);
       } catch (err) {
         console.error('markPaid Supabase error:', err);
+        dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Payment saved locally but failed to sync to cloud. Use Force Sync to retry.' } });
       }
 
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' });
@@ -274,7 +275,10 @@ export const useEstimates = () => {
           const fixed = updatedCustomers.map(c => c.id === customerData.id ? { ...customerData, id: saved.id } : c);
           dispatch({ type: 'UPDATE_DATA', payload: { customers: fixed } });
         }
-      }).catch(err => console.error('Supabase customer save failed:', err));
+      }).catch(err => {
+        console.error('Supabase customer save failed:', err);
+        dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Customer saved locally but failed to sync to cloud.' } });
+      });
     }
   };
 
@@ -592,6 +596,7 @@ export const useEstimates = () => {
         } catch (err) {
           console.error('PO sync error:', err);
           dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
+          dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Purchase order saved locally but failed to sync to cloud.' } });
         }
       }
   };

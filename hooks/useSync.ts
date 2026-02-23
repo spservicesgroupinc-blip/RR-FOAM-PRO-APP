@@ -11,8 +11,11 @@ import {
   subscribeToOrgChanges,
   subscribeToWorkOrderUpdates,
   updateOrgSettings,
+  updateCompanyProfile,
   updateWarehouseStock,
   upsertInventoryItem,
+  upsertEquipment,
+  deleteEquipmentItem,
   insertMaterialLogs,
   markEstimateInventoryProcessed,
   flushOfflineCrewQueue,
@@ -435,6 +438,18 @@ export const useSync = () => {
             sqFtRates: appData.sqFtRates,
             lifetimeUsage: appData.lifetimeUsage,
           });
+
+          // Always sync company profile (name, address, logo, etc.)
+          await updateCompanyProfile(session.organizationId, appData.companyProfile);
+
+          // Always sync equipment items
+          if (appData.equipment?.length > 0) {
+            await Promise.all(
+              appData.equipment.map(item =>
+                upsertEquipment(item, session.organizationId)
+              )
+            );
+          }
 
           // Only sync warehouse when it actually changed locally
           if (warehouseNeedsSync) {
