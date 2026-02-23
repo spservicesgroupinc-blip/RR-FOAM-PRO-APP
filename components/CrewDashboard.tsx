@@ -230,6 +230,20 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
   const round2 = (num: number) => Math.round((num + Number.EPSILON) * 100) / 100;
 
+  // Resolve the organization ID from localStorage, falling back to the prop.
+  // iOS WebKit can evict the React state under memory pressure while localStorage
+  // retains the value (or vice-versa), so we always reconcile from storage first.
+  const resolveSessionOrgId = (): string => {
+    try {
+      const s = safeStorage.getItem('foamProCrewSession') || safeStorage.getItem('foamProSession');
+      if (s) {
+        const parsed = JSON.parse(s);
+        return parsed.organizationId || organizationId;
+      }
+    } catch { /* use prop fallback */ }
+    return organizationId;
+  };
+
   const activeWorkOrders = state.savedEstimates.filter(e => e.status === 'Work Order' && e.executionStatus !== 'Completed');
   const completedWorkOrders = state.savedEstimates.filter(e => e.status === 'Work Order' && e.executionStatus === 'Completed');
   
@@ -249,7 +263,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
       try {
           if (selectedJobId) {
               const success = await crewUpdateJob(
-                  organizationId,
+                  resolveSessionOrgId(),
                   selectedJobId,
                   { startedAt: now, startedBy: 'Crew' },
                   'In Progress'
@@ -289,7 +303,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
             }
             
             await crewUpdateJob(
-              organizationId,
+              resolveSessionOrgId(),
               selectedJob.id,
               { 
                 ...selectedJob.actuals, 
@@ -352,31 +366,28 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
       setIsCompleting(true);
       
       try {
-        // iOS WebKit can evict localStorage under memory pressure.
-        // Try both session keys and fall back to the organizationId prop.
+        // Resolve session credentials, falling back to the prop if storage is unavailable.
+        const sessionOrgId = resolveSessionOrgId();
+        if (!sessionOrgId) throw new Error("Session expired. Please log out and back in.");
+
         let sessionUser = 'Crew';
-        let sessionOrgId = organizationId;
         try {
           const sessionStr = safeStorage.getItem('foamProCrewSession') || safeStorage.getItem('foamProSession');
           if (sessionStr) {
             const parsed = JSON.parse(sessionStr);
             sessionUser = parsed.username || parsed.companyName || 'Crew';
-            sessionOrgId = parsed.organizationId || organizationId;
           }
-        } catch { /* use fallbacks */ }
-        if (!sessionOrgId) throw new Error("Session expired. Please log out and back in.");
+        } catch { /* use default */ }
         
-        const session = { username: sessionUser, organizationId: sessionOrgId };
-
         const finalData = {
             ...actuals,
             ocStrokesPerSet,
             ccStrokesPerSet,
             completionDate: new Date().toISOString(),
-            completedBy: session.username || "Crew"
+            completedBy: sessionUser
         };
 
-        const success = await crewUpdateJob(organizationId, selectedJob.id, finalData, 'Completed');
+        const success = await crewUpdateJob(sessionOrgId, selectedJob.id, finalData, 'Completed');
         
         if (success) {
             // Clear stroke counter localStorage for this job
@@ -396,11 +407,14 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                     alert("Job Completed Successfully!");
                 } catch(e) {
                     console.error("Sync failed after completion", e);
-                    window.location.reload();
+                    // Show a non-destructive error instead of reloading the app
+                    alert("Job was saved successfully, but the refresh failed. Please pull to refresh.");
                 }
             }, 1000);
         } else {
-            alert("Error syncing completion. Please check your internet connection.");
+            // crewUpdateJob returned false: the update failed but was queued for
+            // offline retry.  Let the crew know so they can try again when connected.
+            alert("Could not submit job — it has been queued for retry. Please check your connection and tap 'Submit & Finish' again when back online.");
         }
       } catch (error: any) {
          console.error("Completion Error:", error);
