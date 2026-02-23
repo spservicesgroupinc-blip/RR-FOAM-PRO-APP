@@ -355,10 +355,11 @@ const SprayFoamCalculator: React.FC = () => {
 
   // Called after EstimateStage saves its lines
   const handleConfirmEstimate = async (record: EstimateRecord, shouldPrint: boolean) => {
-      // Data is already saved — just navigate to dashboard.
+      // Data is already saved — advance to Work Order stage in the customer workflow.
       // PDF is only generated when user explicitly requests it via a download button.
-      dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Estimate saved successfully.' } });
-      dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
+      dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Estimate saved! Now generate the Work Order.' } });
+      dispatch({ type: 'SET_EDITING_ESTIMATE', payload: record.id });
+      dispatch({ type: 'SET_VIEW', payload: 'work_order_stage' });
   };
 
   // Called when WorkOrderStage confirms
@@ -421,6 +422,25 @@ const SprayFoamCalculator: React.FC = () => {
       if (rec.status === 'Work Order' && rec.executionStatus === 'Completed') {
           dispatch({ type: 'SET_VIEW', payload: 'invoice_stage' });
       }
+  };
+
+  // Stage-specific navigation handlers for Customer CRM
+  const handleOpenEstimateStage = (rec: EstimateRecord) => {
+      loadEstimateForEditing(rec);
+      dispatch({ type: 'SET_EDITING_ESTIMATE', payload: rec.id });
+      dispatch({ type: 'SET_VIEW', payload: 'estimate_stage' });
+  };
+
+  const handleOpenWorkOrderStage = (rec: EstimateRecord) => {
+      loadEstimateForEditing(rec);
+      dispatch({ type: 'SET_EDITING_ESTIMATE', payload: rec.id });
+      dispatch({ type: 'SET_VIEW', payload: 'work_order_stage' });
+  };
+
+  const handleOpenInvoiceStage = (rec: EstimateRecord) => {
+      loadEstimateForEditing(rec);
+      dispatch({ type: 'SET_EDITING_ESTIMATE', payload: rec.id });
+      dispatch({ type: 'SET_VIEW', payload: 'invoice_stage' });
   };
 
   // Show loading while checking existing auth
@@ -653,6 +673,9 @@ const SprayFoamCalculator: React.FC = () => {
                     dispatch({ type: 'SET_VIEW', payload: 'calculator' }); 
                 }}
                 onLoadEstimate={loadEstimateForEditing}
+                onOpenEstimateStage={handleOpenEstimateStage}
+                onOpenWorkOrderStage={handleOpenWorkOrderStage}
+                onOpenInvoiceStage={handleOpenInvoiceStage}
                 autoOpen={autoTriggerCustomerModal}
                 onAutoOpenComplete={() => setAutoTriggerCustomerModal(false)}
             />

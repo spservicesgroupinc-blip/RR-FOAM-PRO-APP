@@ -416,12 +416,12 @@ export const useEstimates = () => {
             dispatch({ type: 'UPDATE_DATA', payload: { equipment: updatedEquipment } });
         }
 
-        // 4. OPTIMISTIC UPDATE: Navigate Immediately
-        dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
+        // 4. OPTIMISTIC UPDATE: Navigate to Invoice Stage to continue workflow
+        dispatch({ type: 'SET_VIEW', payload: 'invoice_stage' });
         
         const notifMsg = alreadyDeducted
-          ? 'Work Order Updated (inventory already deducted).'
-          : 'Work Order Created — Warehouse Inventory Deducted!';
+          ? 'Work Order Updated! Now generate the Invoice.'
+          : 'Work Order Created — Now generate the Invoice!';
         dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: notifMsg } });
         
         // 5. Generate PDF Locally + Save to Cloud

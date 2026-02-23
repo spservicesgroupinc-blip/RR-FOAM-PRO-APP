@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Archive, Phone, Mail, MapPin, ArrowLeft, FileText, Download, Trash2, ExternalLink, Loader2 } from 'lucide-react';
+import { Plus, Archive, Phone, Mail, MapPin, ArrowLeft, FileText, Download, Trash2, ExternalLink, Loader2, Receipt, HardHat, ClipboardList } from 'lucide-react';
 import { CalculatorState, CustomerProfile, EstimateRecord } from '../types';
 import { usePagination } from '../hooks/usePagination';
 import { PaginationControls } from './PaginationControls';
@@ -16,6 +16,9 @@ interface CustomersProps {
   onArchiveCustomer: (id: string) => void;
   onStartEstimate: (customer: CustomerProfile) => void;
   onLoadEstimate: (est: EstimateRecord) => void;
+  onOpenEstimateStage?: (est: EstimateRecord) => void;
+  onOpenWorkOrderStage?: (est: EstimateRecord) => void;
+  onOpenInvoiceStage?: (est: EstimateRecord) => void;
   autoOpen?: boolean;
   onAutoOpenComplete?: () => void;
 }
@@ -29,6 +32,9 @@ export const Customers: React.FC<CustomersProps> = ({
   onArchiveCustomer,
   onStartEstimate,
   onLoadEstimate,
+  onOpenEstimateStage,
+  onOpenWorkOrderStage,
+  onOpenInvoiceStage,
   autoOpen,
   onAutoOpenComplete
 }) => {
@@ -144,20 +150,87 @@ export const Customers: React.FC<CustomersProps> = ({
             </div>
             
             <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="p-6 border-b border-slate-100 bg-slate-50 font-black uppercase text-[10px] tracking-widest text-slate-400">Job History</div>
+                <div className="p-6 border-b border-slate-100 bg-slate-50 font-black uppercase text-[10px] tracking-widest text-slate-400">Job History &amp; Saved Documents</div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
-                    <thead className="bg-slate-50 text-[10px] font-black text-slate-300 uppercase tracking-widest border-b"><tr><th className="px-6 py-5">Date</th><th className="px-6 py-5">Status</th><th className="px-6 py-5">Quote</th><th className="px-6 py-5 text-right">Action</th></tr></thead>
+                    <thead className="bg-slate-50 text-[10px] font-black text-slate-300 uppercase tracking-widest border-b"><tr><th className="px-6 py-5">Date</th><th className="px-6 py-5">Status</th><th className="px-6 py-5">Quote</th><th className="px-6 py-5">Saved Documents</th><th className="px-6 py-5 text-right">Action</th></tr></thead>
                     <tbody>
-                        {customerEstimates.map(est => (
-                            <tr key={est.id} className="hover:bg-slate-50 border-b last:border-0 cursor-pointer transition-colors" onClick={() => onLoadEstimate(est)}>
+                        {customerEstimates.map(est => {
+                            const hasEstimate = !!est.estimateLines && est.estimateLines.length > 0;
+                            const hasWorkOrder = est.status === 'Work Order' || est.status === 'Invoiced' || est.status === 'Paid' || (!!est.workOrderLines && est.workOrderLines.length > 0);
+                            const hasInvoice = est.status === 'Invoiced' || est.status === 'Paid' || (!!est.invoiceLines && est.invoiceLines.length > 0);
+                            return (
+                            <tr key={est.id} className="hover:bg-slate-50 border-b last:border-0 transition-colors">
                                 <td className="px-6 py-5 font-bold text-slate-800">{new Date(est.date).toLocaleDateString()}</td>
-                                <td className="px-6 py-5"> <span className="bg-slate-100 px-3 py-1 rounded-full text-[10px] font-black text-slate-600 uppercase tracking-tighter">{est.status}</span> </td>
+                                <td className="px-6 py-5"> 
+                                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${
+                                        est.status === 'Draft' ? 'bg-slate-100 text-slate-600' :
+                                        est.status === 'Work Order' ? 'bg-amber-100 text-amber-700' :
+                                        est.status === 'Invoiced' ? 'bg-sky-100 text-sky-700' :
+                                        est.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' :
+                                        'bg-slate-100 text-slate-600'
+                                    }`}>{est.status}</span>
+                                </td>
                                 <td className="px-6 py-5 font-mono font-black text-slate-900">${est.totalValue?.toLocaleString() || 0}</td>
-                                <td className="px-6 py-5 text-right text-brand font-black uppercase text-[10px] tracking-widest">Open Quote</td>
+                                <td className="px-6 py-5">
+                                    <div className="flex flex-wrap gap-2">
+                                        {/* Estimate Link */}
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); onOpenEstimateStage ? onOpenEstimateStage(est) : onLoadEstimate(est); }}
+                                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors ${
+                                                hasEstimate 
+                                                    ? 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200' 
+                                                    : 'bg-slate-50 text-slate-400 hover:bg-slate-100 border border-slate-200'
+                                            }`}
+                                            title={hasEstimate ? 'Open saved estimate' : 'Create estimate'}
+                                        >
+                                            <ClipboardList className="w-3 h-3" />
+                                            Estimate
+                                        </button>
+
+                                        {/* Work Order Link */}
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); onOpenWorkOrderStage ? onOpenWorkOrderStage(est) : onLoadEstimate(est); }}
+                                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors ${
+                                                hasWorkOrder 
+                                                    ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200' 
+                                                    : 'bg-slate-50 text-slate-300 border border-slate-100 cursor-not-allowed opacity-50'
+                                            }`}
+                                            disabled={!hasWorkOrder}
+                                            title={hasWorkOrder ? 'Open saved work order' : 'Work order not yet created'}
+                                        >
+                                            <HardHat className="w-3 h-3" />
+                                            Work Order
+                                        </button>
+
+                                        {/* Invoice Link */}
+                                        <button 
+                                            onClick={(e) => { e.stopPropagation(); onOpenInvoiceStage ? onOpenInvoiceStage(est) : onLoadEstimate(est); }}
+                                            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-colors ${
+                                                hasInvoice 
+                                                    ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200' 
+                                                    : 'bg-slate-50 text-slate-300 border border-slate-100 cursor-not-allowed opacity-50'
+                                            }`}
+                                            disabled={!hasInvoice}
+                                            title={hasInvoice ? 'Open saved invoice' : 'Invoice not yet created'}
+                                        >
+                                            <Receipt className="w-3 h-3" />
+                                            Invoice
+                                        </button>
+                                    </div>
+                                </td>
+                                <td className="px-6 py-5 text-right">
+                                    <button 
+                                        onClick={() => onLoadEstimate(est)}
+                                        className="text-brand font-black uppercase text-[10px] tracking-widest hover:underline"
+                                    >
+                                        Open Job
+                                    </button>
+                                </td>
                             </tr>
-                        ))}
-                        {customerEstimates.length === 0 && <tr><td colSpan={4} className="p-12 text-center text-slate-300 italic">No project history found for this lead.</td></tr>}
+                            );
+                        })}
+                        {customerEstimates.length === 0 && <tr><td colSpan={5} className="p-12 text-center text-slate-300 italic">No project history found for this lead.</td></tr>}
                     </tbody>
                     </table>
                 </div>
