@@ -6,8 +6,6 @@
 
 Professional spray foam estimation and rig management application built as a Progressive Web App (PWA).
 
-[![Netlify Status](https://api.netlify.com/api/v1/badges/YOUR-SITE-ID/deploy-status)](https://app.netlify.com/sites/YOUR-SITE-NAME/deploys)
-
 ## Features
 
 ✨ **Progressive Web App** - Install on desktop and mobile  
@@ -39,14 +37,9 @@ View your app in AI Studio: https://ai.studio/apps/drive/19fddk-P3p4E_IAL4siYhV5
    npm run dev
    ```
 
-## Deploy to Netlify
+## Deploy to Google Cloud Run
 
-See [NETLIFY_DEPLOY.md](./NETLIFY_DEPLOY.md) for detailed deployment instructions.
-
-**Quick Deploy:**
-1. Connect repository to Netlify
-2. Set `GEMINI_API_KEY` environment variable
-3. Deploy! (Auto-configured with `netlify.toml`)
+See [CLOUDRUN_DEPLOY.md](./CLOUDRUN_DEPLOY.md) for detailed deployment instructions.
 
 ## PWA Installation
 
@@ -64,7 +57,7 @@ Once deployed or running locally, you can install the app:
 - **Icons**: Lucide React
 - **PDF Generation**: jsPDF
 - **Backend**: Supabase (Postgres, Auth, Storage)
-- **Deployment**: Netlify (optimized)
+- **Deployment**: Google Cloud Run
 
 ## Development
 
