@@ -153,18 +153,20 @@ BEGIN
       -- Re-edit: job was already completed, reference is the PREVIOUS actuals
       v_ref_oc := COALESCE((v_old_estimate.actuals->>'openCellSets')::numeric, 0);
       v_ref_cc := COALESCE((v_old_estimate.actuals->>'closedCellSets')::numeric, 0);
-      v_ref_inv := COALESCE(v_old_estimate.actuals->'inventory', '[]'::jsonb);
+      -- NULLIF converts JSON null ('null'::jsonb) to SQL NULL so COALESCE can
+      -- fall back to an empty array.  A missing key already returns SQL NULL.
+      v_ref_inv := COALESCE(NULLIF(v_old_estimate.actuals->'inventory', 'null'::jsonb), '[]'::jsonb);
     ELSE
       -- First completion: reference is the ESTIMATED amounts (already deducted from warehouse)
       v_ref_oc := COALESCE((v_old_estimate.materials->>'openCellSets')::numeric, 0);
       v_ref_cc := COALESCE((v_old_estimate.materials->>'closedCellSets')::numeric, 0);
-      v_ref_inv := COALESCE(v_old_estimate.materials->'inventory', '[]'::jsonb);
+      v_ref_inv := COALESCE(NULLIF(v_old_estimate.materials->'inventory', 'null'::jsonb), '[]'::jsonb);
     END IF;
 
     -- New actual amounts from crew submission
     v_act_oc := COALESCE((p_actuals->>'openCellSets')::numeric, 0);
     v_act_cc := COALESCE((p_actuals->>'closedCellSets')::numeric, 0);
-    v_act_inv := COALESCE(p_actuals->'inventory', '[]'::jsonb);
+    v_act_inv := COALESCE(NULLIF(p_actuals->'inventory', 'null'::jsonb), '[]'::jsonb);
 
     -- Calculate foam adjustment: positive = crew used less (return to stock), negative = used more (deduct more)
     v_oc_adj := v_ref_oc - v_act_oc;
