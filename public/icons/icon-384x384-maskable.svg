@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="384" height="384" viewBox="0 0 384 384">
+  <rect width="384" height="384" rx="0" fill="#0F172A"/>
+  <g transform="translate(192,172)">
+    <g transform="skewX(-12)">
+      <rect x="-76" y="-45" width="151" height="89" rx="5" fill="#E30613"/>
+    </g>
+    <text x="0" y="17" text-anchor="middle" fill="white" font-family="Arial Black,Arial,sans-serif" font-weight="900" font-size="69">RFE</text>
+  </g>
+  <text x="192" y="268" text-anchor="middle" fill="#FFDE00" font-family="Arial,sans-serif" font-weight="700" font-size="21" letter-spacing="6">FOAM EQUIP</text>
+  <rect x="158" y="288" width="68" height="27" rx="3" fill="#E30613"/>
+  <text x="192" y="308" text-anchor="middle" fill="white" font-family="Arial,sans-serif" font-weight="900" font-size="17">PRO</text>
+</svg>
