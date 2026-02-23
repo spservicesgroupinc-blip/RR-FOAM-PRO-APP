@@ -116,6 +116,7 @@ export const useEstimates = () => {
       executionStatus: existingRecord?.executionStatus || 'Not Started',
       actuals: existingRecord?.actuals,
       financials: existingRecord?.financials,
+      inventoryProcessed: existingRecord?.inventoryProcessed || false,
       workOrderSheetUrl: existingRecord?.workOrderSheetUrl,
       
       // Preserve custom lines if not provided in extraData
@@ -383,6 +384,10 @@ export const useEstimates = () => {
     const resolvedMaterials = {
       openCellSets: results.openCellSets,
       closedCellSets: results.closedCellSets,
+      openCellStrokes: results.openCellStrokes,
+      closedCellStrokes: results.closedCellStrokes,
+      ocStrokesPerSet: appData.yields?.openCellStrokes || 6600,
+      ccStrokesPerSet: appData.yields?.closedCellStrokes || 6600,
       inventory: appData.inventory.length > 0
         ? (() => {
             const normName = (n?: string) => (n || '').trim().toLowerCase().replace(/\s+/g, ' ');

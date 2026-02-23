@@ -83,7 +83,48 @@ export const useSync = () => {
 
     if (unprocessed.length === 0) return null;
 
-    console.log(`[Inventory Reconcile] Found ${unprocessed.length} unprocessed completed job(s). Reconciling...`);
+    // SAFETY CHECK: Verify these jobs weren't already processed server-side
+    // by crew_update_job. If the DB has inventory_processed = true but the
+    // local state lost it (e.g., stale cache), re-fetch to confirm.
+    // This prevents double-adjusting warehouse inventory.
+    console.log(`[Inventory Reconcile] Found ${unprocessed.length} potentially unprocessed completed job(s). Verifying against server...`);
+    
+    // Quick DB check: fetch inventory_processed status for these estimates
+    try {
+      const { data: dbEstimates } = await supabase
+        .from('estimates')
+        .select('id, inventory_processed')
+        .in('id', unprocessed.map(e => e.id));
+      
+      if (dbEstimates) {
+        const alreadyProcessedIds = new Set(
+          dbEstimates.filter(e => e.inventory_processed === true).map(e => e.id)
+        );
+        
+        if (alreadyProcessedIds.size > 0) {
+          console.log(`[Inventory Reconcile] ${alreadyProcessedIds.size} job(s) already processed server-side (crew_update_job). Skipping those and updating local state.`);
+          // Fix local state for already-processed estimates
+          const fixedEstimates = estimates.map(e =>
+            alreadyProcessedIds.has(e.id) ? { ...e, inventoryProcessed: true } : e
+          );
+          dispatch({ type: 'UPDATE_DATA', payload: { savedEstimates: fixedEstimates } });
+          
+          // Remove already-processed from unprocessed list
+          const reallyUnprocessed = unprocessed.filter(e => !alreadyProcessedIds.has(e.id));
+          if (reallyUnprocessed.length === 0) {
+            console.log('[Inventory Reconcile] All jobs were already processed server-side. No reconciliation needed.');
+            return null;
+          }
+          // Continue with only truly unprocessed jobs
+          unprocessed.length = 0;
+          unprocessed.push(...reallyUnprocessed);
+        }
+      }
+    } catch (err) {
+      console.warn('[Inventory Reconcile] Could not verify server state, proceeding with caution:', err);
+    }
+
+    console.log(`[Inventory Reconcile] Reconciling ${unprocessed.length} unprocessed completed job(s)...`);
 
     const newWarehouse = {
       ...warehouse,

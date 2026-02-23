@@ -316,25 +316,27 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
               const ccSets = selectedJob.materials?.closedCellSets || 0;
               
               // Auto-populate stroke counts from the live counter
-              const finalOCStrokes = liveOCStrokes || selectedJob.actuals?.openCellStrokes || 0;
-              const finalCCStrokes = liveCCStrokes || selectedJob.actuals?.closedCellStrokes || 0;
+              // Use ?? to preserve legitimate 0 values
+              const finalOCStrokes = liveOCStrokes || (selectedJob.actuals?.openCellStrokes ?? 0);
+              const finalCCStrokes = liveCCStrokes || (selectedJob.actuals?.closedCellStrokes ?? 0);
 
               // Calculate actual sets from live stroke counts if available
+              // Use nullish coalescing (??) instead of || to preserve legitimate 0 values
               const actualOCSets = liveOCStrokes > 0 
                 ? round2(liveOCStrokes / ocStrokesPerSet) 
-                : (selectedJob.actuals?.openCellSets || round2(ocSets));
+                : (selectedJob.actuals?.openCellSets ?? round2(ocSets));
               const actualCCSets = liveCCStrokes > 0 
                 ? round2(liveCCStrokes / ccStrokesPerSet) 
-                : (selectedJob.actuals?.closedCellSets || round2(ccSets));
+                : (selectedJob.actuals?.closedCellSets ?? round2(ccSets));
 
               setActuals({
                   openCellSets: actualOCSets,
                   closedCellSets: actualCCSets,
                   openCellStrokes: finalOCStrokes,
                   closedCellStrokes: finalCCStrokes,
-                  laborHours: selectedJob.actuals?.laborHours || round2(parseFloat((estLabor || sessionDurationHours).toFixed(2))),
-                  inventory: selectedJob.actuals?.inventory || estInventory,
-                  notes: selectedJob.actuals?.notes || ''
+                  laborHours: selectedJob.actuals?.laborHours ?? round2(parseFloat((estLabor || sessionDurationHours).toFixed(2))),
+                  inventory: selectedJob.actuals?.inventory ?? estInventory,
+                  notes: selectedJob.actuals?.notes ?? ''
               });
               setShowCompletionModal(true);
           }
