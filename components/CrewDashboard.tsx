@@ -578,12 +578,11 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
   const RFESmallLogo = () => (
     <div className="flex items-center gap-2 select-none">
-        <div className="bg-brand text-white px-1.5 py-0.5 -skew-x-12 transform origin-bottom-left shadow-sm flex items-center justify-center">
-            <span className="skew-x-12 font-black text-lg tracking-tighter">RFE</span>
+        <div className="bg-orange-600 text-white px-2 py-0.5 flex items-center justify-center">
+            <span className="font-mono font-bold text-base tracking-tight">RFE</span>
         </div>
-        <div className="flex flex-col justify-center -space-y-0.5">
-            <span className="text-xl font-black italic tracking-tighter text-slate-900 leading-none">RFE</span>
-            <span className="text-[0.4rem] font-bold tracking-[0.2em] text-brand-yellow bg-black px-1 py-0.5 leading-none">FOAM EQUIPMENT</span>
+        <div className="flex flex-col justify-center">
+            <span className="text-[10px] font-mono font-bold tracking-widest text-gray-500 leading-none uppercase">Foam Equipment</span>
         </div>
     </div>
   );
@@ -591,35 +590,32 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
   // --- JOB DETAIL VIEW ---
   if (selectedJob) {
       return (
-        <div className="min-h-screen bg-slate-50 text-slate-900 pb-28 animate-in slide-in-from-right-4 duration-300">
-            {/* Same detail view logic as before ... keeping it consistent */}
-            <div className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
-                <div className="max-w-3xl mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="min-h-screen bg-black text-white pb-28">
+            <div className="bg-[#111] border-b-2 border-gray-700 sticky top-0 z-30">
+                <div className="max-w-3xl mx-auto px-3 py-2 flex justify-between items-center">
                     <button 
                         data-no-stroke
                         onClick={() => !isTimerRunning && setSelectedJobId(null)} 
                         disabled={isTimerRunning}
-                        className={`flex items-center gap-2 font-bold transition-colors ${isTimerRunning ? 'text-slate-300' : 'text-slate-500 hover:text-slate-900'}`}
+                        className={`flex items-center gap-1 font-mono font-bold text-sm transition-colors ${isTimerRunning ? 'text-gray-600' : 'text-gray-400 hover:text-white'}`}
                     >
-                        <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
-                            <ChevronLeft className="w-5 h-5" />
-                        </div>
-                        <span className="text-sm uppercase tracking-wider">Back</span>
+                        <ChevronLeft className="w-5 h-5" />
+                        <span className="uppercase tracking-wider">Back</span>
                     </button>
-                    <div className="text-right">
-                        <div className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Work Order</div>
-                        <div className="text-lg font-black text-slate-900">#{selectedJob.id.substring(0,8).toUpperCase()}</div>
+                    <div className="text-right font-mono">
+                        <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Work Order</div>
+                        <div className="text-base font-bold text-orange-500">#{selectedJob.id.substring(0,8).toUpperCase()}</div>
                     </div>
                 </div>
                 
                 {/* Time Clock Bar */}
-                <div className={`p-4 ${isTimerRunning ? 'bg-red-50 border-b border-red-100' : 'bg-slate-50 border-b border-slate-100'}`}>
+                <div className={`px-3 py-2 border-b-2 ${isTimerRunning ? 'bg-[#1a0000] border-red-900' : 'bg-[#0a0a0a] border-gray-800'}`}>
                     <div className="max-w-3xl mx-auto flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <Clock className={`w-6 h-6 ${isTimerRunning ? 'text-brand animate-pulse' : 'text-slate-400'}`} />
+                            <Clock className={`w-5 h-5 ${isTimerRunning ? 'text-red-500' : 'text-gray-600'}`} />
                             <div>
-                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Time Clock</div>
-                                <div className={`text-xl font-mono font-black ${isTimerRunning ? 'text-brand' : 'text-slate-600'}`}>
+                                <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-gray-500">Time Clock</div>
+                                <div className={`text-2xl font-mono font-bold tracking-wider ${isTimerRunning ? 'text-red-500' : 'text-gray-600'}`}>
                                     {isTimerRunning ? formatTime(elapsedSeconds) : '00:00:00'}
                                 </div>
                             </div>
@@ -640,7 +636,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                         });
                                         setShowCompletionModal(true);
                                     }}
-                                    className="bg-slate-900 text-white px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2"
+                                    className="bg-gray-800 border border-gray-600 text-white px-5 py-2 rounded-sm font-mono font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-gray-700"
                                 >
                                     Edit Details
                                 </button>
@@ -648,7 +644,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                 <button 
                                     data-no-stroke
                                     onClick={handleStartTimer}
-                                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-lg shadow-emerald-200"
+                                    className="bg-emerald-700 hover:bg-emerald-600 text-white px-5 py-2 rounded-sm font-mono font-bold text-xs uppercase tracking-widest flex items-center gap-2 border border-emerald-600"
                                 >
                                     <Play className="w-4 h-4 fill-current" /> Start Job
                                 </button>
@@ -658,7 +654,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                         data-no-stroke
                                         onClick={() => handleStopTimer(false)}
                                         disabled={isSyncingTime}
-                                        className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-xl font-bold text-xs uppercase tracking-widest flex items-center gap-2"
+                                        className="bg-gray-800 border border-gray-600 text-gray-300 px-4 py-2 rounded-sm font-mono font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-gray-700"
                                     >
                                         {isSyncingTime ? <Loader2 className="w-4 h-4 animate-spin"/> : "Pause / End Day"}
                                     </button>
@@ -666,7 +662,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                         data-no-stroke
                                         onClick={() => handleStopTimer(true)}
                                         disabled={isSyncingTime}
-                                        className="bg-brand hover:bg-brand-hover text-white px-4 py-2 rounded-xl font-bold text-xs uppercase tracking-widest flex items-center gap-2 shadow-lg shadow-red-200"
+                                        className="bg-orange-600 hover:bg-orange-500 text-white px-4 py-2 rounded-sm font-mono font-bold text-xs uppercase tracking-widest flex items-center gap-2 border border-orange-500"
                                     >
                                         <CheckCircle2 className="w-4 h-4" /> Complete Job
                                     </button>
@@ -677,15 +673,15 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                 </div>
             </div>
 
-            <div className="max-w-3xl mx-auto p-4 space-y-6">
+            <div className="max-w-3xl mx-auto px-3 py-4 space-y-3">
                 
                 {/* Completed Banner */}
                 {selectedJob.executionStatus === 'Completed' && (
-                    <div className="bg-emerald-100 border border-emerald-200 p-4 rounded-xl flex items-center gap-3 text-emerald-800">
-                        <CheckCircle2 className="w-6 h-6" />
+                    <div className="bg-[#0a1a0a] border-2 border-emerald-800 p-3 flex items-center gap-3 text-emerald-500">
+                        <CheckCircle2 className="w-5 h-5" />
                         <div>
-                            <div className="font-black uppercase text-xs tracking-widest">Job Completed</div>
-                            <div className="text-sm">Submitted by {selectedJob.actuals?.completedBy} on {new Date(selectedJob.actuals?.completionDate || "").toLocaleDateString()}</div>
+                            <div className="font-mono font-bold uppercase text-xs tracking-widest">Job Completed</div>
+                            <div className="text-sm font-mono text-emerald-600">Submitted by {selectedJob.actuals?.completedBy} on {new Date(selectedJob.actuals?.completionDate || "").toLocaleDateString()}</div>
                         </div>
                     </div>
                 )}
@@ -693,25 +689,25 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                 {/* ════════════════ LIVE STROKE COUNTER ════════════════ */}
                 {/* ALWAYS visible when timer is running — no material conditionals */}
                 {isTimerRunning && (
-                  <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-6 rounded-3xl shadow-2xl border border-slate-700 relative overflow-hidden">
+                  <div className="bg-[#111] p-4 border-2 border-gray-700 relative overflow-hidden">
                     {/* Pulse flash on every click */}
-                    <div ref={strokeFlashRef} className="absolute inset-0 bg-brand/10 rounded-3xl pointer-events-none opacity-0" />
+                    <div ref={strokeFlashRef} className="absolute inset-0 bg-orange-500/10 pointer-events-none opacity-0" />
                     
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                        <Zap className="w-4 h-4 text-brand-yellow" /> Live Stroke Counter
+                      <h3 className="text-xs font-mono font-bold text-gray-500 uppercase tracking-widest flex items-center gap-2">
+                        <Zap className="w-4 h-4 text-orange-500" /> Live Stroke Counter
                       </h3>
                       <div className="flex items-center gap-2">
                         {btConnected ? (
                           <>
-                            <Bluetooth className="w-3.5 h-3.5 text-blue-400" />
-                            <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
-                            <span className="text-[10px] text-blue-400 font-black uppercase tracking-widest">BT Connected</span>
+                            <Bluetooth className="w-3.5 h-3.5 text-blue-500" />
+                            <div className="w-2 h-2 bg-blue-500"></div>
+                            <span className="text-[10px] text-blue-500 font-mono font-bold uppercase tracking-widest">BT Connected</span>
                           </>
                         ) : (
                           <>
-                            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
-                            <span className="text-[10px] text-emerald-400 font-black uppercase tracking-widest">Listening</span>
+                            <div className="w-2 h-2 bg-emerald-500"></div>
+                            <span className="text-[10px] text-emerald-500 font-mono font-bold uppercase tracking-widest">Listening</span>
                           </>
                         )}
                       </div>
@@ -725,7 +721,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                             data-no-stroke
                             onClick={connectBluetooth}
                             disabled={btActivating}
-                            className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:opacity-60 text-white font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 active:scale-95 shadow-lg shadow-blue-900/30"
+                            className="w-full py-2.5 px-4 bg-blue-800 hover:bg-blue-700 disabled:bg-blue-900 disabled:opacity-60 text-white font-mono font-bold text-xs uppercase tracking-widest transition-colors flex items-center justify-center gap-2 border border-blue-700"
                           >
                             {btActivating ? (
                               <><Loader2 className="w-4 h-4 animate-spin" /> Activating...</>
@@ -733,7 +729,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                               <><Bluetooth className="w-4 h-4" /> Activate Bluetooth Stroke Counter</>
                             )}
                           </button>
-                          <p className="text-[10px] text-slate-500 text-center leading-relaxed">
+                          <p className="text-[10px] text-gray-600 text-center font-mono leading-relaxed">
                             <strong>Step 1:</strong> Pair your Bluetooth device in phone/computer Settings → Bluetooth<br/>
                             <strong>Step 2:</strong> Tap the button above to activate stroke counting<br/>
                             Any button press on your BT device will count as a stroke
@@ -742,26 +738,26 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                       ) : (
                         <div className="space-y-2">
                           <div className="flex gap-2">
-                            <div className="flex-1 py-2.5 px-4 rounded-xl bg-blue-500/20 border border-blue-500/30 text-blue-300 font-bold text-xs flex items-center gap-2">
+                            <div className="flex-1 py-2 px-3 bg-blue-900/40 border border-blue-800 text-blue-400 font-mono font-bold text-xs flex items-center gap-2">
                               <Bluetooth className="w-4 h-4" />
                               <span>Bluetooth active &mdash; press any button on your device to count strokes</span>
                             </div>
                             <button
                               data-no-stroke
                               onClick={disconnectBluetooth}
-                              className="px-3 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-white text-xs font-bold transition-all"
+                              className="px-3 py-2 bg-gray-800 border border-gray-700 hover:bg-gray-700 text-gray-400 hover:text-white text-xs font-mono font-bold transition-colors"
                             >
                               Deactivate
                             </button>
                           </div>
-                          <p className="text-[10px] text-blue-400/70 text-center">
+                          <p className="text-[10px] text-blue-600 text-center font-mono">
                             Play/Pause • Next/Prev • Seek • Stop • Volume buttons all count as strokes • Space/Enter also works
                           </p>
                           {/* BT Debug Log — last 10 events */}
                           {btStrokeLog.length > 0 && (
-                            <div className="mt-2 max-h-20 overflow-y-auto rounded-lg bg-slate-800/80 border border-slate-700 p-2">
+                            <div className="mt-2 max-h-20 overflow-y-auto bg-black border border-gray-800 p-2">
                               {btStrokeLog.map((entry, i) => (
-                                <div key={i} className="text-[9px] text-slate-500 font-mono leading-relaxed">{entry}</div>
+                                <div key={i} className="text-[9px] text-gray-600 font-mono leading-relaxed">{entry}</div>
                               ))}
                             </div>
                           )}
@@ -770,14 +766,14 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                     </div>
 
                     {/* Type Selector Tabs — always show both */}
-                    <div className="flex gap-2 mb-4" data-no-stroke>
+                    <div className="flex gap-0 mb-4" data-no-stroke>
                       <button
                         data-no-stroke
                         onClick={() => setActiveStrokeType('oc')}
-                        className={`flex-1 py-2 px-4 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                        className={`flex-1 py-2 px-4 text-xs font-mono font-bold uppercase tracking-widest transition-colors border ${
                           activeStrokeType === 'oc'
-                            ? 'bg-brand text-white shadow-lg shadow-red-900/30'
-                            : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                            ? 'bg-orange-600 text-white border-orange-500'
+                            : 'bg-[#1a1a1a] text-gray-500 border-gray-700 hover:bg-gray-800 hover:text-gray-300'
                         }`}
                       >
                         Open Cell
@@ -785,10 +781,10 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                       <button
                         data-no-stroke
                         onClick={() => setActiveStrokeType('cc')}
-                        className={`flex-1 py-2 px-4 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                        className={`flex-1 py-2 px-4 text-xs font-mono font-bold uppercase tracking-widest transition-colors border border-l-0 ${
                           activeStrokeType === 'cc'
-                            ? 'bg-sky-500 text-white shadow-lg shadow-sky-900/30'
-                            : 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                            ? 'bg-sky-700 text-white border-sky-600'
+                            : 'bg-[#1a1a1a] text-gray-500 border-gray-700 hover:bg-gray-800 hover:text-gray-300'
                         }`}
                       >
                         Closed Cell
@@ -823,45 +819,45 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                       const inactiveIsOver = inactiveEstimated > 0 && inactiveStrokes > inactiveEstimated;
 
                       // Colors
-                      const accentColor = isOC ? 'brand' : 'sky-500';
-                      const accentText = isOC ? 'text-brand' : 'text-sky-400';
-                      const borderColor = isOverBudget ? 'border-red-500' : isNearBudget ? 'border-amber-500' : (isOC ? 'border-brand' : 'border-sky-500');
-                      const bgTint = isOverBudget ? (isOC ? 'bg-red-500/5' : 'bg-red-500/5') : (isOC ? 'bg-brand/5' : 'bg-sky-500/5');
-                      const counterBg = isOverBudget ? 'bg-red-500/20 border-red-500/40' : isNearBudget ? 'bg-amber-500/20 border-amber-500/40' : (isOC ? 'bg-brand/20 border-brand/30' : 'bg-sky-500/20 border-sky-500/30');
-                      const progressGradient = isOverBudget
-                        ? 'from-red-500 to-red-400'
+                      const accentColor = isOC ? 'orange-600' : 'sky-700';
+                      const accentText = isOC ? 'text-orange-500' : 'text-sky-500';
+                      const borderColor = isOverBudget ? 'border-red-600' : isNearBudget ? 'border-yellow-600' : (isOC ? 'border-orange-600' : 'border-sky-700');
+                      const bgTint = isOverBudget ? 'bg-[#1a0505]' : (isOC ? 'bg-[#1a0f05]' : 'bg-[#051a1a]');
+                      const counterBg = isOverBudget ? 'bg-red-900/30 border-red-700' : isNearBudget ? 'bg-yellow-900/30 border-yellow-700' : (isOC ? 'bg-orange-900/30 border-orange-700' : 'bg-sky-900/30 border-sky-700');
+                      const progressColor = isOverBudget
+                        ? 'bg-red-600'
                         : isNearBudget
-                          ? 'from-amber-500 to-yellow-400'
-                          : (isOC ? 'from-brand to-brand-yellow' : 'from-sky-500 to-cyan-400');
+                          ? 'bg-yellow-600'
+                          : (isOC ? 'bg-orange-600' : 'bg-sky-600');
 
                       return (
                         <>
                           {/* ═══ OVER-BUDGET WARNING BANNER ═══ */}
                           {isOverBudget && (
-                            <div className="mb-4 p-4 rounded-2xl bg-red-500/15 border-2 border-red-500 animate-pulse-slow">
+                            <div className="mb-4 p-3 bg-[#1a0000] border-2 border-red-700">
                               <div className="flex items-center gap-3 mb-2">
-                                <div className="p-2 rounded-xl bg-red-500/20">
-                                  <AlertTriangle className="w-6 h-6 text-red-400" />
+                                <div className="p-1.5 bg-red-900 border border-red-700">
+                                  <AlertTriangle className="w-5 h-5 text-red-500" />
                                 </div>
                                 <div>
-                                  <div className="text-sm font-black text-red-400 uppercase tracking-wide">
+                                  <div className="text-sm font-mono font-bold text-red-500 uppercase tracking-wide">
                                     Chemical Over-Usage Warning
                                   </div>
-                                  <div className="text-xs text-red-300/80 font-bold mt-0.5">
+                                  <div className="text-xs text-red-600 font-mono mt-0.5">
                                     {isOC ? 'Open Cell' : 'Closed Cell'} is over the estimated amount
                                   </div>
                                 </div>
                               </div>
-                              <div className="grid grid-cols-2 gap-3 mt-3">
-                                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-center">
-                                  <div className="text-[10px] text-red-400 font-black uppercase tracking-widest mb-1">Over By</div>
-                                  <div className="text-2xl font-black text-red-300 tabular-nums">{overByStrokes.toLocaleString()}</div>
-                                  <div className="text-[10px] text-red-400/70 font-bold">strokes</div>
+                              <div className="grid grid-cols-2 gap-2 mt-3">
+                                <div className="p-2 bg-red-900/30 border border-red-800 text-center">
+                                  <div className="text-[10px] text-red-500 font-mono font-bold uppercase tracking-widest mb-1">Over By</div>
+                                  <div className="text-2xl font-mono font-bold text-red-400 tabular-nums">{overByStrokes.toLocaleString()}</div>
+                                  <div className="text-[10px] text-red-600 font-mono">strokes</div>
                                 </div>
-                                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-center">
-                                  <div className="text-[10px] text-red-400 font-black uppercase tracking-widest mb-1">Over By</div>
-                                  <div className="text-2xl font-black text-red-300 tabular-nums">{overBySets.toFixed(2)}</div>
-                                  <div className="text-[10px] text-red-400/70 font-bold">sets</div>
+                                <div className="p-2 bg-red-900/30 border border-red-800 text-center">
+                                  <div className="text-[10px] text-red-500 font-mono font-bold uppercase tracking-widest mb-1">Over By</div>
+                                  <div className="text-2xl font-mono font-bold text-red-400 tabular-nums">{overBySets.toFixed(2)}</div>
+                                  <div className="text-[10px] text-red-600 font-mono">sets</div>
                                 </div>
                               </div>
                             </div>
@@ -869,14 +865,14 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
                           {/* ═══ NEAR-BUDGET CAUTION BANNER ═══ */}
                           {isNearBudget && (
-                            <div className="mb-4 p-3 rounded-2xl bg-amber-500/10 border-2 border-amber-500/50">
+                            <div className="mb-4 p-3 bg-[#1a1500] border-2 border-yellow-700">
                               <div className="flex items-center gap-3">
-                                <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0" />
+                                <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
                                 <div>
-                                  <div className="text-xs font-black text-amber-400 uppercase tracking-wide">
+                                  <div className="text-xs font-mono font-bold text-yellow-500 uppercase tracking-wide">
                                     Approaching Estimate — {pctOfEstimate.toFixed(0)}% Used
                                   </div>
-                                  <div className="text-[10px] text-amber-300/70 font-bold mt-0.5">
+                                  <div className="text-[10px] text-yellow-600 font-mono mt-0.5">
                                     {(estimatedStrokes - liveStrokes).toLocaleString()} strokes remaining before exceeding estimate
                                   </div>
                                 </div>
@@ -886,19 +882,19 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
                           {/* ═══ ESTIMATE TARGET BAR ═══ */}
                           {estimatedStrokes > 0 && (
-                            <div className="mb-4 p-3 rounded-2xl bg-slate-800/80 border border-slate-700">
+                            <div className="mb-4 p-3 bg-[#0a0a0a] border border-gray-800">
                               <div className="flex items-center justify-between mb-2">
-                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-gray-500 flex items-center gap-1.5">
                                   <FileText className="w-3 h-3" /> Estimate Target
                                 </div>
-                                <div className={`text-xs font-black uppercase tracking-widest ${isOverBudget ? 'text-red-400' : isNearBudget ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                <div className={`text-xs font-mono font-bold uppercase tracking-widest ${isOverBudget ? 'text-red-500' : isNearBudget ? 'text-yellow-500' : 'text-emerald-500'}`}>
                                   {pctOfEstimate.toFixed(0)}% of estimate
                                 </div>
                               </div>
                               {/* Estimated vs Actual visual bar */}
-                              <div className="relative h-4 bg-slate-700 rounded-full overflow-hidden">
+                              <div className="relative h-3 bg-gray-800 overflow-hidden">
                                 <div
-                                  className={`absolute inset-y-0 left-0 bg-gradient-to-r ${progressGradient} rounded-full transition-all duration-500 ease-out`}
+                                  className={`absolute inset-y-0 left-0 ${progressColor} transition-all duration-500 ease-out`}
                                   style={{ width: `${Math.min(pctOfEstimate, 100)}%` }}
                                 />
                                 {/* 100% marker line */}
@@ -906,11 +902,11 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                   <div className="absolute inset-y-0 right-0 w-px bg-white/30" style={{ left: '100%' }} />
                                 )}
                               </div>
-                              <div className="flex justify-between mt-2 text-xs font-bold">
-                                <span className="text-slate-400">
+                              <div className="flex justify-between mt-2 text-xs font-mono font-bold">
+                                <span className="text-gray-500">
                                   Actual: <span className="text-white">{liveStrokes.toLocaleString()}</span>
                                 </span>
-                                <span className="text-slate-400">
+                                <span className="text-gray-500">
                                   Estimate: <span className="text-white">{estimatedStrokes.toLocaleString()}</span> ({estimatedSets.toFixed(2)} sets)
                                 </span>
                               </div>
@@ -918,17 +914,17 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                           )}
 
                           {/* ═══ MAIN COUNTER CARD ═══ */}
-                          <div className={`rounded-2xl border-2 ${borderColor} ${bgTint}`}>
+                          <div className={`border-2 ${borderColor} ${bgTint}`}>
                             <div className="p-4">
                               <div className="flex justify-between items-center mb-3">
-                                <div className={`text-[10px] font-black uppercase tracking-widest ${isOverBudget ? 'text-red-400' : accentText}`}>
+                                <div className={`text-[10px] font-mono font-bold uppercase tracking-widest ${isOverBudget ? 'text-red-500' : accentText}`}>
                                   {isOC ? 'Open Cell' : 'Closed Cell'} — Active
-                                  {isOverBudget && <span className="ml-2 text-red-400">⚠ OVER</span>}
+                                  {isOverBudget && <span className="ml-2 text-red-500">⚠ OVER</span>}
                                 </div>
                                 <button
                                   data-no-stroke
                                   onClick={() => resetStrokes(activeStrokeType)}
-                                  className="text-slate-500 hover:text-white p-1.5 rounded-lg hover:bg-slate-700 transition-colors"
+                                  className="text-gray-600 hover:text-white p-1 hover:bg-gray-800 transition-colors border border-transparent hover:border-gray-700"
                                   title={`Reset ${isOC ? 'OC' : 'CC'} counter`}
                                 >
                                   <RotateCcw className="w-4 h-4" />
@@ -936,16 +932,16 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                               </div>
                               
                               {/* Big Counter Display */}
-                              <div className={`w-full rounded-2xl p-8 ${counterBg} border-2 text-center select-none`}>
-                                <div className={`text-7xl font-black tabular-nums leading-none mb-2 ${isOverBudget ? 'text-red-300' : 'text-white'}`}>
+                              <div className={`w-full p-6 ${counterBg} border-2 text-center select-none`}>
+                                <div className={`text-7xl font-mono font-bold tabular-nums leading-none mb-2 ${isOverBudget ? 'text-red-400' : 'text-white'}`}>
                                   {liveStrokes.toLocaleString()}
                                 </div>
-                                <div className="text-sm text-slate-300 font-bold flex items-center justify-center gap-2">
+                                <div className="text-sm text-gray-400 font-mono font-bold flex items-center justify-center gap-2">
                                   <Bluetooth className="w-4 h-4" /> STROKES
                                 </div>
                                 {/* Show estimated target directly under the count */}
                                 {estimatedStrokes > 0 && (
-                                  <div className={`mt-3 text-lg font-black tabular-nums ${isOverBudget ? 'text-red-400' : isNearBudget ? 'text-amber-400' : 'text-slate-400'}`}>
+                                  <div className={`mt-3 text-lg font-mono font-bold tabular-nums ${isOverBudget ? 'text-red-500' : isNearBudget ? 'text-yellow-500' : 'text-gray-500'}`}>
                                     of {estimatedStrokes.toLocaleString()} estimated
                                   </div>
                                 )}
@@ -953,24 +949,24 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
                               {/* Progress & Sets */}
                               <div className="mt-4 space-y-2">
-                                <div className="flex justify-between text-sm font-bold">
-                                  <span className="text-slate-400">{liveStrokes.toLocaleString()} / {strokesPerSet.toLocaleString()} per set</span>
-                                  <span className={`font-black text-lg ${isOverBudget ? 'text-red-400' : accentText}`}>
+                                <div className="flex justify-between text-sm font-mono font-bold">
+                                  <span className="text-gray-500">{liveStrokes.toLocaleString()} / {strokesPerSet.toLocaleString()} per set</span>
+                                  <span className={`font-bold text-lg ${isOverBudget ? 'text-red-500' : accentText}`}>
                                     {liveSets.toFixed(2)} Sets
                                   </span>
                                 </div>
-                                <div className="h-3 bg-slate-700 rounded-full overflow-hidden">
+                                <div className="h-2 bg-gray-800 overflow-hidden">
                                   <div
-                                    className={`h-full bg-gradient-to-r ${progressGradient} rounded-full transition-all duration-300`}
+                                    className={`h-full ${progressColor} transition-all duration-300`}
                                     style={{ width: `${Math.min((liveStrokes % strokesPerSet) / strokesPerSet * 100, 100)}%` }}
                                   />
                                 </div>
                                 {estimatedSets > 0 && (
-                                  <div className="flex justify-between text-xs font-medium">
-                                    <span className="text-slate-500">
+                                  <div className="flex justify-between text-xs font-mono">
+                                    <span className="text-gray-600">
                                       Estimated: {estimatedSets.toFixed(2)} sets
                                     </span>
-                                    <span className={`font-bold ${isOverBudget ? 'text-red-400' : isNearBudget ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                    <span className={`font-bold ${isOverBudget ? 'text-red-500' : isNearBudget ? 'text-yellow-500' : 'text-emerald-500'}`}>
                                       {isOverBudget 
                                         ? `+${(liveSets - estimatedSets).toFixed(2)} sets over`
                                         : `${(estimatedSets - liveSets).toFixed(2)} sets remaining`
@@ -983,25 +979,25 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                           </div>
 
                           {/* ═══ Inactive Type Summary ═══ */}
-                          <div className={`mt-3 p-3 rounded-xl border ${inactiveIsOver ? 'bg-red-500/5 border-red-500/30' : 'bg-slate-800/80 border-slate-700'}`}>
-                            <div className="flex justify-between items-center text-xs">
-                              <span className={`font-black uppercase tracking-widest ${inactiveIsOver ? 'text-red-400' : (isOC ? 'text-sky-400' : 'text-brand')}`}>
+                          <div className={`mt-3 p-3 border ${inactiveIsOver ? 'bg-[#1a0505] border-red-800' : 'bg-[#0a0a0a] border-gray-800'}`}>
+                            <div className="flex justify-between items-center text-xs font-mono">
+                              <span className={`font-bold uppercase tracking-widest ${inactiveIsOver ? 'text-red-500' : (isOC ? 'text-sky-500' : 'text-orange-500')}`}>
                                 {isOC ? 'Closed Cell' : 'Open Cell'}
                                 {inactiveIsOver && <span className="ml-1">⚠</span>}
                               </span>
-                              <span className="text-white font-black tabular-nums text-base">
+                              <span className="text-white font-bold tabular-nums text-base">
                                 {inactiveStrokes.toLocaleString()} strokes
                               </span>
-                              <span className="text-slate-400 font-bold">
+                              <span className="text-gray-500 font-bold">
                                 {(inactiveStrokes / inactiveStrokesPerSet).toFixed(2)} sets
                               </span>
                             </div>
                             {inactiveEstimated > 0 && (
-                              <div className="flex justify-between mt-1.5 text-[10px] font-bold">
-                                <span className="text-slate-500">
+                              <div className="flex justify-between mt-1.5 text-[10px] font-mono font-bold">
+                                <span className="text-gray-600">
                                   Est: {inactiveEstimated.toLocaleString()} strokes
                                 </span>
-                                <span className={inactiveIsOver ? 'text-red-400' : 'text-slate-500'}>
+                                <span className={inactiveIsOver ? 'text-red-500' : 'text-gray-600'}>
                                   {inactiveIsOver 
                                     ? `⚠ ${(inactiveStrokes - inactiveEstimated).toLocaleString()} over`
                                     : `${(inactiveEstimated - inactiveStrokes).toLocaleString()} remaining`
@@ -1014,7 +1010,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                       );
                     })()}
 
-                    <div className="mt-3 text-center text-[10px] text-slate-500 font-medium">
+                    <div className="mt-3 text-center text-[10px] text-gray-600 font-mono">
                       Input: {btConnected ? 'Bluetooth active' : 'Bluetooth (tap Activate above)'} &bull; Keyboard (Space/Enter) &bull; USB HID
                     </div>
                   </div>
@@ -1022,9 +1018,9 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
                 {/* Stroke Summary when paused but has data */}
                 {!isTimerRunning && (liveOCStrokes > 0 || liveCCStrokes > 0) && selectedJob.executionStatus !== 'Completed' && (
-                  <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                      <Zap className="w-4 h-4 text-brand-yellow" /> Stroke Count (Paused)
+                  <div className="bg-[#111] p-4 border-2 border-gray-700">
+                    <h3 className="text-xs font-mono font-bold text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-orange-500" /> Stroke Count (Paused)
                     </h3>
                     {(() => {
                       const estOC = selectedJob.materials?.openCellStrokes || selectedJob.results?.openCellStrokes || 0;
@@ -1034,30 +1030,30 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                       return (
                         <>
                           {(ocOver || ccOver) && (
-                            <div className="mb-4 p-3 rounded-xl bg-red-50 border-2 border-red-200 flex items-center gap-2">
+                            <div className="mb-4 p-3 bg-[#1a0000] border-2 border-red-800 flex items-center gap-2">
                               <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0" />
-                              <span className="text-xs font-bold text-red-600">
+                              <span className="text-xs font-mono font-bold text-red-500">
                                 {ocOver && ccOver ? 'Both OC & CC' : ocOver ? 'Open Cell' : 'Closed Cell'} over estimated chemical usage
                               </span>
                             </div>
                           )}
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className={`p-4 rounded-2xl border ${ocOver ? 'bg-red-50 border-red-300' : 'bg-red-50 border-red-100'}`}>
-                              <div className="text-[10px] text-brand font-black uppercase tracking-widest mb-1">Open Cell</div>
-                              <div className={`text-2xl font-black ${ocOver ? 'text-red-600' : 'text-slate-900'}`}>{liveOCStrokes.toLocaleString()}</div>
-                              <div className="text-xs text-slate-500 font-bold">{(liveOCStrokes / ocStrokesPerSet).toFixed(2)} sets</div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className={`p-3 border-2 ${ocOver ? 'bg-[#1a0505] border-red-800' : 'bg-[#1a0f05] border-orange-800'}`}>
+                              <div className="text-[10px] text-orange-500 font-mono font-bold uppercase tracking-widest mb-1">Open Cell</div>
+                              <div className={`text-2xl font-mono font-bold ${ocOver ? 'text-red-400' : 'text-white'}`}>{liveOCStrokes.toLocaleString()}</div>
+                              <div className="text-xs text-gray-500 font-mono">{(liveOCStrokes / ocStrokesPerSet).toFixed(2)} sets</div>
                               {estOC > 0 && (
-                                <div className={`text-[10px] font-bold mt-1 ${ocOver ? 'text-red-500' : 'text-slate-400'}`}>
+                                <div className={`text-[10px] font-mono font-bold mt-1 ${ocOver ? 'text-red-500' : 'text-gray-600'}`}>
                                   {ocOver ? `⚠ ${(liveOCStrokes - estOC).toLocaleString()} over est.` : `Est: ${estOC.toLocaleString()}`}
                                 </div>
                               )}
                             </div>
-                            <div className={`p-4 rounded-2xl border ${ccOver ? 'bg-red-50 border-red-300' : 'bg-sky-50 border-sky-100'}`}>
-                              <div className="text-[10px] text-sky-600 font-black uppercase tracking-widest mb-1">Closed Cell</div>
-                              <div className={`text-2xl font-black ${ccOver ? 'text-red-600' : 'text-slate-900'}`}>{liveCCStrokes.toLocaleString()}</div>
-                              <div className="text-xs text-slate-500 font-bold">{(liveCCStrokes / ccStrokesPerSet).toFixed(2)} sets</div>
+                            <div className={`p-3 border-2 ${ccOver ? 'bg-[#1a0505] border-red-800' : 'bg-[#051a1a] border-sky-800'}`}>
+                              <div className="text-[10px] text-sky-500 font-mono font-bold uppercase tracking-widest mb-1">Closed Cell</div>
+                              <div className={`text-2xl font-mono font-bold ${ccOver ? 'text-red-400' : 'text-white'}`}>{liveCCStrokes.toLocaleString()}</div>
+                              <div className="text-xs text-gray-500 font-mono">{(liveCCStrokes / ccStrokesPerSet).toFixed(2)} sets</div>
                               {estCC > 0 && (
-                                <div className={`text-[10px] font-bold mt-1 ${ccOver ? 'text-red-500' : 'text-slate-400'}`}>
+                                <div className={`text-[10px] font-mono font-bold mt-1 ${ccOver ? 'text-red-500' : 'text-gray-600'}`}>
                                   {ccOver ? `⚠ ${(liveCCStrokes - estCC).toLocaleString()} over est.` : `Est: ${estCC.toLocaleString()}`}
                                 </div>
                               )}
@@ -1070,16 +1066,16 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                 )}
 
                 {/* Primary Actions */}
-                <div className="grid grid-cols-2 gap-4" data-no-stroke>
+                <div className="grid grid-cols-2 gap-2" data-no-stroke>
                     <a 
                         data-no-stroke
                         href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedJob.customer.address + ' ' + selectedJob.customer.zip)}`} 
                         target="_blank" 
                         rel="noreferrer" 
-                        className="bg-white active:bg-slate-50 text-slate-900 border border-slate-200 p-4 rounded-2xl shadow-sm flex flex-col items-center justify-center gap-2 transition-transform active:scale-95"
+                        className="bg-[#111] border-2 border-gray-700 text-white p-3 flex flex-col items-center justify-center gap-2 hover:border-orange-600 hover:bg-[#1a1a1a] transition-colors"
                     >
-                        <MapPin className="w-6 h-6 text-brand" /> 
-                        <span className="font-bold text-sm uppercase tracking-wide">GPS Map</span>
+                        <MapPin className="w-5 h-5 text-orange-500" /> 
+                        <span className="font-mono font-bold text-xs uppercase tracking-widest">GPS Map</span>
                     </a>
                     {selectedJob.workOrderSheetUrl ? (
                          <a 
@@ -1087,27 +1083,27 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                             href={selectedJob.workOrderSheetUrl} 
                             target="_blank" 
                             rel="noreferrer" 
-                            className="bg-white active:bg-slate-50 text-slate-900 border border-slate-200 p-4 rounded-2xl shadow-sm flex flex-col items-center justify-center gap-2 transition-transform active:scale-95"
+                            className="bg-[#111] border-2 border-gray-700 text-white p-3 flex flex-col items-center justify-center gap-2 hover:border-emerald-600 hover:bg-[#1a1a1a] transition-colors"
                         >
-                             <FileText className="w-6 h-6 text-emerald-600" /> 
-                             <span className="font-bold text-sm uppercase tracking-wide">View Sheet</span>
+                             <FileText className="w-5 h-5 text-emerald-500" /> 
+                             <span className="font-mono font-bold text-xs uppercase tracking-widest">View Sheet</span>
                          </a>
                     ) : (
-                         <div className="bg-slate-100 text-slate-400 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 border border-slate-200">
-                             <FileText className="w-6 h-6" /> 
-                             <span className="font-bold text-sm uppercase tracking-wide">No Sheet</span>
+                         <div className="bg-[#0a0a0a] text-gray-600 p-3 flex flex-col items-center justify-center gap-2 border-2 border-gray-800">
+                             <FileText className="w-5 h-5" /> 
+                             <span className="font-mono font-bold text-xs uppercase tracking-widest">No Sheet</span>
                          </div>
                     )}
                 </div>
 
                 {/* Customer Info Card */}
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <div className="bg-[#111] p-4 border-2 border-gray-700">
+                    <h3 className="text-xs font-mono font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
                         <User className="w-4 h-4" /> Client & Location
                     </h3>
                     <div>
-                        <div className="text-2xl font-black text-slate-900 mb-1">{selectedJob.customer.name}</div>
-                        <div className="text-slate-500 font-medium text-lg leading-snug">
+                        <div className="text-xl font-mono font-bold text-white mb-1">{selectedJob.customer.name}</div>
+                        <div className="text-gray-400 font-mono text-sm leading-snug">
                             {selectedJob.customer.address}<br/>
                             {selectedJob.customer.city}, {selectedJob.customer.state} {selectedJob.customer.zip}
                         </div>
@@ -1115,62 +1111,62 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                 </div>
 
                 {/* Scope Card */}
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2"> 
+                <div className="bg-[#111] p-4 border-2 border-gray-700">
+                    <h3 className="text-xs font-mono font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2"> 
                         <HardHat className="w-4 h-4"/> Install Specifications
                     </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         {(selectedJob.results?.totalWallArea ?? 0) > 0 && (
-                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                <div className="text-[10px] text-brand font-black uppercase tracking-widest mb-1">Walls</div>
-                                <div className="text-slate-900 font-bold text-lg leading-tight">{selectedJob.wallSettings?.type}</div>
-                                <div className="text-slate-600 font-medium text-sm mt-1">@ {selectedJob.wallSettings?.thickness}" Depth</div>
-                                <div className="mt-3 pt-3 border-t border-slate-200 text-xs font-bold text-slate-400 text-right">{Math.round(selectedJob.results?.totalWallArea ?? 0).toLocaleString()} sqft</div>
+                            <div className="p-3 bg-[#0a0a0a] border border-gray-800">
+                                <div className="text-[10px] text-orange-500 font-mono font-bold uppercase tracking-widest mb-1">Walls</div>
+                                <div className="text-white font-mono font-bold text-base leading-tight">{selectedJob.wallSettings?.type}</div>
+                                <div className="text-gray-400 font-mono text-sm mt-1">@ {selectedJob.wallSettings?.thickness}" Depth</div>
+                                <div className="mt-2 pt-2 border-t border-gray-800 text-xs font-mono font-bold text-gray-500 text-right">{Math.round(selectedJob.results?.totalWallArea ?? 0).toLocaleString()} sqft</div>
                             </div>
                         )}
                         {(selectedJob.results?.totalRoofArea ?? 0) > 0 && (
-                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                <div className="text-[10px] text-brand font-black uppercase tracking-widest mb-1">Roof / Ceiling</div>
-                                <div className="text-slate-900 font-bold text-lg leading-tight">{selectedJob.roofSettings?.type}</div>
-                                <div className="text-slate-600 font-medium text-sm mt-1">@ {selectedJob.roofSettings?.thickness}" Depth</div>
-                                <div className="mt-3 pt-3 border-t border-slate-200 text-xs font-bold text-slate-400 text-right">{Math.round(selectedJob.results?.totalRoofArea ?? 0).toLocaleString()} sqft</div>
+                            <div className="p-3 bg-[#0a0a0a] border border-gray-800">
+                                <div className="text-[10px] text-orange-500 font-mono font-bold uppercase tracking-widest mb-1">Roof / Ceiling</div>
+                                <div className="text-white font-mono font-bold text-base leading-tight">{selectedJob.roofSettings?.type}</div>
+                                <div className="text-gray-400 font-mono text-sm mt-1">@ {selectedJob.roofSettings?.thickness}" Depth</div>
+                                <div className="mt-2 pt-2 border-t border-gray-800 text-xs font-mono font-bold text-gray-500 text-right">{Math.round(selectedJob.results?.totalRoofArea ?? 0).toLocaleString()} sqft</div>
                             </div>
                         )}
                     </div>
                 </div>
 
                 {/* Load List Card */}
-                <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                <div className="bg-[#111] p-4 border-2 border-gray-700">
+                    <h3 className="text-xs font-mono font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
                         <Package className="w-4 h-4" /> Truck Load List
                     </h3>
-                    <div className="space-y-3">
+                    <div className="space-y-1">
                          {selectedJob.materials?.openCellSets > 0 && (
-                             <div className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                             <div className="flex justify-between items-center p-3 bg-[#0a0a0a] border border-gray-800">
                                  <div>
-                                     <span className="font-bold text-slate-700 block">Open Cell Foam</span>
-                                     <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider">
+                                     <span className="font-mono font-bold text-white block text-sm">Open Cell Foam</span>
+                                     <span className="text-[10px] text-gray-600 font-mono font-bold uppercase tracking-wider">
                                          Est. {selectedJob.results?.openCellStrokes?.toLocaleString()} Strokes
                                      </span>
                                  </div>
-                                 <span className="bg-white px-3 py-1 rounded-lg border border-slate-200 text-brand font-black shadow-sm">{selectedJob.materials.openCellSets.toFixed(2)} Sets</span>
+                                 <span className="bg-[#1a1a1a] px-3 py-1 border border-orange-700 text-orange-500 font-mono font-bold text-sm">{selectedJob.materials.openCellSets.toFixed(2)} Sets</span>
                              </div>
                          )}
                          {selectedJob.materials?.closedCellSets > 0 && (
-                             <div className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                             <div className="flex justify-between items-center p-3 bg-[#0a0a0a] border border-gray-800">
                                  <div>
-                                     <span className="font-bold text-slate-700 block">Closed Cell Foam</span>
-                                     <span className="text-[10px] text-slate-400 font-black uppercase tracking-wider">
+                                     <span className="font-mono font-bold text-white block text-sm">Closed Cell Foam</span>
+                                     <span className="text-[10px] text-gray-600 font-mono font-bold uppercase tracking-wider">
                                          Est. {selectedJob.results?.closedCellStrokes?.toLocaleString()} Strokes
                                      </span>
                                  </div>
-                                 <span className="bg-white px-3 py-1 rounded-lg border border-slate-200 text-brand font-black shadow-sm">{selectedJob.materials.closedCellSets.toFixed(2)} Sets</span>
+                                 <span className="bg-[#1a1a1a] px-3 py-1 border border-orange-700 text-orange-500 font-mono font-bold text-sm">{selectedJob.materials.closedCellSets.toFixed(2)} Sets</span>
                              </div>
                          )}
                          {selectedJob.materials?.inventory?.map((item) => (
-                             <div key={item.id} className="flex justify-between items-center p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                                 <span className="font-bold text-slate-700">{item.name}</span>
-                                 <span className="text-slate-500 font-bold">{item.quantity} {item.unit}</span>
+                             <div key={item.id} className="flex justify-between items-center p-3 bg-[#0a0a0a] border border-gray-800">
+                                 <span className="font-mono font-bold text-white text-sm">{item.name}</span>
+                                 <span className="text-gray-400 font-mono font-bold text-sm">{item.quantity} {item.unit}</span>
                              </div>
                          ))}
                     </div>
@@ -1178,11 +1174,11 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
                 {/* Notes Card */}
                 {selectedJob.notes && (
-                    <div className="bg-amber-50 p-6 rounded-3xl shadow-sm border border-amber-100">
-                        <h3 className="text-xs font-black text-amber-600 uppercase tracking-widest mb-2 flex items-center gap-2">
+                    <div className="bg-[#1a1500] p-4 border-2 border-yellow-800">
+                        <h3 className="text-xs font-mono font-bold text-yellow-500 uppercase tracking-widest mb-2 flex items-center gap-2">
                             <AlertTriangle className="w-4 h-4" /> Job Notes
                         </h3>
-                        <p className="text-amber-900 text-sm font-medium leading-relaxed">
+                        <p className="text-yellow-300 text-sm font-mono leading-relaxed">
                             {selectedJob.notes}
                         </p>
                     </div>
@@ -1191,25 +1187,25 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
             {/* Completion Modal */}
             {showCompletionModal && (
-                <div data-completion-modal className="fixed inset-0 bg-slate-900/90 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl animate-in fade-in zoom-in duration-300 max-h-[90vh] overflow-y-auto">
-                        <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight mb-6">Complete Job</h3>
+                <div data-completion-modal className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4">
+                    <div className="bg-[#111] border-2 border-gray-700 w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+                        <h3 className="text-xl font-mono font-bold text-white uppercase tracking-tight mb-6 border-b border-gray-700 pb-3">Complete Job</h3>
                         
-                        <div className="space-y-6">
+                        <div className="space-y-4">
                             <div>
-                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Total Labor Hours</label>
+                                <label className="block text-[10px] font-mono font-bold text-gray-500 uppercase tracking-widest mb-2">Total Labor Hours</label>
                                 <input 
                                     type="number" 
                                     value={actuals.laborHours || ''} 
                                     onChange={(e) => setActuals({...actuals, laborHours: parseFloat(e.target.value) || 0})}
-                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-2xl text-center focus:ring-4 focus:ring-brand/20 outline-none"
+                                    className="w-full p-3 bg-black border-2 border-gray-700 font-mono font-bold text-2xl text-center text-white focus:border-orange-600 outline-none"
                                 />
                             </div>
 
-                            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-4">
-                                <h4 className="text-xs font-black text-slate-900 uppercase tracking-widest border-b border-slate-200 pb-2">Material Usage (Sets)</h4>
+                            <div className="p-3 bg-[#0a0a0a] border border-gray-800 space-y-3">
+                                <h4 className="text-xs font-mono font-bold text-white uppercase tracking-widest border-b border-gray-800 pb-2">Material Usage (Sets)</h4>
                                 <div>
-                                    <label className="text-xs font-bold text-slate-500 flex justify-between mb-1"><span>Open Cell</span> <span>Est: {selectedJob.materials?.openCellSets.toFixed(2)}</span></label>
+                                    <label className="text-xs font-mono font-bold text-gray-500 flex justify-between mb-1"><span>Open Cell</span> <span>Est: {selectedJob.materials?.openCellSets.toFixed(2)}</span></label>
                                     <input 
                                         type="number" step="0.25"
                                         value={actuals.openCellSets} 
@@ -1219,11 +1215,11 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                             setActuals({...actuals, openCellSets: sets, openCellStrokes: derivedStrokes});
                                         }}
                                         placeholder="0.00"
-                                        className="w-full p-4 bg-white border border-slate-200 rounded-xl font-bold text-lg text-slate-900 focus:ring-2 focus:ring-brand outline-none"
+                                        className="w-full p-3 bg-black border-2 border-gray-700 font-mono font-bold text-lg text-white focus:border-orange-600 outline-none"
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-xs font-bold text-slate-500 flex justify-between mb-1"><span>Closed Cell</span> <span>Est: {selectedJob.materials?.closedCellSets.toFixed(2)}</span></label>
+                                    <label className="text-xs font-mono font-bold text-gray-500 flex justify-between mb-1"><span>Closed Cell</span> <span>Est: {selectedJob.materials?.closedCellSets.toFixed(2)}</span></label>
                                     <input 
                                         type="number" step="0.25"
                                         value={actuals.closedCellSets} 
@@ -1233,16 +1229,16 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                             setActuals({...actuals, closedCellSets: sets, closedCellStrokes: derivedStrokes});
                                         }}
                                         placeholder="0.00"
-                                        className="w-full p-4 bg-white border border-slate-200 rounded-xl font-bold text-lg text-slate-900 focus:ring-2 focus:ring-brand outline-none"
+                                        className="w-full p-3 bg-black border-2 border-gray-700 font-mono font-bold text-lg text-white focus:border-orange-600 outline-none"
                                     />
                                 </div>
                             </div>
 
                             {/* STROKE COUNTS */}
-                            <div className="p-4 bg-sky-50 rounded-2xl border border-sky-100 space-y-4">
-                                <h4 className="text-xs font-black text-sky-900 uppercase tracking-widest border-b border-sky-200 pb-2">Machine Counters (Strokes)</h4>
+                            <div className="p-3 bg-[#051015] border border-sky-900 space-y-3">
+                                <h4 className="text-xs font-mono font-bold text-sky-400 uppercase tracking-widest border-b border-sky-900 pb-2">Machine Counters (Strokes)</h4>
                                 <div>
-                                    <label className="text-xs font-bold text-sky-700 flex justify-between mb-1"><span>Open Cell Strokes</span> <span>Est: {selectedJob.results?.openCellStrokes?.toLocaleString()}</span></label>
+                                    <label className="text-xs font-mono font-bold text-sky-600 flex justify-between mb-1"><span>Open Cell Strokes</span> <span>Est: {selectedJob.results?.openCellStrokes?.toLocaleString()}</span></label>
                                     <input 
                                         type="number"
                                         value={actuals.openCellStrokes || ''} 
@@ -1252,12 +1248,12 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                             setActuals({...actuals, openCellStrokes: strokes, openCellSets: derivedSets});
                                         }}
                                         placeholder="0"
-                                        className="w-full p-4 bg-white border border-sky-200 rounded-xl font-bold text-lg text-sky-900 focus:ring-2 focus:ring-sky-500 outline-none"
+                                        className="w-full p-3 bg-black border-2 border-sky-900 font-mono font-bold text-lg text-sky-300 focus:border-sky-500 outline-none"
                                     />
-                                    {actuals.openCellStrokes > 0 && <p className="text-[10px] text-sky-500 mt-1 text-right">= {(actuals.openCellStrokes / ocStrokesPerSet).toFixed(2)} Sets ({ocStrokesPerSet} strokes/set)</p>}
+                                    {actuals.openCellStrokes > 0 && <p className="text-[10px] text-sky-600 font-mono mt-1 text-right">= {(actuals.openCellStrokes / ocStrokesPerSet).toFixed(2)} Sets ({ocStrokesPerSet} strokes/set)</p>}
                                 </div>
                                 <div>
-                                    <label className="text-xs font-bold text-sky-700 flex justify-between mb-1"><span>Closed Cell Strokes</span> <span>Est: {selectedJob.results?.closedCellStrokes?.toLocaleString()}</span></label>
+                                    <label className="text-xs font-mono font-bold text-sky-600 flex justify-between mb-1"><span>Closed Cell Strokes</span> <span>Est: {selectedJob.results?.closedCellStrokes?.toLocaleString()}</span></label>
                                     <input 
                                         type="number"
                                         value={actuals.closedCellStrokes || ''} 
@@ -1267,21 +1263,21 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                             setActuals({...actuals, closedCellStrokes: strokes, closedCellSets: derivedSets});
                                         }}
                                         placeholder="0"
-                                        className="w-full p-4 bg-white border border-sky-200 rounded-xl font-bold text-lg text-sky-900 focus:ring-2 focus:ring-sky-500 outline-none"
+                                        className="w-full p-3 bg-black border-2 border-sky-900 font-mono font-bold text-lg text-sky-300 focus:border-sky-500 outline-none"
                                     />
-                                    {actuals.closedCellStrokes > 0 && <p className="text-[10px] text-sky-500 mt-1 text-right">= {(actuals.closedCellStrokes / ccStrokesPerSet).toFixed(2)} Sets ({ccStrokesPerSet} strokes/set)</p>}
+                                    {actuals.closedCellStrokes > 0 && <p className="text-[10px] text-sky-600 font-mono mt-1 text-right">= {(actuals.closedCellStrokes / ccStrokesPerSet).toFixed(2)} Sets ({ccStrokesPerSet} strokes/set)</p>}
                                 </div>
                             </div>
 
                             {/* INVENTORY ITEMS (Non-Foam Materials) */}
                             {actuals.inventory && actuals.inventory.length > 0 && (
-                                <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100 space-y-4">
-                                    <h4 className="text-xs font-black text-amber-900 uppercase tracking-widest border-b border-amber-200 pb-2 flex items-center gap-2">
+                                <div className="p-3 bg-[#151005] border border-yellow-900 space-y-3">
+                                    <h4 className="text-xs font-mono font-bold text-yellow-500 uppercase tracking-widest border-b border-yellow-900 pb-2 flex items-center gap-2">
                                         <Package className="w-3.5 h-3.5" /> Inventory Used (Actual)
                                     </h4>
                                     {actuals.inventory.map((item: any, idx: number) => (
                                         <div key={item.id || idx}>
-                                            <label className="text-xs font-bold text-amber-700 flex justify-between mb-1">
+                                            <label className="text-xs font-mono font-bold text-yellow-600 flex justify-between mb-1">
                                                 <span>{item.name}</span>
                                                 <span>Est: {(selectedJob.materials?.inventory?.find((e: any) => e.id === item.id || e.name === item.name)?.quantity || 0)} {item.unit || 'ea'}</span>
                                             </label>
@@ -1295,7 +1291,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                                     setActuals({ ...actuals, inventory: updatedInv });
                                                 }}
                                                 placeholder="0"
-                                                className="w-full p-4 bg-white border border-amber-200 rounded-xl font-bold text-lg text-amber-900 focus:ring-2 focus:ring-amber-500 outline-none"
+                                                className="w-full p-3 bg-black border-2 border-yellow-900 font-mono font-bold text-lg text-yellow-300 focus:border-yellow-600 outline-none"
                                             />
                                         </div>
                                     ))}
@@ -1304,20 +1300,20 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
                             {/* CREW NOTES */}
                             <div>
-                                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1 flex items-center gap-1">
+                                <label className="block text-[10px] font-mono font-bold text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-1">
                                     <MessageSquare className="w-3 h-3"/> Crew Notes / Issues
                                 </label>
                                 <textarea
-                                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl font-medium text-sm text-slate-900 focus:ring-2 focus:ring-brand outline-none resize-none h-24"
+                                    className="w-full p-3 bg-black border-2 border-gray-700 font-mono text-sm text-white focus:border-orange-600 outline-none resize-none h-24"
                                     placeholder="Mention any issues, extra materials used, or specific details for the office..."
                                     value={actuals.notes}
                                     onChange={(e) => setActuals({...actuals, notes: e.target.value})}
                                 />
                             </div>
 
-                            <div className="flex gap-3 pt-4">
-                                <button onClick={() => setShowCompletionModal(false)} disabled={isCompleting} className="flex-1 p-4 border-2 border-slate-100 rounded-2xl font-black uppercase text-xs tracking-widest text-slate-400 hover:bg-slate-50">Cancel</button>
-                                <button onClick={handleCompleteJobSubmit} disabled={isCompleting} className="flex-1 p-4 bg-brand text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-brand-hover shadow-lg shadow-red-200 flex items-center justify-center gap-2">
+                            <div className="flex gap-2 pt-4 border-t border-gray-800">
+                                <button onClick={() => setShowCompletionModal(false)} disabled={isCompleting} className="flex-1 p-3 border-2 border-gray-700 font-mono font-bold uppercase text-xs tracking-widest text-gray-500 hover:bg-[#1a1a1a] hover:text-white transition-colors">Cancel</button>
+                                <button onClick={handleCompleteJobSubmit} disabled={isCompleting} className="flex-1 p-3 bg-orange-600 text-white border-2 border-orange-500 font-mono font-bold uppercase text-xs tracking-widest hover:bg-orange-500 flex items-center justify-center gap-2 transition-colors">
                                     {isCompleting ? <Loader2 className="w-4 h-4 animate-spin"/> : "Submit & Finish"}
                                 </button>
                             </div>
@@ -1331,77 +1327,72 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
   // --- JOB LIST VIEW ---
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20">
+    <div className="min-h-screen bg-black font-mono text-white pb-20">
         
         {/* Floating Install Icon for Crew */}
         {installPrompt && (
-          <div className="fixed bottom-6 right-6 z-[100] animate-in slide-in-from-bottom-10 fade-in duration-500">
+          <div className="fixed bottom-6 right-6 z-[100]">
              <button 
                 onClick={onInstall}
-                className="group flex items-center gap-3 bg-slate-900 text-white pl-4 pr-6 py-4 rounded-full shadow-2xl border-2 border-slate-700 hover:bg-brand hover:border-brand transition-all hover:scale-105 active:scale-95"
+                className="flex items-center gap-3 bg-[#111] text-white pl-4 pr-6 py-3 border-2 border-gray-700 hover:border-orange-600 transition-colors"
                 title="Install Desktop App"
              >
-                <div className="bg-white/10 p-1.5 rounded-full group-hover:bg-white/20 transition-colors">
-                    <Download className="w-5 h-5 animate-pulse" />
-                </div>
+                <Download className="w-5 h-5 text-orange-500" />
                 <div className="flex flex-col items-start">
-                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 group-hover:text-white/80 transition-colors leading-none mb-0.5">Desktop App</span>
-                    <span className="font-bold text-sm leading-none">Install Now</span>
+                    <span className="text-[9px] font-mono font-bold uppercase tracking-widest text-gray-500 leading-none mb-0.5">Desktop App</span>
+                    <span className="font-mono font-bold text-sm leading-none">Install Now</span>
                 </div>
              </button>
           </div>
         )}
 
         {/* Header */}
-        <header className="bg-slate-900 text-white p-6 pb-12 rounded-b-[2.5rem] shadow-2xl relative overflow-hidden">
-            <div className="relative z-10 flex justify-between items-start mb-6">
+        <header className="bg-[#111] text-white px-4 py-3 border-b-2 border-gray-700">
+            <div className="flex justify-between items-center mb-3">
                 <RFESmallLogo />
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
                     <div className="text-right">
-                        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Status</div>
-                        <div className="text-xs font-bold text-emerald-400 flex items-center justify-end gap-1">
-                            {syncStatus === 'syncing' ? <RefreshCw className="w-3 h-3 animate-spin"/> : <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>}
+                        <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-gray-500">Status</div>
+                        <div className="text-xs font-mono font-bold text-emerald-500 flex items-center justify-end gap-1">
+                            {syncStatus === 'syncing' ? <RefreshCw className="w-3 h-3 animate-spin"/> : <div className="w-2 h-2 bg-emerald-500"></div>}
                             {syncStatus === 'syncing' ? 'Syncing...' : 'Live'}
                         </div>
                     </div>
                     {installPrompt && (
-                        <button onClick={onInstall} className="p-2 bg-emerald-500/20 text-emerald-400 rounded-xl hover:bg-emerald-500/40 transition-colors" title="Install App">
+                        <button onClick={onInstall} className="p-2 bg-emerald-900 border border-emerald-700 text-emerald-400 hover:bg-emerald-800 transition-colors" title="Install App">
                             <Download className="w-5 h-5" />
                         </button>
                     )}
-                    <button onClick={onLogout} className="p-2 bg-slate-800 rounded-xl text-slate-400 hover:text-white hover:bg-slate-700 transition-colors">
+                    <button onClick={onLogout} className="p-2 bg-[#1a1a1a] border border-gray-700 text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">
                         <LogOut className="w-5 h-5" />
                     </button>
                 </div>
             </div>
-            <div className="relative z-10 flex justify-between items-end">
+            <div className="flex justify-between items-end">
                 <div>
-                    <h1 className="text-2xl font-black mb-1">Crew Dashboard</h1>
-                    <p className="text-slate-400 text-sm font-medium">Select a Work Order to begin.</p>
+                    <h1 className="text-lg font-mono font-bold uppercase tracking-widest">Crew Dashboard</h1>
+                    <p className="text-gray-500 text-xs font-mono">Select a Work Order to begin.</p>
                     <div className="mt-2"><FeedbackButton area="Crew Dashboard" /></div>
                 </div>
                 <button 
                     onClick={() => setShowHistory(!showHistory)}
-                    className={`text-xs font-bold uppercase tracking-widest px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-2 ${showHistory ? 'bg-white text-slate-900 border-white' : 'bg-transparent text-slate-400 border-slate-700 hover:border-slate-500'}`}
+                    className={`text-xs font-mono font-bold uppercase tracking-widest px-3 py-1.5 border transition-colors flex items-center gap-2 ${showHistory ? 'bg-white text-black border-white' : 'bg-transparent text-gray-500 border-gray-700 hover:border-gray-500 hover:text-gray-300'}`}
                 >
                     <History className="w-4 h-4" /> {showHistory ? 'Hide History' : 'History'}
                 </button>
             </div>
-            {/* Background Pattern */}
-            <div className="absolute top-0 right-0 w-64 h-64 bg-brand rounded-full filter blur-[80px] opacity-20 transform translate-x-1/3 -translate-y-1/3"></div>
         </header>
 
-        {/* List */}
-        <div className="px-4 -mt-8 relative z-20 space-y-4 max-w-2xl mx-auto">
+        <div className="px-4 mt-4 space-y-2 max-w-2xl mx-auto">
             {displayedJobs.length === 0 ? (
-                <div className="bg-white rounded-3xl p-10 text-center shadow-lg border border-slate-100">
-                    <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
-                        <CheckCircle2 className="w-8 h-8" />
+                <div className="bg-[#111] border-2 border-gray-700 p-8 text-center">
+                    <div className="w-12 h-12 bg-[#1a1a1a] border border-gray-700 flex items-center justify-center mx-auto mb-4 text-gray-500">
+                        <CheckCircle2 className="w-6 h-6" />
                     </div>
-                    <h3 className="text-lg font-black text-slate-900 mb-2">{showHistory ? 'No Completed Jobs' : 'All Caught Up!'}</h3>
-                    <p className="text-slate-500 text-sm">{showHistory ? 'Completed work orders will appear here.' : 'No pending work orders assigned.'}</p>
+                    <h3 className="text-base font-mono font-bold text-white mb-2 uppercase tracking-widest">{showHistory ? 'No Completed Jobs' : 'All Caught Up'}</h3>
+                    <p className="text-gray-500 text-xs font-mono">{showHistory ? 'Completed work orders will appear here.' : 'No pending work orders assigned.'}</p>
                     {!showHistory && (
-                        <button onClick={() => onSync()} className="mt-6 text-brand font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:underline">
+                        <button onClick={() => onSync()} className="mt-4 text-orange-500 font-mono font-bold text-xs uppercase tracking-widest flex items-center justify-center gap-2 hover:text-orange-400 mx-auto">
                             <RefreshCw className="w-4 h-4" /> Refresh List
                         </button>
                     )}
@@ -1411,29 +1402,29 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                     <button 
                         key={job.id}
                         onClick={() => setSelectedJobId(job.id)}
-                        className={`w-full bg-white p-6 rounded-3xl shadow-sm border border-slate-200 text-left hover:scale-[1.02] transition-transform active:scale-95 group relative overflow-hidden ${job.executionStatus === 'Completed' ? 'opacity-80 hover:opacity-100' : ''}`}
+                        className={`w-full bg-[#111] p-4 border-2 border-gray-700 text-left hover:border-orange-600 transition-colors group relative ${job.executionStatus === 'Completed' ? 'opacity-70 hover:opacity-100' : ''}`}
                     >
-                        <div className={`absolute top-0 left-0 w-1 h-full transition-colors ${job.executionStatus === 'Completed' ? 'bg-emerald-500' : 'bg-slate-200 group-hover:bg-brand'}`}></div>
-                        <div className="flex justify-between items-start mb-4 pl-4">
+                        <div className={`absolute top-0 left-0 w-1 h-full ${job.executionStatus === 'Completed' ? 'bg-emerald-600' : 'bg-gray-700 group-hover:bg-orange-600'} transition-colors`}></div>
+                        <div className="flex justify-between items-start mb-3 pl-3">
                             <div>
-                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-2">
-                                    Work Order {job.executionStatus === 'Completed' && <span className="bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded">DONE</span>}
+                                <div className="text-[10px] font-mono font-bold text-gray-500 uppercase tracking-widest mb-1 flex items-center gap-2">
+                                    Work Order {job.executionStatus === 'Completed' && <span className="bg-emerald-900 text-emerald-400 px-1.5 py-0.5 border border-emerald-700">DONE</span>}
                                 </div>
-                                <div className="text-xl font-black text-slate-900">#{job.id.substring(0,8).toUpperCase()}</div>
+                                <div className="text-base font-mono font-bold text-orange-500">#{job.id.substring(0,8).toUpperCase()}</div>
                             </div>
-                            <div className="bg-slate-50 p-2 rounded-xl text-slate-400 group-hover:text-brand transition-colors">
-                                <ArrowRight className="w-5 h-5" />
+                            <div className="p-1.5 border border-gray-700 text-gray-500 group-hover:text-orange-500 group-hover:border-orange-600 transition-colors">
+                                <ArrowRight className="w-4 h-4" />
                             </div>
                         </div>
-                        <div className="pl-4 space-y-2">
-                             <div className="flex items-center gap-2 text-sm font-bold text-slate-700">
-                                <User className="w-4 h-4 text-slate-400" /> {job.customer.name}
+                        <div className="pl-3 space-y-1">
+                             <div className="flex items-center gap-2 text-sm font-mono font-bold text-white">
+                                <User className="w-4 h-4 text-gray-500" /> {job.customer.name}
                              </div>
-                             <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
-                                <MapPin className="w-4 h-4 text-slate-400" /> {job.customer.city}, {job.customer.state}
+                             <div className="flex items-center gap-2 text-sm font-mono text-gray-400">
+                                <MapPin className="w-4 h-4 text-gray-600" /> {job.customer.city}, {job.customer.state}
                              </div>
-                             <div className="flex items-center gap-2 text-sm font-medium text-slate-500">
-                                <Calendar className="w-4 h-4 text-slate-400" /> {job.scheduledDate ? new Date(job.scheduledDate).toLocaleDateString() : "Unscheduled"}
+                             <div className="flex items-center gap-2 text-sm font-mono text-gray-400">
+                                <Calendar className="w-4 h-4 text-gray-600" /> {job.scheduledDate ? new Date(job.scheduledDate).toLocaleDateString() : "Unscheduled"}
                              </div>
                         </div>
                     </button>
