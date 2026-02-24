@@ -1,19 +1,10 @@
 
-<<<<<<< HEAD
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { 
-    LogOut, RefreshCw, MapPin, Calendar, HardHat, FileText, 
-    ChevronLeft, CheckCircle2, Package, AlertTriangle, User, 
-    ArrowRight, Play, Square, Clock, Save, Loader2, Download,
-    MessageSquare, History, Zap, RotateCcw, MousePointerClick
-=======
-import React, { useState, useEffect, useCallback } from 'react';
 import {
     LogOut, RefreshCw, MapPin, Calendar, HardHat, FileText,
     ChevronLeft, CheckCircle2, Package, AlertTriangle, User,
     ArrowRight, Play, Square, Clock, Save, Loader2, Download,
-    MessageSquare, History, Zap, RotateCcw
->>>>>>> 2c2b696 (feat: add live Bluetooth stroke counter to CrewDashboard)
+    MessageSquare, History, Zap, RotateCcw, MousePointerClick
 } from 'lucide-react';
 import { CalculatorState, EstimateRecord } from '../types';
 import { crewUpdateJob } from '../services/supabaseService';
@@ -53,7 +44,6 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
   });
   const [isCompleting, setIsCompleting] = useState(false);
 
-<<<<<<< HEAD
   // ── STROKE COUNTER STATE ─────────────────────────────────────────────
   const [liveOCStrokes, setLiveOCStrokes] = useState(0);
   const [liveCCStrokes, setLiveCCStrokes] = useState(0);
@@ -186,11 +176,6 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
     window.addEventListener('click', handleGlobalClick, true);
     return () => window.removeEventListener('click', handleGlobalClick, true);
   }, [isTimerRunning, selectedJobId, showCompletionModal, incrementStroke]);
-=======
-  // Live Stroke Counter State
-  const [liveStrokes, setLiveStrokes] = useState({ oc: 0, cc: 0 });
-  const [activeCounter, setActiveCounter] = useState<'oc' | 'cc'>('oc');
->>>>>>> 2c2b696 (feat: add live Bluetooth stroke counter to CrewDashboard)
 
   // --- AUTOMATIC BACKGROUND SYNC ---
   useEffect(() => {
@@ -385,7 +370,6 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                 : (selectedJob.actuals?.closedCellSets ?? round2(ccSets));
 
               setActuals({
-<<<<<<< HEAD
                   openCellSets: actualOCSets,
                   closedCellSets: actualCCSets,
                   openCellStrokes: finalOCStrokes,
@@ -393,15 +377,6 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                   laborHours: selectedJob.actuals?.laborHours ?? round2(parseFloat((estLabor || sessionDurationHours).toFixed(2))),
                   inventory: selectedJob.actuals?.inventory ?? estInventory,
                   notes: selectedJob.actuals?.notes ?? ''
-=======
-                  openCellSets: selectedJob.actuals?.openCellSets || round2(ocSets),
-                  closedCellSets: selectedJob.actuals?.closedCellSets || round2(ccSets),
-                  openCellStrokes: liveStrokes.oc > 0 ? liveStrokes.oc : (selectedJob.actuals?.openCellStrokes || 0),
-                  closedCellStrokes: liveStrokes.cc > 0 ? liveStrokes.cc : (selectedJob.actuals?.closedCellStrokes || 0),
-                  laborHours: selectedJob.actuals?.laborHours || round2(parseFloat((estLabor || sessionDurationHours).toFixed(2))),
-                  inventory: selectedJob.actuals?.inventory || estInventory,
-                  notes: selectedJob.actuals?.notes || ''
->>>>>>> 2c2b696 (feat: add live Bluetooth stroke counter to CrewDashboard)
               });
               setShowCompletionModal(true);
           }
