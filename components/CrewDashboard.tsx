@@ -795,116 +795,224 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                       </button>
                     </div>
 
-                    {/* ── Active Counter Display ── */}
-                    {activeStrokeType === 'oc' ? (
-                      <div className="rounded-2xl border-2 border-brand bg-brand/5">
-                        <div className="p-4">
-                          <div className="flex justify-between items-center mb-3">
-                            <div className="text-[10px] font-black uppercase tracking-widest text-brand">Open Cell — Active</div>
-                            <button
-                              data-no-stroke
-                              onClick={() => resetStrokes('oc')}
-                              className="text-slate-500 hover:text-white p-1.5 rounded-lg hover:bg-slate-700 transition-colors"
-                              title="Reset OC counter"
-                            >
-                              <RotateCcw className="w-4 h-4" />
-                            </button>
-                          </div>
-                          
-                          {/* Big Counter Display */}
-                          <div className="w-full rounded-2xl p-8 bg-brand/20 border-2 border-brand/30 text-center select-none">
-                            <div className="text-7xl font-black text-white tabular-nums leading-none mb-2">
-                              {liveOCStrokes.toLocaleString()}
+                    {/* ── Active Counter Display with Estimate Target & Over-Budget Warning ── */}
+                    {(() => {
+                      // Compute estimate vs actual for the active type
+                      const isOC = activeStrokeType === 'oc';
+                      const liveStrokes = isOC ? liveOCStrokes : liveCCStrokes;
+                      const strokesPerSet = isOC ? ocStrokesPerSet : ccStrokesPerSet;
+                      const estimatedStrokes = isOC
+                        ? (selectedJob.materials?.openCellStrokes || selectedJob.results?.openCellStrokes || 0)
+                        : (selectedJob.materials?.closedCellStrokes || selectedJob.results?.closedCellStrokes || 0);
+                      const estimatedSets = isOC
+                        ? (selectedJob.materials?.openCellSets || 0)
+                        : (selectedJob.materials?.closedCellSets || 0);
+                      const liveSets = liveStrokes / strokesPerSet;
+                      const pctOfEstimate = estimatedStrokes > 0 ? (liveStrokes / estimatedStrokes) * 100 : 0;
+                      const isOverBudget = estimatedStrokes > 0 && liveStrokes > estimatedStrokes;
+                      const isNearBudget = estimatedStrokes > 0 && pctOfEstimate >= 85 && !isOverBudget;
+                      const overByStrokes = liveStrokes - estimatedStrokes;
+                      const overBySets = overByStrokes / strokesPerSet;
+
+                      // Inactive type values
+                      const inactiveStrokes = isOC ? liveCCStrokes : liveOCStrokes;
+                      const inactiveStrokesPerSet = isOC ? ccStrokesPerSet : ocStrokesPerSet;
+                      const inactiveEstimated = isOC
+                        ? (selectedJob.materials?.closedCellStrokes || selectedJob.results?.closedCellStrokes || 0)
+                        : (selectedJob.materials?.openCellStrokes || selectedJob.results?.openCellStrokes || 0);
+                      const inactiveIsOver = inactiveEstimated > 0 && inactiveStrokes > inactiveEstimated;
+
+                      // Colors
+                      const accentColor = isOC ? 'brand' : 'sky-500';
+                      const accentText = isOC ? 'text-brand' : 'text-sky-400';
+                      const borderColor = isOverBudget ? 'border-red-500' : isNearBudget ? 'border-amber-500' : (isOC ? 'border-brand' : 'border-sky-500');
+                      const bgTint = isOverBudget ? (isOC ? 'bg-red-500/5' : 'bg-red-500/5') : (isOC ? 'bg-brand/5' : 'bg-sky-500/5');
+                      const counterBg = isOverBudget ? 'bg-red-500/20 border-red-500/40' : isNearBudget ? 'bg-amber-500/20 border-amber-500/40' : (isOC ? 'bg-brand/20 border-brand/30' : 'bg-sky-500/20 border-sky-500/30');
+                      const progressGradient = isOverBudget
+                        ? 'from-red-500 to-red-400'
+                        : isNearBudget
+                          ? 'from-amber-500 to-yellow-400'
+                          : (isOC ? 'from-brand to-brand-yellow' : 'from-sky-500 to-cyan-400');
+
+                      return (
+                        <>
+                          {/* ═══ OVER-BUDGET WARNING BANNER ═══ */}
+                          {isOverBudget && (
+                            <div className="mb-4 p-4 rounded-2xl bg-red-500/15 border-2 border-red-500 animate-pulse-slow">
+                              <div className="flex items-center gap-3 mb-2">
+                                <div className="p-2 rounded-xl bg-red-500/20">
+                                  <AlertTriangle className="w-6 h-6 text-red-400" />
+                                </div>
+                                <div>
+                                  <div className="text-sm font-black text-red-400 uppercase tracking-wide">
+                                    Chemical Over-Usage Warning
+                                  </div>
+                                  <div className="text-xs text-red-300/80 font-bold mt-0.5">
+                                    {isOC ? 'Open Cell' : 'Closed Cell'} is over the estimated amount
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="grid grid-cols-2 gap-3 mt-3">
+                                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-center">
+                                  <div className="text-[10px] text-red-400 font-black uppercase tracking-widest mb-1">Over By</div>
+                                  <div className="text-2xl font-black text-red-300 tabular-nums">{overByStrokes.toLocaleString()}</div>
+                                  <div className="text-[10px] text-red-400/70 font-bold">strokes</div>
+                                </div>
+                                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-center">
+                                  <div className="text-[10px] text-red-400 font-black uppercase tracking-widest mb-1">Over By</div>
+                                  <div className="text-2xl font-black text-red-300 tabular-nums">{overBySets.toFixed(2)}</div>
+                                  <div className="text-[10px] text-red-400/70 font-bold">sets</div>
+                                </div>
+                              </div>
                             </div>
-                            <div className="text-sm text-slate-300 font-bold flex items-center justify-center gap-2">
-                              <Bluetooth className="w-4 h-4" /> STROKES
+                          )}
+
+                          {/* ═══ NEAR-BUDGET CAUTION BANNER ═══ */}
+                          {isNearBudget && (
+                            <div className="mb-4 p-3 rounded-2xl bg-amber-500/10 border-2 border-amber-500/50">
+                              <div className="flex items-center gap-3">
+                                <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0" />
+                                <div>
+                                  <div className="text-xs font-black text-amber-400 uppercase tracking-wide">
+                                    Approaching Estimate — {pctOfEstimate.toFixed(0)}% Used
+                                  </div>
+                                  <div className="text-[10px] text-amber-300/70 font-bold mt-0.5">
+                                    {(estimatedStrokes - liveStrokes).toLocaleString()} strokes remaining before exceeding estimate
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* ═══ ESTIMATE TARGET BAR ═══ */}
+                          {estimatedStrokes > 0 && (
+                            <div className="mb-4 p-3 rounded-2xl bg-slate-800/80 border border-slate-700">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center gap-1.5">
+                                  <FileText className="w-3 h-3" /> Estimate Target
+                                </div>
+                                <div className={`text-xs font-black uppercase tracking-widest ${isOverBudget ? 'text-red-400' : isNearBudget ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                  {pctOfEstimate.toFixed(0)}% of estimate
+                                </div>
+                              </div>
+                              {/* Estimated vs Actual visual bar */}
+                              <div className="relative h-4 bg-slate-700 rounded-full overflow-hidden">
+                                <div
+                                  className={`absolute inset-y-0 left-0 bg-gradient-to-r ${progressGradient} rounded-full transition-all duration-500 ease-out`}
+                                  style={{ width: `${Math.min(pctOfEstimate, 100)}%` }}
+                                />
+                                {/* 100% marker line */}
+                                {pctOfEstimate < 100 && (
+                                  <div className="absolute inset-y-0 right-0 w-px bg-white/30" style={{ left: '100%' }} />
+                                )}
+                              </div>
+                              <div className="flex justify-between mt-2 text-xs font-bold">
+                                <span className="text-slate-400">
+                                  Actual: <span className="text-white">{liveStrokes.toLocaleString()}</span>
+                                </span>
+                                <span className="text-slate-400">
+                                  Estimate: <span className="text-white">{estimatedStrokes.toLocaleString()}</span> ({estimatedSets.toFixed(2)} sets)
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* ═══ MAIN COUNTER CARD ═══ */}
+                          <div className={`rounded-2xl border-2 ${borderColor} ${bgTint}`}>
+                            <div className="p-4">
+                              <div className="flex justify-between items-center mb-3">
+                                <div className={`text-[10px] font-black uppercase tracking-widest ${isOverBudget ? 'text-red-400' : accentText}`}>
+                                  {isOC ? 'Open Cell' : 'Closed Cell'} — Active
+                                  {isOverBudget && <span className="ml-2 text-red-400">⚠ OVER</span>}
+                                </div>
+                                <button
+                                  data-no-stroke
+                                  onClick={() => resetStrokes(activeStrokeType)}
+                                  className="text-slate-500 hover:text-white p-1.5 rounded-lg hover:bg-slate-700 transition-colors"
+                                  title={`Reset ${isOC ? 'OC' : 'CC'} counter`}
+                                >
+                                  <RotateCcw className="w-4 h-4" />
+                                </button>
+                              </div>
+                              
+                              {/* Big Counter Display */}
+                              <div className={`w-full rounded-2xl p-8 ${counterBg} border-2 text-center select-none`}>
+                                <div className={`text-7xl font-black tabular-nums leading-none mb-2 ${isOverBudget ? 'text-red-300' : 'text-white'}`}>
+                                  {liveStrokes.toLocaleString()}
+                                </div>
+                                <div className="text-sm text-slate-300 font-bold flex items-center justify-center gap-2">
+                                  <Bluetooth className="w-4 h-4" /> STROKES
+                                </div>
+                                {/* Show estimated target directly under the count */}
+                                {estimatedStrokes > 0 && (
+                                  <div className={`mt-3 text-lg font-black tabular-nums ${isOverBudget ? 'text-red-400' : isNearBudget ? 'text-amber-400' : 'text-slate-400'}`}>
+                                    of {estimatedStrokes.toLocaleString()} estimated
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Progress & Sets */}
+                              <div className="mt-4 space-y-2">
+                                <div className="flex justify-between text-sm font-bold">
+                                  <span className="text-slate-400">{liveStrokes.toLocaleString()} / {strokesPerSet.toLocaleString()} per set</span>
+                                  <span className={`font-black text-lg ${isOverBudget ? 'text-red-400' : accentText}`}>
+                                    {liveSets.toFixed(2)} Sets
+                                  </span>
+                                </div>
+                                <div className="h-3 bg-slate-700 rounded-full overflow-hidden">
+                                  <div
+                                    className={`h-full bg-gradient-to-r ${progressGradient} rounded-full transition-all duration-300`}
+                                    style={{ width: `${Math.min((liveStrokes % strokesPerSet) / strokesPerSet * 100, 100)}%` }}
+                                  />
+                                </div>
+                                {estimatedSets > 0 && (
+                                  <div className="flex justify-between text-xs font-medium">
+                                    <span className="text-slate-500">
+                                      Estimated: {estimatedSets.toFixed(2)} sets
+                                    </span>
+                                    <span className={`font-bold ${isOverBudget ? 'text-red-400' : isNearBudget ? 'text-amber-400' : 'text-emerald-400'}`}>
+                                      {isOverBudget 
+                                        ? `+${(liveSets - estimatedSets).toFixed(2)} sets over`
+                                        : `${(estimatedSets - liveSets).toFixed(2)} sets remaining`
+                                      }
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </div>
 
-                          {/* Progress & Sets */}
-                          <div className="mt-4 space-y-2">
-                            <div className="flex justify-between text-sm font-bold">
-                              <span className="text-slate-400">{liveOCStrokes.toLocaleString()} / {ocStrokesPerSet.toLocaleString()} per set</span>
-                              <span className="text-brand font-black text-lg">{(liveOCStrokes / ocStrokesPerSet).toFixed(2)} Sets</span>
+                          {/* ═══ Inactive Type Summary ═══ */}
+                          <div className={`mt-3 p-3 rounded-xl border ${inactiveIsOver ? 'bg-red-500/5 border-red-500/30' : 'bg-slate-800/80 border-slate-700'}`}>
+                            <div className="flex justify-between items-center text-xs">
+                              <span className={`font-black uppercase tracking-widest ${inactiveIsOver ? 'text-red-400' : (isOC ? 'text-sky-400' : 'text-brand')}`}>
+                                {isOC ? 'Closed Cell' : 'Open Cell'}
+                                {inactiveIsOver && <span className="ml-1">⚠</span>}
+                              </span>
+                              <span className="text-white font-black tabular-nums text-base">
+                                {inactiveStrokes.toLocaleString()} strokes
+                              </span>
+                              <span className="text-slate-400 font-bold">
+                                {(inactiveStrokes / inactiveStrokesPerSet).toFixed(2)} sets
+                              </span>
                             </div>
-                            <div className="h-3 bg-slate-700 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-gradient-to-r from-brand to-brand-yellow rounded-full transition-all duration-300"
-                                style={{ width: `${Math.min((liveOCStrokes % ocStrokesPerSet) / ocStrokesPerSet * 100, 100)}%` }}
-                              />
-                            </div>
-                            {(selectedJob.results?.openCellStrokes ?? 0) > 0 && (
-                              <div className="text-xs text-slate-500 font-medium text-right">
-                                Estimated: {selectedJob.results.openCellStrokes.toLocaleString()} strokes ({selectedJob.materials?.openCellSets?.toFixed(2)} sets)
+                            {inactiveEstimated > 0 && (
+                              <div className="flex justify-between mt-1.5 text-[10px] font-bold">
+                                <span className="text-slate-500">
+                                  Est: {inactiveEstimated.toLocaleString()} strokes
+                                </span>
+                                <span className={inactiveIsOver ? 'text-red-400' : 'text-slate-500'}>
+                                  {inactiveIsOver 
+                                    ? `⚠ ${(inactiveStrokes - inactiveEstimated).toLocaleString()} over`
+                                    : `${(inactiveEstimated - inactiveStrokes).toLocaleString()} remaining`
+                                  }
+                                </span>
                               </div>
                             )}
                           </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl border-2 border-sky-500 bg-sky-500/5">
-                        <div className="p-4">
-                          <div className="flex justify-between items-center mb-3">
-                            <div className="text-[10px] font-black uppercase tracking-widest text-sky-400">Closed Cell — Active</div>
-                            <button
-                              data-no-stroke
-                              onClick={() => resetStrokes('cc')}
-                              className="text-slate-500 hover:text-white p-1.5 rounded-lg hover:bg-slate-700 transition-colors"
-                              title="Reset CC counter"
-                            >
-                              <RotateCcw className="w-4 h-4" />
-                            </button>
-                          </div>
-                          
-                          {/* Big Counter Display */}
-                          <div className="w-full rounded-2xl p-8 bg-sky-500/20 border-2 border-sky-500/30 text-center select-none">
-                            <div className="text-7xl font-black text-white tabular-nums leading-none mb-2">
-                              {liveCCStrokes.toLocaleString()}
-                            </div>
-                            <div className="text-sm text-slate-300 font-bold flex items-center justify-center gap-2">
-                              <Bluetooth className="w-4 h-4" /> STROKES
-                            </div>
-                          </div>
-
-                          {/* Progress & Sets */}
-                          <div className="mt-4 space-y-2">
-                            <div className="flex justify-between text-sm font-bold">
-                              <span className="text-slate-400">{liveCCStrokes.toLocaleString()} / {ccStrokesPerSet.toLocaleString()} per set</span>
-                              <span className="text-sky-400 font-black text-lg">{(liveCCStrokes / ccStrokesPerSet).toFixed(2)} Sets</span>
-                            </div>
-                            <div className="h-3 bg-slate-700 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-gradient-to-r from-sky-500 to-cyan-400 rounded-full transition-all duration-300"
-                                style={{ width: `${Math.min((liveCCStrokes % ccStrokesPerSet) / ccStrokesPerSet * 100, 100)}%` }}
-                              />
-                            </div>
-                            {(selectedJob.results?.closedCellStrokes ?? 0) > 0 && (
-                              <div className="text-xs text-slate-500 font-medium text-right">
-                                Estimated: {selectedJob.results.closedCellStrokes.toLocaleString()} strokes ({selectedJob.materials?.closedCellSets?.toFixed(2)} sets)
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Inactive type summary (smaller) */}
-                    <div className="mt-3 p-3 rounded-xl bg-slate-800/80 border border-slate-700">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className={`font-black uppercase tracking-widest ${activeStrokeType === 'oc' ? 'text-sky-400' : 'text-brand'}`}>
-                          {activeStrokeType === 'oc' ? 'Closed Cell' : 'Open Cell'}
-                        </span>
-                        <span className="text-white font-black tabular-nums text-base">
-                          {activeStrokeType === 'oc' ? liveCCStrokes.toLocaleString() : liveOCStrokes.toLocaleString()} strokes
-                        </span>
-                        <span className="text-slate-400 font-bold">
-                          {activeStrokeType === 'oc' 
-                            ? (liveCCStrokes / ccStrokesPerSet).toFixed(2)
-                            : (liveOCStrokes / ocStrokesPerSet).toFixed(2)
-                          } sets
-                        </span>
-                      </div>
-                    </div>
+                        </>
+                      );
+                    })()}
 
                     <div className="mt-3 text-center text-[10px] text-slate-500 font-medium">
                       Input: {btConnected ? 'Bluetooth active' : 'Bluetooth (tap Activate above)'} &bull; Keyboard (Space/Enter) &bull; USB HID
@@ -918,18 +1026,46 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                     <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
                       <Zap className="w-4 h-4 text-brand-yellow" /> Stroke Count (Paused)
                     </h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-4 bg-red-50 rounded-2xl border border-red-100">
-                        <div className="text-[10px] text-brand font-black uppercase tracking-widest mb-1">Open Cell</div>
-                        <div className="text-2xl font-black text-slate-900">{liveOCStrokes.toLocaleString()}</div>
-                        <div className="text-xs text-slate-500 font-bold">{(liveOCStrokes / ocStrokesPerSet).toFixed(2)} sets</div>
-                      </div>
-                      <div className="p-4 bg-sky-50 rounded-2xl border border-sky-100">
-                        <div className="text-[10px] text-sky-600 font-black uppercase tracking-widest mb-1">Closed Cell</div>
-                        <div className="text-2xl font-black text-slate-900">{liveCCStrokes.toLocaleString()}</div>
-                        <div className="text-xs text-slate-500 font-bold">{(liveCCStrokes / ccStrokesPerSet).toFixed(2)} sets</div>
-                      </div>
-                    </div>
+                    {(() => {
+                      const estOC = selectedJob.materials?.openCellStrokes || selectedJob.results?.openCellStrokes || 0;
+                      const estCC = selectedJob.materials?.closedCellStrokes || selectedJob.results?.closedCellStrokes || 0;
+                      const ocOver = estOC > 0 && liveOCStrokes > estOC;
+                      const ccOver = estCC > 0 && liveCCStrokes > estCC;
+                      return (
+                        <>
+                          {(ocOver || ccOver) && (
+                            <div className="mb-4 p-3 rounded-xl bg-red-50 border-2 border-red-200 flex items-center gap-2">
+                              <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0" />
+                              <span className="text-xs font-bold text-red-600">
+                                {ocOver && ccOver ? 'Both OC & CC' : ocOver ? 'Open Cell' : 'Closed Cell'} over estimated chemical usage
+                              </span>
+                            </div>
+                          )}
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className={`p-4 rounded-2xl border ${ocOver ? 'bg-red-50 border-red-300' : 'bg-red-50 border-red-100'}`}>
+                              <div className="text-[10px] text-brand font-black uppercase tracking-widest mb-1">Open Cell</div>
+                              <div className={`text-2xl font-black ${ocOver ? 'text-red-600' : 'text-slate-900'}`}>{liveOCStrokes.toLocaleString()}</div>
+                              <div className="text-xs text-slate-500 font-bold">{(liveOCStrokes / ocStrokesPerSet).toFixed(2)} sets</div>
+                              {estOC > 0 && (
+                                <div className={`text-[10px] font-bold mt-1 ${ocOver ? 'text-red-500' : 'text-slate-400'}`}>
+                                  {ocOver ? `⚠ ${(liveOCStrokes - estOC).toLocaleString()} over est.` : `Est: ${estOC.toLocaleString()}`}
+                                </div>
+                              )}
+                            </div>
+                            <div className={`p-4 rounded-2xl border ${ccOver ? 'bg-red-50 border-red-300' : 'bg-sky-50 border-sky-100'}`}>
+                              <div className="text-[10px] text-sky-600 font-black uppercase tracking-widest mb-1">Closed Cell</div>
+                              <div className={`text-2xl font-black ${ccOver ? 'text-red-600' : 'text-slate-900'}`}>{liveCCStrokes.toLocaleString()}</div>
+                              <div className="text-xs text-slate-500 font-bold">{(liveCCStrokes / ccStrokesPerSet).toFixed(2)} sets</div>
+                              {estCC > 0 && (
+                                <div className={`text-[10px] font-bold mt-1 ${ccOver ? 'text-red-500' : 'text-slate-400'}`}>
+                                  {ccOver ? `⚠ ${(liveCCStrokes - estCC).toLocaleString()} over est.` : `Est: ${estCC.toLocaleString()}`}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
 
