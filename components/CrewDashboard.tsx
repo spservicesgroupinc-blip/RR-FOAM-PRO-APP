@@ -221,32 +221,6 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
       return () => clearInterval(interval);
   }, [isTimerRunning, jobStartTime]);
 
-  // Bluetooth controller: any key press increments the active counter
-  // Only active while timer is running and completion modal is closed
-  const handleStrokeKey = useCallback((e: KeyboardEvent) => {
-      // Ignore if focus is on an input/textarea (manual editing in modal)
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
-      e.preventDefault();
-      setLiveStrokes(prev => ({
-          ...prev,
-          [activeCounter]: prev[activeCounter] + 1
-      }));
-  }, [activeCounter]);
-
-  useEffect(() => {
-      if (!isTimerRunning || showCompletionModal) return;
-      window.addEventListener('keydown', handleStrokeKey);
-      return () => window.removeEventListener('keydown', handleStrokeKey);
-  }, [isTimerRunning, showCompletionModal, handleStrokeKey]);
-
-  // Reset live strokes when a new job starts
-  useEffect(() => {
-      if (isTimerRunning) {
-          setLiveStrokes({ oc: 0, cc: 0 });
-      }
-  }, [selectedJobId]);
-
   const formatTime = (secs: number) => {
       const h = Math.floor(secs / 3600);
       const m = Math.floor((secs % 3600) / 60);
@@ -864,81 +838,6 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                         <p className="text-amber-900 text-sm font-medium leading-relaxed">
                             {selectedJob.notes}
                         </p>
-                    </div>
-                )}
-
-                {/* Live Stroke Counter */}
-                {isTimerRunning && (selectedJob.materials?.openCellSets > 0 || selectedJob.materials?.closedCellSets > 0) && (
-                    <div className="bg-slate-900 p-6 rounded-3xl shadow-xl border border-slate-700">
-                        <div className="flex items-center justify-between mb-5">
-                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                <Zap className="w-4 h-4 text-brand" /> Stroke Counter
-                            </h3>
-                            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">BT Active</span>
-                        </div>
-
-                        {/* Foam Type Toggle */}
-                        <div className="flex gap-2 mb-6 p-1 bg-slate-800 rounded-2xl">
-                            {selectedJob.materials?.openCellSets > 0 && (
-                                <button
-                                    onClick={() => setActiveCounter('oc')}
-                                    className={`flex-1 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${activeCounter === 'oc' ? 'bg-sky-500 text-white shadow-lg shadow-sky-900' : 'text-slate-400 hover:text-slate-200'}`}
-                                >
-                                    Open Cell
-                                </button>
-                            )}
-                            {selectedJob.materials?.closedCellSets > 0 && (
-                                <button
-                                    onClick={() => setActiveCounter('cc')}
-                                    className={`flex-1 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${activeCounter === 'cc' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-900' : 'text-slate-400 hover:text-slate-200'}`}
-                                >
-                                    Closed Cell
-                                </button>
-                            )}
-                        </div>
-
-                        {/* Active Count Display */}
-                        <div className="text-center mb-6">
-                            <div className={`text-7xl font-black tabular-nums tracking-tighter ${activeCounter === 'oc' ? 'text-sky-400' : 'text-emerald-400'}`}>
-                                {activeCounter === 'oc' ? liveStrokes.oc.toLocaleString() : liveStrokes.cc.toLocaleString()}
-                            </div>
-                            <div className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">
-                                {activeCounter === 'oc' ? 'Open Cell' : 'Closed Cell'} Strokes
-                                <span className="ml-2 text-slate-600">/ Est. {activeCounter === 'oc' ? selectedJob.results.openCellStrokes?.toLocaleString() : selectedJob.results.closedCellStrokes?.toLocaleString()}</span>
-                            </div>
-                        </div>
-
-                        {/* Tap to add + undo */}
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setLiveStrokes(prev => ({ ...prev, [activeCounter]: prev[activeCounter] + 1 }))}
-                                className={`flex-1 py-5 rounded-2xl font-black text-sm uppercase tracking-widest transition-all active:scale-95 shadow-lg ${activeCounter === 'oc' ? 'bg-sky-500 hover:bg-sky-400 text-white shadow-sky-900' : 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-emerald-900'}`}
-                            >
-                                + Stroke
-                            </button>
-                            <button
-                                onClick={() => setLiveStrokes(prev => ({ ...prev, [activeCounter]: Math.max(0, prev[activeCounter] - 1) }))}
-                                className="px-5 py-5 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-2xl transition-all active:scale-95"
-                                title="Undo last stroke"
-                            >
-                                <RotateCcw className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        {/* Both counts summary */}
-                        {selectedJob.materials?.openCellSets > 0 && selectedJob.materials?.closedCellSets > 0 && (
-                            <div className="mt-4 pt-4 border-t border-slate-800 flex justify-around text-center">
-                                <div>
-                                    <div className="text-sky-400 font-black text-lg tabular-nums">{liveStrokes.oc.toLocaleString()}</div>
-                                    <div className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">OC</div>
-                                </div>
-                                <div className="w-px bg-slate-800" />
-                                <div>
-                                    <div className="text-emerald-400 font-black text-lg tabular-nums">{liveStrokes.cc.toLocaleString()}</div>
-                                    <div className="text-slate-600 text-[10px] font-bold uppercase tracking-widest">CC</div>
-                                </div>
-                            </div>
-                        )}
                     </div>
                 )}
             </div>
