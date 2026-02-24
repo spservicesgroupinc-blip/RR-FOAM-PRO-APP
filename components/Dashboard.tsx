@@ -148,13 +148,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const TabButton = ({ id, label, icon: Icon }: any) => (
       <button 
         onClick={() => setActiveTab(id)}
-        className={`flex items-center gap-2 px-6 py-3 rounded-t-2xl font-black text-xs uppercase tracking-widest transition-all ${
+        className={`flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-2.5 md:py-3 rounded-t-xl md:rounded-t-2xl font-black text-[10px] md:text-xs uppercase tracking-wider md:tracking-widest transition-all ${
             activeTab === id 
             ? 'bg-white text-slate-900 border-t border-x border-slate-200 -mb-px relative z-10' 
-            : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
+            : 'bg-slate-100 text-slate-400 hover:bg-slate-200 active:bg-slate-300'
         }`}
       >
-          <Icon className="w-4 h-4" /> {label}
+          <Icon className="w-3.5 h-3.5 md:w-4 md:h-4" /> {label}
       </button>
   );
 
@@ -210,7 +210,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {/* INVENTORY HEALTH BANNER (2/3 Width) */}
             <div 
                 onClick={onGoToWarehouse}
-                className={`lg:col-span-2 p-5 rounded-2xl shadow-lg flex flex-col md:flex-row items-center justify-between cursor-pointer relative overflow-hidden group hover:scale-[1.01] transition-all ${
+                className={`lg:col-span-2 p-3 md:p-5 rounded-xl md:rounded-2xl shadow-lg flex flex-col md:flex-row items-center justify-between cursor-pointer relative overflow-hidden group active:scale-95 md:hover:scale-[1.01] transition-all ${
                     inventoryHealth.hasShortage 
                     ? 'bg-red-600 text-white shadow-red-200' 
                     : 'bg-slate-900 text-white shadow-slate-200'
@@ -231,18 +231,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <div className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1 flex items-center gap-2">
                             {inventoryHealth.hasShortage ? 'CRITICAL SHORTAGE DETECTED' : 'WAREHOUSE STOCK'}
                         </div>
-                        <div className="flex items-baseline gap-6">
+                        <div className="flex items-baseline gap-3 md:gap-6">
                             <div>
-                                <span className="text-2xl font-black">{inventoryHealth.ocStock.toFixed(2)}</span>
-                                <span className="text-xs font-bold opacity-70 ml-1">OC Sets</span>
+                                <span className="text-lg md:text-2xl font-black">{inventoryHealth.ocStock.toFixed(2)}</span>
+                                <span className="text-[10px] md:text-xs font-bold opacity-70 ml-1">OC</span>
                                 {inventoryHealth.ocShortage > 0 && (
                                     <div className="text-[10px] font-black bg-white/20 px-2 py-0.5 rounded mt-1">SHORT: {inventoryHealth.ocShortage.toFixed(2)}</div>
                                 )}
                             </div>
-                            <div className="w-px h-8 bg-white/20"></div>
+                            <div className="w-px h-6 md:h-8 bg-white/20"></div>
                             <div>
-                                <span className="text-2xl font-black">{inventoryHealth.ccStock.toFixed(2)}</span>
-                                <span className="text-xs font-bold opacity-70 ml-1">CC Sets</span>
+                                <span className="text-lg md:text-2xl font-black">{inventoryHealth.ccStock.toFixed(2)}</span>
+                                <span className="text-[10px] md:text-xs font-bold opacity-70 ml-1">CC</span>
                                 {inventoryHealth.ccShortage > 0 && (
                                     <div className="text-[10px] font-black bg-white/20 px-2 py-0.5 rounded mt-1">SHORT: {inventoryHealth.ccShortage.toFixed(2)}</div>
                                 )}
@@ -327,31 +327,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         </button>
                     </div>
                 )}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <button onClick={() => setDashboardFilter('all')} className={`text-left p-6 rounded-2xl shadow-lg relative overflow-hidden transition-all transform hover:scale-[1.01] ring-2 ${dashboardFilter === 'all' ? 'ring-brand bg-slate-900 text-white' : 'ring-transparent bg-white text-slate-900 border border-slate-200'}`}>
-                        {dashboardFilter === 'all' && <div className="absolute top-0 right-0 p-4 opacity-10 text-white"><DollarSign className="w-24 h-24" /></div>}
-                        <p className={`font-medium text-xs uppercase tracking-wider mb-2 ${dashboardFilter === 'all' ? 'text-slate-400' : 'text-slate-500'}`}>Active Pipeline</p>
-                        <p className="text-2xl font-bold">${dashboardStats.totalValue.toLocaleString(undefined, {maximumFractionDigits: 0})}</p>
-                        <p className={`text-xs mt-2 ${dashboardFilter === 'all' ? 'text-slate-500' : 'text-slate-400'}`}>{state.savedEstimates.filter(e => e.status !== 'Paid' && e.status !== 'Archived').length} Active Jobs</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
+                    <button onClick={() => setDashboardFilter('all')} className={`text-left p-3 md:p-6 rounded-xl md:rounded-2xl shadow-lg relative overflow-hidden transition-all active:scale-95 md:hover:scale-[1.01] ring-2 ${dashboardFilter === 'all' ? 'ring-brand bg-slate-900 text-white' : 'ring-transparent bg-white text-slate-900 border border-slate-200'}`}>
+                        {dashboardFilter === 'all' && <div className="absolute top-0 right-0 p-2 md:p-4 opacity-10 text-white"><DollarSign className="w-14 md:w-24 h-14 md:h-24" /></div>}
+                        <p className={`font-medium text-[10px] md:text-xs uppercase tracking-wider mb-1 md:mb-2 ${dashboardFilter === 'all' ? 'text-slate-400' : 'text-slate-500'}`}>Pipeline</p>
+                        <p className="text-base md:text-2xl font-bold">${dashboardStats.totalValue.toLocaleString(undefined, {maximumFractionDigits: 0})}</p>
+                        <p className={`text-[10px] md:text-xs mt-1 md:mt-2 ${dashboardFilter === 'all' ? 'text-slate-500' : 'text-slate-400'}`}>{state.savedEstimates.filter(e => e.status !== 'Paid' && e.status !== 'Archived').length} Active</p>
                     </button>
                     
-                    <button onClick={() => setDashboardFilter('review')} className={`text-left p-6 rounded-2xl relative overflow-hidden border transition-all transform hover:scale-[1.01] ring-2 ${dashboardFilter === 'review' ? 'ring-emerald-500 bg-emerald-50 border-emerald-200' : 'ring-transparent bg-white border-slate-200'}`}>
-                        <div className="absolute top-0 right-0 p-4 opacity-10 text-emerald-600"><CheckCircle2 className="w-24 h-24" /></div>
-                        <p className="text-slate-500 font-medium text-xs uppercase tracking-wider mb-2">Review Needed</p>
-                        <p className="text-3xl font-bold text-slate-800">{dashboardStats.reviewNeeded}</p>
-                        <p className="text-xs text-emerald-600 font-bold mt-2">Jobs Completed</p>
+                    <button onClick={() => setDashboardFilter('review')} className={`text-left p-3 md:p-6 rounded-xl md:rounded-2xl relative overflow-hidden border transition-all active:scale-95 md:hover:scale-[1.01] ring-2 ${dashboardFilter === 'review' ? 'ring-emerald-500 bg-emerald-50 border-emerald-200' : 'ring-transparent bg-white border-slate-200'}`}>
+                        <div className="absolute top-0 right-0 p-2 md:p-4 opacity-10 text-emerald-600"><CheckCircle2 className="w-12 md:w-24 h-12 md:h-24" /></div>
+                        <p className="text-slate-500 font-medium text-[10px] md:text-xs uppercase tracking-wider mb-1 md:mb-2">Review</p>
+                        <p className="text-xl md:text-3xl font-bold text-slate-800">{dashboardStats.reviewNeeded}</p>
+                        <p className="text-[10px] md:text-xs text-emerald-600 font-bold mt-1 md:mt-2 hidden md:block">Completed</p>
                     </button>
 
-                    <button onClick={() => setDashboardFilter('work_orders')} className={`text-left p-6 rounded-2xl relative overflow-hidden border transition-all transform hover:scale-[1.01] ring-2 ${dashboardFilter === 'work_orders' ? 'ring-brand bg-red-50 border-red-200' : 'ring-transparent bg-white border-slate-200'}`}>
-                        <div className="absolute top-0 right-0 p-4 opacity-5 text-brand"><HardHat className="w-24 h-24" /></div>
-                        <p className="text-slate-500 font-medium text-xs uppercase tracking-wider mb-2">In Progress</p>
-                        <p className="text-3xl font-bold text-slate-800">{state.savedEstimates.filter(e => e.status === 'Work Order' && e.executionStatus !== 'Completed').length}</p>
+                    <button onClick={() => setDashboardFilter('work_orders')} className={`text-left p-3 md:p-6 rounded-xl md:rounded-2xl relative overflow-hidden border transition-all active:scale-95 md:hover:scale-[1.01] ring-2 ${dashboardFilter === 'work_orders' ? 'ring-brand bg-red-50 border-red-200' : 'ring-transparent bg-white border-slate-200'}`}>
+                        <div className="absolute top-0 right-0 p-2 md:p-4 opacity-5 text-brand"><HardHat className="w-12 md:w-24 h-12 md:h-24" /></div>
+                        <p className="text-slate-500 font-medium text-[10px] md:text-xs uppercase tracking-wider mb-1 md:mb-2">In Progress</p>
+                        <p className="text-xl md:text-3xl font-bold text-slate-800">{state.savedEstimates.filter(e => e.status === 'Work Order' && e.executionStatus !== 'Completed').length}</p>
                     </button>
 
-                    <button onClick={() => setDashboardFilter('invoices')} className={`text-left p-6 rounded-2xl relative overflow-hidden border transition-all transform hover:scale-[1.01] ring-2 ${dashboardFilter === 'invoices' ? 'ring-sky-500 bg-sky-50 border-sky-200' : 'ring-transparent bg-white border-slate-200'}`}>
-                        <div className="absolute top-0 right-0 p-4 opacity-5 text-sky-600"><Receipt className="w-24 h-24" /></div>
-                        <p className="text-slate-500 font-medium text-xs uppercase tracking-wider mb-2">Pending Payment</p>
-                        <p className="text-3xl font-bold text-slate-800">{state.savedEstimates.filter(e => e.status === 'Invoiced').length}</p>
+                    <button onClick={() => setDashboardFilter('invoices')} className={`text-left p-3 md:p-6 rounded-xl md:rounded-2xl relative overflow-hidden border transition-all active:scale-95 md:hover:scale-[1.01] ring-2 ${dashboardFilter === 'invoices' ? 'ring-sky-500 bg-sky-50 border-sky-200' : 'ring-transparent bg-white border-slate-200'}`}>
+                        <div className="absolute top-0 right-0 p-2 md:p-4 opacity-5 text-sky-600"><Receipt className="w-12 md:w-24 h-12 md:h-24" /></div>
+                        <p className="text-slate-500 font-medium text-[10px] md:text-xs uppercase tracking-wider mb-1 md:mb-2">Unpaid</p>
+                        <p className="text-xl md:text-3xl font-bold text-slate-800">{state.savedEstimates.filter(e => e.status === 'Invoiced').length}</p>
                     </button>
                 </div>
 
@@ -362,17 +362,86 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             dashboardFilter === 'review' ? 'Ready for Review & Invoice' : 
                             dashboardFilter === 'work_orders' ? 'Crew In Progress' : 'Unpaid Invoices'}
                         </h2>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                             {/* SYNC UPDATES BUTTON */}
-                            <button onClick={onSync} className="bg-white border border-slate-200 text-slate-600 hover:text-brand hover:border-brand px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all"> 
-                                <RefreshCw className="w-4 h-4" /> Sync Updates 
+                            <button onClick={onSync} className="bg-white border border-slate-200 text-slate-600 hover:text-brand hover:border-brand px-3 md:px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold flex items-center gap-1.5 md:gap-2 transition-all"> 
+                                <RefreshCw className="w-3.5 h-3.5 md:w-4 md:h-4" /> Sync
                             </button>
 
-                            {dashboardFilter !== 'all' && ( <button onClick={() => setDashboardFilter('all')} className="px-3 py-2 text-xs text-slate-500 hover:bg-slate-100 rounded-lg"> <Filter className="w-4 h-4 inline mr-1" /> Clear </button> )}
-                            <button onClick={onNewEstimate} className="bg-brand hover:bg-brand-hover text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 shadow-md shadow-red-200"> <Plus className="w-4 h-4" /> New Estimate </button>
+                            {dashboardFilter !== 'all' && ( <button onClick={() => setDashboardFilter('all')} className="px-2 md:px-3 py-2 text-[10px] md:text-xs text-slate-500 hover:bg-slate-100 rounded-lg"> <Filter className="w-3.5 h-3.5 md:w-4 md:h-4 inline mr-0.5 md:mr-1" /> Clear </button> )}
+                            <button onClick={onNewEstimate} className="bg-brand hover:bg-brand-hover text-white px-3 md:px-4 py-2 rounded-lg text-xs md:text-sm font-bold flex items-center gap-1.5 md:gap-2 shadow-md shadow-red-200"> <Plus className="w-3.5 h-3.5 md:w-4 md:h-4" /> New </button>
                         </div>
                     </div>
-                    <div className="overflow-x-auto">
+                    {/* MOBILE CARD VIEW */}
+                    <div className="md:hidden divide-y divide-slate-100">
+                        {filteredEstimates.length === 0 ? (
+                            <div className="px-4 py-12 text-center text-slate-400 italic text-sm">No matching records found.</div>
+                        ) : (
+                            estimatesPagination.currentItems.map(est => (
+                                <div key={est.id} className="p-3.5 active:bg-slate-50 transition-colors cursor-pointer" onClick={() => onEditEstimate(est)}>
+                                    <div className="flex items-start justify-between mb-1.5">
+                                        <div className="min-w-0 flex-1 mr-3">
+                                            <div className="font-bold text-slate-800 text-sm truncate">{est.customer?.name}</div>
+                                            <div className="text-[10px] text-slate-400 font-medium mt-0.5">{new Date(est.date).toLocaleDateString()}</div>
+                                        </div>
+                                        <div className="text-right shrink-0">
+                                            <div className="font-mono font-bold text-slate-700 text-sm">${est.totalValue.toLocaleString()}</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center justify-between mt-2">
+                                        <div>
+                                            {est.status === 'Work Order' && est.executionStatus === 'Completed' ? (
+                                                <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full text-[10px] font-black uppercase">
+                                                    <CheckCircle2 className="w-3 h-3" /> Review
+                                                </span>
+                                            ) : est.status === 'Work Order' && est.executionStatus === 'In Progress' ? (
+                                                <span className="inline-flex items-center gap-1 bg-brand text-white px-2 py-0.5 rounded-full text-[10px] font-black uppercase">
+                                                    <Clock className="w-3 h-3" /> Active
+                                                </span>
+                                            ) : est.status === 'Work Order' ? (
+                                                <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full text-[10px] font-black uppercase">
+                                                    <Clock className="w-3 h-3" /> W.O.
+                                                </span>
+                                            ) : (
+                                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                                                    est.status === 'Draft' ? 'bg-slate-100 text-slate-600' :
+                                                    est.status === 'Invoiced' ? 'bg-sky-100 text-sky-700' : 'bg-emerald-100 text-emerald-700'
+                                                }`}>
+                                                    {est.status}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                                            {onDownloadPDF && ['Draft', 'Invoiced', 'Paid'].includes(est.status) && (
+                                                <button
+                                                    onClick={() => onDownloadPDF(est, est.status === 'Paid' ? 'RECEIPT' : est.status === 'Invoiced' ? 'INVOICE' : 'ESTIMATE')}
+                                                    className="p-2 text-slate-400 active:text-blue-600 rounded-lg"
+                                                >
+                                                    <Download className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                            {est.status === 'Invoiced' && (
+                                                <button
+                                                    onClick={async () => { if (onViewInvoice) await onViewInvoice(est); }}
+                                                    className="px-2 py-1 bg-emerald-500 text-white rounded text-[10px] font-bold uppercase"
+                                                >
+                                                    Paid
+                                                </button>
+                                            )}
+                                            <button
+                                                onClick={(e) => onDeleteEstimate(est.id, e)}
+                                                className="p-2 text-slate-300 active:text-red-500 rounded-lg"
+                                            >
+                                                <Trash className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                    {/* DESKTOP TABLE VIEW */}
+                    <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-sm text-left">
                             <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider">
                                 <tr><th className="px-6 py-4">Customer</th><th className="px-6 py-4">Status</th><th className="px-6 py-4">Value</th><th className="px-6 py-4 text-right">Actions</th></tr>
@@ -475,61 +544,117 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
                 
                 {/* Metrics Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-lg relative overflow-hidden">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
+                    <div className="bg-slate-900 text-white p-3 md:p-6 rounded-xl md:rounded-2xl shadow-lg relative overflow-hidden">
                         <div className="relative z-10">
-                            <div className="text-slate-400 font-medium text-xs uppercase tracking-wider mb-2">Total Sold Revenue</div>
-                            <div className="text-3xl font-black">${financialStats.totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
-                            <div className="text-[10px] text-slate-500 mt-1 uppercase tracking-widest">{financialStats.jobCount} Jobs (Sold & Paid)</div>
+                            <div className="text-slate-400 font-medium text-[10px] md:text-xs uppercase tracking-wider mb-1 md:mb-2">Revenue</div>
+                            <div className="text-lg md:text-3xl font-black">${financialStats.totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+                            <div className="text-[9px] md:text-[10px] text-slate-500 mt-1 uppercase tracking-widest">{financialStats.jobCount} Jobs</div>
                         </div>
-                        <div className="absolute right-0 top-0 p-4 opacity-10"><Wallet className="w-24 h-24"/></div>
+                        <div className="absolute right-0 top-0 p-2 md:p-4 opacity-10"><Wallet className="w-14 md:w-24 h-14 md:h-24"/></div>
                     </div>
 
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
+                    <div className="bg-white p-3 md:p-6 rounded-xl md:rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
                         <div className="relative z-10">
-                            <div className="text-slate-400 font-medium text-xs uppercase tracking-wider mb-2">Est. Net Profit</div>
-                            <div className={`text-3xl font-black ${financialStats.netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                            <div className="text-slate-400 font-medium text-[10px] md:text-xs uppercase tracking-wider mb-1 md:mb-2">Net Profit</div>
+                            <div className={`text-lg md:text-3xl font-black ${financialStats.netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                                 ${financialStats.netProfit.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                             </div>
-                            <div className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest">Revenue - Total COGS</div>
+                            <div className="text-[9px] md:text-[10px] text-slate-400 mt-1 uppercase tracking-widest hidden md:block">Revenue - COGS</div>
                         </div>
                     </div>
 
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
+                    <div className="bg-white p-3 md:p-6 rounded-xl md:rounded-2xl border border-slate-200 shadow-sm relative overflow-hidden">
                         <div className="relative z-10">
-                            <div className="text-slate-400 font-medium text-xs uppercase tracking-wider mb-2">Gross Margin</div>
-                            <div className={`text-3xl font-black ${financialStats.margin >= 30 ? 'text-emerald-500' : financialStats.margin >= 15 ? 'text-amber-500' : 'text-red-500'}`}>
+                            <div className="text-slate-400 font-medium text-[10px] md:text-xs uppercase tracking-wider mb-1 md:mb-2">Margin</div>
+                            <div className={`text-lg md:text-3xl font-black ${financialStats.margin >= 30 ? 'text-emerald-500' : financialStats.margin >= 15 ? 'text-amber-500' : 'text-red-500'}`}>
                                 {financialStats.margin.toFixed(1)}%
                             </div>
-                            <div className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest">Target: 40%+</div>
+                            <div className="text-[9px] md:text-[10px] text-slate-400 mt-1 uppercase tracking-widest hidden md:block">Target: 40%+</div>
                         </div>
-                        <div className="absolute right-0 top-0 p-4 opacity-5"><PieChart className="w-24 h-24"/></div>
+                        <div className="absolute right-0 top-0 p-2 md:p-4 opacity-5"><PieChart className="w-14 md:w-24 h-14 md:h-24"/></div>
                     </div>
 
-                    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-                        <div className="text-slate-400 font-medium text-xs uppercase tracking-wider mb-4">Cost Breakdown</div>
-                        <div className="space-y-2 text-xs font-bold">
+                    <div className="bg-white p-3 md:p-6 rounded-xl md:rounded-2xl border border-slate-200 shadow-sm">
+                        <div className="text-slate-400 font-medium text-[10px] md:text-xs uppercase tracking-wider mb-2 md:mb-4">Costs</div>
+                        <div className="space-y-1.5 md:space-y-2 text-[10px] md:text-xs font-bold">
                             <div className="flex justify-between">
-                                <span className="text-slate-500">Materials</span>
+                                <span className="text-slate-500">Mat</span>
                                 <span>${financialStats.chemCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                             </div>
-                            <div className="w-full bg-slate-100 rounded-full h-1.5"><div className="bg-brand h-1.5 rounded-full" style={{width: `${(financialStats.chemCost/financialStats.totalCOGS)*100}%`}}></div></div>
+                            <div className="w-full bg-slate-100 rounded-full h-1 md:h-1.5"><div className="bg-brand h-1 md:h-1.5 rounded-full" style={{width: `${(financialStats.chemCost/financialStats.totalCOGS)*100}%`}}></div></div>
                             
-                            <div className="flex justify-between mt-2">
+                            <div className="flex justify-between mt-1 md:mt-2">
                                 <span className="text-slate-500">Labor</span>
                                 <span>${financialStats.laborCost.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
                             </div>
-                            <div className="w-full bg-slate-100 rounded-full h-1.5"><div className="bg-sky-500 h-1.5 rounded-full" style={{width: `${(financialStats.laborCost/financialStats.totalCOGS)*100}%`}}></div></div>
+                            <div className="w-full bg-slate-100 rounded-full h-1 md:h-1.5"><div className="bg-sky-500 h-1 md:h-1.5 rounded-full" style={{width: `${(financialStats.laborCost/financialStats.totalCOGS)*100}%`}}></div></div>
                         </div>
                     </div>
                 </div>
 
                 {/* Job Profitability Table */}
                 <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div className="p-6 border-b border-slate-100">
-                        <h2 className="text-lg font-bold text-slate-800">Job P&L (Sold & Paid)</h2>
+                    <div className="p-4 md:p-6 border-b border-slate-100">
+                        <h2 className="text-base md:text-lg font-bold text-slate-800">Job P&L (Sold & Paid)</h2>
                     </div>
-                    <div className="overflow-x-auto">
+                    {/* MOBILE P&L CARD VIEW */}
+                    <div className="md:hidden divide-y divide-slate-100">
+                        {state.savedEstimates.filter(e => ['Paid', 'Work Order', 'Invoiced'].includes(e.status) && e.status !== 'Archived').length === 0 ? (
+                            <div className="px-4 py-12 text-center text-slate-400 italic text-sm">No sold jobs for P&L.</div>
+                        ) : (
+                            state.savedEstimates.filter(e => ['Paid', 'Work Order', 'Invoiced'].includes(e.status) && e.status !== 'Archived').map(job => {
+                                let rev = 0, cogs = 0, net = 0, margin = 0;
+                                if (job.status === 'Paid' && job.financials) {
+                                    rev = job.financials.revenue; cogs = job.financials.totalCOGS;
+                                    net = job.financials.netProfit; margin = job.financials.margin;
+                                } else {
+                                    rev = job.totalValue || 0;
+                                    const mat = job.results.materialCost || 0;
+                                    const labor = (job.actuals?.laborHours || job.expenses.manHours || 0) * (job.expenses.laborRate || state.costs.laborRate || 0);
+                                    const misc = (job.expenses.tripCharge || 0) + (job.expenses.fuelSurcharge || 0) + (job.expenses.other?.amount || 0);
+                                    cogs = mat + labor + misc; net = rev - cogs;
+                                    margin = rev > 0 ? net / rev : 0;
+                                }
+                                return (
+                                    <div key={job.id} className="p-3.5">
+                                        <div className="flex items-start justify-between mb-2">
+                                            <div className="min-w-0 flex-1">
+                                                <div className="font-bold text-slate-800 text-sm truncate">{job.customer?.name}</div>
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); if (onViewInvoice) onViewInvoice(job); }}
+                                                    className="text-[10px] text-blue-500 font-bold flex items-center gap-1 mt-0.5"
+                                                >
+                                                    #{job.invoiceNumber || job.id.substring(0, 8)} <ArrowRight className="w-2 h-2" />
+                                                </button>
+                                            </div>
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase shrink-0 ${
+                                                job.status === 'Paid' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                                            }`}>
+                                                {job.status === 'Paid' ? 'Realized' : 'Projected'}
+                                            </span>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-2 text-center bg-slate-50 rounded-lg p-2">
+                                            <div>
+                                                <div className="text-[9px] text-slate-400 uppercase font-bold">Rev</div>
+                                                <div className="text-xs font-bold text-slate-700">${rev.toLocaleString()}</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-[9px] text-slate-400 uppercase font-bold">Profit</div>
+                                                <div className={`text-xs font-black ${net >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>${net.toLocaleString()}</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-[9px] text-slate-400 uppercase font-bold">Margin</div>
+                                                <div className={`text-xs font-bold ${margin >= 0.4 ? 'text-emerald-600' : margin >= 0.2 ? 'text-amber-600' : 'text-red-600'}`}>{(margin * 100).toFixed(1)}%</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                    {/* DESKTOP P&L TABLE */}
+                    <div className="hidden md:block overflow-x-auto">
                         <table className="w-full text-sm text-left">
                             <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold tracking-wider">
                                 <tr>
