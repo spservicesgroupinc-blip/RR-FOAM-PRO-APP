@@ -51,6 +51,22 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
   const [lastClickTime, setLastClickTime] = useState<number>(0);
   const strokeFlashRef = useRef<HTMLDivElement>(null);
 
+  // ── BLUETOOTH STATE (unified: BLE GATT + Media Session audio capture) ─
+  const [bleDevice, setBleDevice] = useState<BluetoothDevice | null>(null);
+  const [btConnected, setBtConnected] = useState(false);
+  const [bleConnecting, setBleConnecting] = useState(false);
+  const [bleError, setBleError] = useState<string | null>(null);
+  const [bleMode, setBleMode] = useState<'gatt' | 'media' | null>(null);
+  const bleCharRef = useRef<BluetoothRemoteGATTCharacteristic | null>(null);
+  const btAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  // BLE UUIDs — 0xFFE0/0xFFE1 = HM-10 / common BLE UART (works with ESP32 BLE too)
+  const BLE_STROKE_SERVICE_UUID = '0000ffe0-0000-1000-8000-00805f9b34fb';
+  const BLE_STROKE_CHAR_UUID    = '0000ffe1-0000-1000-8000-00805f9b34fb';
+
+  // Check BT API availability
+  const isBleSupported = typeof navigator !== 'undefined' && 'bluetooth' in navigator;
+
   // Strokes per set: prefer job-locked ratio from materials, fallback to user Settings
   const selectedJobForRatio = state.savedEstimates.find(e => e.id === selectedJobId);
   const ocStrokesPerSet = selectedJobForRatio?.materials?.ocStrokesPerSet || state.yields?.openCellStrokes || 6600;
@@ -110,6 +126,218 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
       }
     }
   }, [selectedJobId]);
+
+  // ── HANDLE BLE NOTIFICATION → STROKE ──
+  const handleBleNotification = useCallback((event: Event) => {
+    const target = event.target as BluetoothRemoteGATTCharacteristic;
+    const value = target.value;
+    if (!value || value.byteLength === 0) {
+      incrementStroke();
+      return;
+    }
+    // ESP32 may send JSON: {"type":"STROKE","foam":"oc"}
+    try {
+      const text = new TextDecoder().decode(value).trim();
+      if (text.startsWith('{')) {
+        const data = JSON.parse(text);
+        if (data.type === 'STROKE') {
+          if (data.foam === 'oc' || data.foam === 'open') incrementStroke('oc');
+          else if (data.foam === 'cc' || data.foam === 'closed') incrementStroke('cc');
+          else incrementStroke();
+          return;
+        }
+      }
+    } catch { /* not JSON */ }
+    incrementStroke();
+  }, [incrementStroke]);
+
+  // ── START SILENT AUDIO SESSION (claims Chrome Media Session for BT buttons) ──
+  const startSilentAudioSession = useCallback(async () => {
+    if (!btAudioRef.current) {
+      const audio = new Audio();
+      audio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+      audio.loop = true;
+      audio.volume = 0.01;
+      btAudioRef.current = audio;
+    }
+    await btAudioRef.current.play();
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: 'RFE Stroke Counter',
+        artist: 'Foam Equipment',
+        album: 'Stroke Counter Active',
+      });
+    }
+  }, []);
+
+  // ── CONNECT BLUETOOTH ──
+  // Two paths:
+  //  1. Web Bluetooth API (Chrome desktop/Android): device picker → BLE GATT → notifications
+  //  2. Media Session fallback (all Chrome): silent audio → captures BT audio clicker buttons
+  const connectBluetooth = useCallback(async () => {
+    setBleConnecting(true);
+    setBleError(null);
+
+    // PATH 1: Web Bluetooth GATT (custom BLE devices like ESP32, HM-10)
+    if (isBleSupported) {
+      try {
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [
+            { services: [BLE_STROKE_SERVICE_UUID] },
+            { namePrefix: 'RFE' },
+            { namePrefix: 'ESP' },
+            { namePrefix: 'HM' },
+            { namePrefix: 'BT' },
+          ],
+          optionalServices: [BLE_STROKE_SERVICE_UUID, 'battery_service'],
+        }).catch(() => {
+          return navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: [BLE_STROKE_SERVICE_UUID, 'battery_service'],
+          });
+        });
+
+        if (device) {
+          setBleDevice(device);
+          device.addEventListener('gattserverdisconnected', () => {
+            console.log('[BLE] Device disconnected');
+            setBtConnected(false);
+            setBleMode(null);
+            bleCharRef.current = null;
+          });
+
+          const server = await device.gatt!.connect();
+          console.log('[BLE] Connected to GATT server:', device.name);
+
+          let characteristic: BluetoothRemoteGATTCharacteristic | null = null;
+          try {
+            const service = await server.getPrimaryService(BLE_STROKE_SERVICE_UUID);
+            characteristic = await service.getCharacteristic(BLE_STROKE_CHAR_UUID);
+          } catch {
+            console.log('[BLE] Custom service not found — scanning all services...');
+            try {
+              const services = await server.getPrimaryServices();
+              for (const svc of services) {
+                try {
+                  const chars = await svc.getCharacteristics();
+                  for (const char of chars) {
+                    if (char.properties.notify || char.properties.indicate) {
+                      characteristic = char;
+                      console.log('[BLE] Found notifiable char:', char.uuid);
+                      break;
+                    }
+                  }
+                  if (characteristic) break;
+                } catch { /* skip */ }
+              }
+            } catch (scanErr) {
+              console.warn('[BLE] Service scan failed:', scanErr);
+            }
+          }
+
+          if (characteristic) {
+            await characteristic.startNotifications();
+            characteristic.addEventListener('characteristicvaluechanged', handleBleNotification);
+            bleCharRef.current = characteristic;
+            console.log('[BLE] Subscribed to notifications on', characteristic.uuid);
+          }
+
+          setBtConnected(true);
+          setBleMode('gatt');
+          setBleError(null);
+          setBleConnecting(false);
+          // Also start silent audio for Media Session capture (belt-and-suspenders)
+          startSilentAudioSession().catch(() => {});
+          return;
+        }
+      } catch (err: any) {
+        if (err.name !== 'NotFoundError' && !err.message?.includes('User cancelled')) {
+          console.warn('[BLE] GATT failed, falling back to Media Session:', err.message);
+        }
+      }
+    }
+
+    // PATH 2: Media Session fallback (BT audio clickers — play/pause/next/prev)
+    try {
+      await startSilentAudioSession();
+      setBtConnected(true);
+      setBleMode('media');
+      setBleError(null);
+      console.log('[BT] Media Session capture activated — BT audio buttons will count as strokes');
+    } catch (err: any) {
+      console.error('[BT] Failed to start media session:', err);
+      setBleError('Could not activate Bluetooth. Make sure your device is paired in system settings, then try again.');
+    } finally {
+      setBleConnecting(false);
+    }
+  }, [isBleSupported, handleBleNotification, startSilentAudioSession]);
+
+  // ── DISCONNECT BLUETOOTH (both paths) ──
+  const disconnectBluetooth = useCallback(() => {
+    // Clean up BLE GATT
+    if (bleCharRef.current) {
+      try {
+        bleCharRef.current.removeEventListener('characteristicvaluechanged', handleBleNotification);
+        bleCharRef.current.stopNotifications().catch(() => {});
+      } catch { /* already disconnected */ }
+      bleCharRef.current = null;
+    }
+    if (bleDevice?.gatt?.connected) {
+      bleDevice.gatt.disconnect();
+    }
+    // Clean up Media Session audio
+    if (btAudioRef.current) {
+      btAudioRef.current.pause();
+      btAudioRef.current.currentTime = 0;
+    }
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = null;
+      const actions: MediaSessionAction[] = ['play', 'pause', 'nexttrack', 'previoustrack'];
+      for (const action of actions) {
+        try { navigator.mediaSession.setActionHandler(action, null); } catch { /* ignore */ }
+      }
+    }
+    setBleDevice(null);
+    setBtConnected(false);
+    setBleMode(null);
+    setBleError(null);
+    console.log('[BT] Bluetooth disconnected');
+  }, [bleDevice, handleBleNotification]);
+
+  // ── MEDIA SESSION HANDLERS (BT audio buttons → strokes) ──
+  useEffect(() => {
+    if (!btConnected || !isTimerRunning || !selectedJobId || showCompletionModal) return;
+    if (!('mediaSession' in navigator)) return;
+
+    const handlers: Array<[MediaSessionAction, MediaSessionActionHandler]> = [
+      ['play',          () => { incrementStroke(); if (btAudioRef.current?.paused) btAudioRef.current.play(); }],
+      ['pause',         () => { incrementStroke(); setTimeout(() => { if (btAudioRef.current?.paused) btAudioRef.current?.play(); }, 50); }],
+      ['nexttrack',     () => incrementStroke()],
+      ['previoustrack', () => incrementStroke()],
+    ];
+
+    for (const [action, handler] of handlers) {
+      try { navigator.mediaSession.setActionHandler(action, handler); } catch { /* unsupported */ }
+    }
+    try { navigator.mediaSession.playbackState = 'playing'; } catch { /* ignore */ }
+
+    return () => {
+      for (const [action] of handlers) {
+        try { navigator.mediaSession.setActionHandler(action, null); } catch { /* ignore */ }
+      }
+    };
+  }, [btConnected, isTimerRunning, selectedJobId, showCompletionModal, incrementStroke]);
+
+  // Clean up BLE on unmount
+  useEffect(() => {
+    return () => {
+      if (bleCharRef.current) {
+        try { bleCharRef.current.stopNotifications().catch(() => {}); } catch { /* ignore */ }
+      }
+      if (bleDevice?.gatt?.connected) bleDevice.gatt.disconnect();
+      if (btAudioRef.current) btAudioRef.current.pause();
+    };
+  }, [bleDevice]);
 
   // Keyboard listener for USB HID stroke counters (sends Enter/Space/digit keys)
   // Also supports: F9 = OC stroke, F10 = CC stroke (configurable for USB devices)
@@ -171,17 +399,68 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
   }, [isTimerRunning, selectedJobId, incrementStroke]);
 
   // ── BLUETOOTH AUDIO DEVICE INPUT ──
-  // Bluetooth clickers/remotes paired as audio devices fire media key events.
-  // The keydown handler above captures MediaPlayPause, MediaTrackNext/Previous,
-  // and VolumeUp/Down. This also handles the Media Session API for browsers
-  // that route BT buttons through it (e.g., Chrome on Android).
+  // Chrome requires an active media session to route Bluetooth audio buttons
+  // to the web app. We play a silent audio loop to claim the media session,
+  // then register Media Session API handlers so BT play/pause/next/prev
+  // buttons fire incrementStroke() instead of controlling system media.
+  //
+  // Connect flow: user taps "Connect Bluetooth" → plays silent audio →
+  // Chrome creates a media session → BT buttons now route here.
+  const connectBluetooth = useCallback(async () => {
+    try {
+      // Create a silent audio element (WAV: 1 sample of silence, looped)
+      if (!btAudioRef.current) {
+        const audio = new Audio();
+        // Tiny silent WAV: RIFF header + 1 sample of silence (base64-encoded 44-byte WAV)
+        audio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+        audio.loop = true;
+        audio.volume = 0.01; // Nearly silent
+        btAudioRef.current = audio;
+      }
+
+      await btAudioRef.current.play();
+
+      // Set media session metadata so Chrome shows our app name
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: 'RFE Stroke Counter',
+          artist: 'Foam Equipment',
+          album: 'Stroke Counter Active',
+        });
+      }
+
+      setBtConnected(true);
+      console.log('[BT] Bluetooth audio capture activated — media session claimed');
+    } catch (err) {
+      console.error('[BT] Failed to activate Bluetooth capture:', err);
+      alert('Could not activate Bluetooth input. Make sure your Bluetooth device is paired in your phone/computer settings, then try again.');
+    }
+  }, []);
+
+  const disconnectBluetooth = useCallback(() => {
+    if (btAudioRef.current) {
+      btAudioRef.current.pause();
+      btAudioRef.current.currentTime = 0;
+    }
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = null;
+      const actions: MediaSessionAction[] = ['play', 'pause', 'nexttrack', 'previoustrack'];
+      for (const action of actions) {
+        try { navigator.mediaSession.setActionHandler(action, null); } catch (_) { /* ignore */ }
+      }
+    }
+    setBtConnected(false);
+    console.log('[BT] Bluetooth audio capture deactivated');
+  }, []);
+
+  // Register Media Session handlers when BT is connected and timer is running
   useEffect(() => {
-    if (!isTimerRunning || !selectedJobId || showCompletionModal) return;
+    if (!btConnected || !isTimerRunning || !selectedJobId || showCompletionModal) return;
     if (!('mediaSession' in navigator)) return;
 
     const handlers: Array<[MediaSessionAction, MediaSessionActionHandler]> = [
-      ['play', () => incrementStroke()],
-      ['pause', () => incrementStroke()],
+      ['play', () => { incrementStroke(); /* Keep playing so session stays alive */ if (btAudioRef.current?.paused) btAudioRef.current.play(); }],
+      ['pause', () => { incrementStroke(); /* Resume immediately to keep session */ setTimeout(() => { if (btAudioRef.current?.paused) btAudioRef.current?.play(); }, 50); }],
       ['nexttrack', () => incrementStroke()],
       ['previoustrack', () => incrementStroke()],
     ];
@@ -190,12 +469,15 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
       try { navigator.mediaSession.setActionHandler(action, handler); } catch (_) { /* unsupported action */ }
     }
 
+    // Set playback state so Chrome knows we're "playing"
+    try { navigator.mediaSession.playbackState = 'playing'; } catch (_) { /* ignore */ }
+
     return () => {
       for (const [action] of handlers) {
         try { navigator.mediaSession.setActionHandler(action, null); } catch (_) { /* ignore */ }
       }
     };
-  }, [isTimerRunning, selectedJobId, showCompletionModal, incrementStroke]);
+  }, [btConnected, isTimerRunning, selectedJobId, showCompletionModal, incrementStroke]);
 
   // --- AUTOMATIC BACKGROUND SYNC ---
   useEffect(() => {
@@ -570,12 +852,54 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                         <Zap className="w-4 h-4 text-brand-yellow" /> Live Stroke Counter
                       </h3>
                       <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
-                        <span className="text-[10px] text-emerald-400 font-black uppercase tracking-widest">Listening</span>
+                        {btConnected ? (
+                          <>
+                            <Bluetooth className="w-3.5 h-3.5 text-blue-400" />
+                            <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse"></div>
+                            <span className="text-[10px] text-blue-400 font-black uppercase tracking-widest">BT Connected</span>
+                          </>
+                        ) : (
+                          <>
+                            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+                            <span className="text-[10px] text-emerald-400 font-black uppercase tracking-widest">Listening</span>
+                          </>
+                        )}
                       </div>
                     </div>
+
+                    {/* Bluetooth Connect / Disconnect Button */}
+                    <div className="mb-4" data-no-stroke>
+                      {!btConnected ? (
+                        <button
+                          data-no-stroke
+                          onClick={connectBluetooth}
+                          className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 active:scale-95 shadow-lg shadow-blue-900/30"
+                        >
+                          <Bluetooth className="w-4 h-4" />
+                          Connect Bluetooth Audio Device
+                        </button>
+                      ) : (
+                        <div className="flex gap-2">
+                          <div className="flex-1 py-2.5 px-4 rounded-xl bg-blue-500/20 border border-blue-500/30 text-blue-300 font-bold text-xs flex items-center gap-2">
+                            <Bluetooth className="w-4 h-4" />
+                            <span>Bluetooth active &mdash; press any button on your device</span>
+                          </div>
+                          <button
+                            data-no-stroke
+                            onClick={disconnectBluetooth}
+                            className="px-3 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-white text-xs font-bold transition-all"
+                          >
+                            Disconnect
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
                     <p className="text-[11px] text-slate-500 font-medium mb-4">
-                      Bluetooth clicker = +1 stroke &bull; Tab = switch type &bull; Space/Enter also counts
+                      {btConnected 
+                        ? 'Bluetooth clicker active \u2022 Play/Pause, Next/Prev, Volume buttons all count as strokes'
+                        : 'Pair your BT device in phone settings first, then tap Connect above \u2022 Space/Enter also counts'
+                      }
                     </p>
 
                     {/* Type Selector Tabs — always show both */}
@@ -716,7 +1040,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                     </div>
 
                     <div className="mt-3 text-center text-[10px] text-slate-500 font-medium">
-                      Input: Bluetooth clicker &bull; Keyboard (Space/Enter) &bull; USB HID &bull; ESP32 sensor
+                      Input: {btConnected ? 'Bluetooth audio device (active)' : 'Bluetooth (tap Connect)'} &bull; Keyboard (Space/Enter) &bull; USB HID &bull; ESP32 sensor
                     </div>
                   </div>
                 )}
