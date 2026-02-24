@@ -4,7 +4,7 @@ import {
     LogOut, RefreshCw, MapPin, Calendar, HardHat, FileText,
     ChevronLeft, CheckCircle2, Package, AlertTriangle, User,
     ArrowRight, Play, Square, Clock, Save, Loader2, Download,
-    MessageSquare, History, Zap, RotateCcw, MousePointerClick
+    MessageSquare, History, Zap, RotateCcw, Bluetooth
 } from 'lucide-react';
 import { CalculatorState, EstimateRecord } from '../types';
 import { crewUpdateJob } from '../services/supabaseService';
@@ -126,6 +126,29 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
         e.preventDefault();
         incrementStroke();
       }
+      // Bluetooth audio device media keys → increment active stroke type
+      // Most BT clickers/remotes send MediaPlayPause, MediaTrackNext, or MediaTrackPrevious
+      if (e.code === 'MediaPlayPause' || e.key === 'MediaPlayPause') {
+        e.preventDefault();
+        incrementStroke();
+      }
+      if (e.code === 'MediaTrackNext' || e.key === 'MediaTrackNext') {
+        e.preventDefault();
+        incrementStroke();
+      }
+      if (e.code === 'MediaTrackPrevious' || e.key === 'MediaTrackPrevious') {
+        e.preventDefault();
+        incrementStroke();
+      }
+      // Volume buttons (some BT devices send these)
+      if (e.code === 'AudioVolumeUp' || e.key === 'AudioVolumeUp') {
+        e.preventDefault();
+        incrementStroke();
+      }
+      if (e.code === 'AudioVolumeDown' || e.key === 'AudioVolumeDown') {
+        e.preventDefault();
+        incrementStroke();
+      }
       // F9 = Open Cell stroke
       if (e.code === 'F9') {
         e.preventDefault();
@@ -147,34 +170,31 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isTimerRunning, selectedJobId, incrementStroke]);
 
-  // ── GLOBAL MOUSE CLICK → STROKE (simulates USB/ESP32 sensor input) ──
-  // When the timer is running, ANY left-click anywhere = +1 stroke.
-  // Only skip: control buttons (back/pause/complete/type-switch/reset), inputs, and the completion modal.
+  // ── BLUETOOTH AUDIO DEVICE INPUT ──
+  // Bluetooth clickers/remotes paired as audio devices fire media key events.
+  // The keydown handler above captures MediaPlayPause, MediaTrackNext/Previous,
+  // and VolumeUp/Down. This also handles the Media Session API for browsers
+  // that route BT buttons through it (e.g., Chrome on Android).
   useEffect(() => {
     if (!isTimerRunning || !selectedJobId || showCompletionModal) return;
+    if (!('mediaSession' in navigator)) return;
 
-    const handleGlobalClick = (e: MouseEvent) => {
-      if (e.button !== 0) return; // Left-click only
-      const target = e.target as HTMLElement;
-      if (!target) return;
+    const handlers: Array<[MediaSessionAction, MediaSessionActionHandler]> = [
+      ['play', () => incrementStroke()],
+      ['pause', () => incrementStroke()],
+      ['nexttrack', () => incrementStroke()],
+      ['previoustrack', () => incrementStroke()],
+    ];
 
-      // Skip completion modal
-      if (target.closest('[data-completion-modal]')) return;
+    for (const [action, handler] of handlers) {
+      try { navigator.mediaSession.setActionHandler(action, handler); } catch (_) { /* unsupported action */ }
+    }
 
-      // Skip only specific crew-control buttons (marked with data-no-stroke)
-      if (target.closest('[data-no-stroke]')) return;
-
-      // Skip form inputs where user is typing
-      const tag = target.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-
-      // Everything else counts as a stroke!
-      incrementStroke();
+    return () => {
+      for (const [action] of handlers) {
+        try { navigator.mediaSession.setActionHandler(action, null); } catch (_) { /* ignore */ }
+      }
     };
-
-    // Use capture phase so we get the click before any button stopPropagation
-    window.addEventListener('click', handleGlobalClick, true);
-    return () => window.removeEventListener('click', handleGlobalClick, true);
   }, [isTimerRunning, selectedJobId, showCompletionModal, incrementStroke]);
 
   // --- AUTOMATIC BACKGROUND SYNC ---
@@ -555,7 +575,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                       </div>
                     </div>
                     <p className="text-[11px] text-slate-500 font-medium mb-4">
-                      Every mouse click anywhere = +1 stroke &bull; Tab = switch type &bull; Ready for USB / ESP32 input
+                      Bluetooth clicker = +1 stroke &bull; Tab = switch type &bull; Space/Enter also counts
                     </p>
 
                     {/* Type Selector Tabs — always show both */}
@@ -606,7 +626,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                               {liveOCStrokes.toLocaleString()}
                             </div>
                             <div className="text-sm text-slate-300 font-bold flex items-center justify-center gap-2">
-                              <MousePointerClick className="w-4 h-4" /> STROKES
+                              <Bluetooth className="w-4 h-4" /> STROKES
                             </div>
                           </div>
 
@@ -651,7 +671,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                               {liveCCStrokes.toLocaleString()}
                             </div>
                             <div className="text-sm text-slate-300 font-bold flex items-center justify-center gap-2">
-                              <MousePointerClick className="w-4 h-4" /> STROKES
+                              <Bluetooth className="w-4 h-4" /> STROKES
                             </div>
                           </div>
 
@@ -696,7 +716,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                     </div>
 
                     <div className="mt-3 text-center text-[10px] text-slate-500 font-medium">
-                      Input: Mouse clicks &bull; Keyboard (Space/Enter) &bull; USB HID &bull; ESP32 sensor
+                      Input: Bluetooth clicker &bull; Keyboard (Space/Enter) &bull; USB HID &bull; ESP32 sensor
                     </div>
                   </div>
                 )}
