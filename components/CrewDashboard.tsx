@@ -58,6 +58,8 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
   const [btConnected, setBtConnected] = useState(false);
   const [btActivating, setBtActivating] = useState(false);
   const btAudioRef = useRef<HTMLAudioElement | null>(null);
+  const btKeepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [btStrokeLog, setBtStrokeLog] = useState<string[]>([]);  // recent BT events for debugging
 
   // Strokes per set: prefer job-locked ratio from materials, fallback to user Settings
   const selectedJobForRatio = state.savedEstimates.find(e => e.id === selectedJobId);
@@ -89,8 +91,8 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
     }
   }, [selectedJobId, liveOCStrokes, liveCCStrokes]);
 
-  // Stroke increment handler — used by click AND keyboard/USB input
-  const incrementStroke = useCallback((type?: 'oc' | 'cc') => {
+  // Stroke increment handler — used by click AND keyboard/USB/BT input
+  const incrementStroke = useCallback((type?: 'oc' | 'cc', source?: string) => {
     const target = type || activeStrokeType;
     if (target === 'oc') {
       setLiveOCStrokes(prev => prev + 1);
@@ -103,6 +105,12 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
       strokeFlashRef.current.classList.remove('animate-ping-once');
       void strokeFlashRef.current.offsetWidth; // force reflow
       strokeFlashRef.current.classList.add('animate-ping-once');
+    }
+    // Haptic feedback for mobile devices
+    try { if (navigator.vibrate) navigator.vibrate(30); } catch { /* not supported */ }
+    // Log source for BT debugging
+    if (source) {
+      setBtStrokeLog(prev => [...prev.slice(-9), `${new Date().toLocaleTimeString()} ${source} → ${target.toUpperCase()}`]);
     }
   }, [activeStrokeType]);
 
@@ -126,6 +134,18 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
   // events instead of controlling system media. No BLE GATT or special
   // Bluetooth permission is needed — the device just needs to be paired
   // at the OS level (phone/computer Bluetooth settings).
+  const ensureAudioPlaying = useCallback(() => {
+    const audio = btAudioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      audio.play().catch(() => { /* user gesture might be needed again */ });
+    }
+    // Reset position to prevent potential end-of-buffer issues
+    audio.currentTime = 0;
+    // Reassert playing state so the OS doesn't reclaim the media session
+    try { if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'; } catch { /* ignore */ }
+  }, []);
+
   const connectBluetooth = useCallback(async () => {
     setBtActivating(true);
     try {
@@ -136,6 +156,9 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
         audio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
         audio.loop = true;
         audio.volume = 0.01; // nearly silent
+        // Prevent the browser from suspending our audio context
+        audio.setAttribute('playsinline', '');
+        audio.setAttribute('webkit-playsinline', '');
         btAudioRef.current = audio;
       }
 
@@ -150,9 +173,18 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
           artist: 'Spray Foam Equipment',
           album: 'Stroke Counter Active',
         });
+        navigator.mediaSession.playbackState = 'playing';
       }
 
+      // Start a keepalive interval that ensures audio stays playing
+      // Some BT devices/browsers may pause or release the media session
+      if (btKeepAliveRef.current) clearInterval(btKeepAliveRef.current);
+      btKeepAliveRef.current = setInterval(() => {
+        ensureAudioPlaying();
+      }, 3000); // check every 3s
+
       setBtConnected(true);
+      setBtStrokeLog([]);
       console.log('[BT] Media session claimed — Bluetooth audio buttons now route to stroke counter');
     } catch (err) {
       console.error('[BT] Activation failed:', err);
@@ -165,39 +197,58 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
     } finally {
       setBtActivating(false);
     }
-  }, []);
+  }, [ensureAudioPlaying]);
 
   // ── DEACTIVATE BLUETOOTH ──
   const disconnectBluetooth = useCallback(() => {
+    // Stop keepalive interval
+    if (btKeepAliveRef.current) {
+      clearInterval(btKeepAliveRef.current);
+      btKeepAliveRef.current = null;
+    }
     if (btAudioRef.current) {
       btAudioRef.current.pause();
       btAudioRef.current.currentTime = 0;
     }
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = null;
-      const actions: MediaSessionAction[] = ['play', 'pause', 'nexttrack', 'previoustrack'];
+      navigator.mediaSession.playbackState = 'none';
+      const actions: MediaSessionAction[] = ['play', 'pause', 'nexttrack', 'previoustrack', 'seekforward', 'seekbackward', 'stop'];
       for (const action of actions) {
         try { navigator.mediaSession.setActionHandler(action, null); } catch { /* ignore */ }
       }
     }
     setBtConnected(false);
+    setBtStrokeLog([]);
     console.log('[BT] Bluetooth audio capture deactivated');
   }, []);
 
   // ── MEDIA SESSION HANDLERS (BT audio buttons → strokes) ──
+  // Maps ALL common Bluetooth audio device buttons to stroke increments.
+  // Covers: play/pause, next/prev track, seek forward/back, stop.
   useEffect(() => {
     if (!btConnected || !isTimerRunning || !selectedJobId || showCompletionModal) return;
     if (!('mediaSession' in navigator)) return;
 
+    // Helper: increment stroke, keep audio alive, and reassert playback state
+    const btIncrement = (actionName: string) => {
+      incrementStroke(undefined, `BT:${actionName}`);
+      // Always keep audio playing — some BT events (pause/stop) halt playback
+      ensureAudioPlaying();
+    };
+
     const handlers: Array<[MediaSessionAction, MediaSessionActionHandler]> = [
-      ['play',          () => { incrementStroke(); if (btAudioRef.current?.paused) btAudioRef.current.play(); }],
-      ['pause',         () => { incrementStroke(); setTimeout(() => { if (btAudioRef.current?.paused) btAudioRef.current?.play(); }, 50); }],
-      ['nexttrack',     () => incrementStroke()],
-      ['previoustrack', () => incrementStroke()],
+      ['play',           () => btIncrement('play')],
+      ['pause',          () => btIncrement('pause')],
+      ['nexttrack',      () => btIncrement('next')],
+      ['previoustrack',  () => btIncrement('prev')],
+      ['seekforward',    () => btIncrement('seekfwd')],    // some remotes/earbuds use seek
+      ['seekbackward',   () => btIncrement('seekback')],   // some remotes/earbuds use seek
+      ['stop',           () => btIncrement('stop')],        // stop button on some devices
     ];
 
     for (const [action, handler] of handlers) {
-      try { navigator.mediaSession.setActionHandler(action, handler); } catch { /* unsupported */ }
+      try { navigator.mediaSession.setActionHandler(action, handler); } catch { /* unsupported in this browser */ }
     }
     try { navigator.mediaSession.playbackState = 'playing'; } catch { /* ignore */ }
 
@@ -206,12 +257,16 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
         try { navigator.mediaSession.setActionHandler(action, null); } catch { /* ignore */ }
       }
     };
-  }, [btConnected, isTimerRunning, selectedJobId, showCompletionModal, incrementStroke]);
+  }, [btConnected, isTimerRunning, selectedJobId, showCompletionModal, incrementStroke, ensureAudioPlaying]);
 
-  // Clean up audio on unmount
+  // Clean up audio and keepalive on unmount
   useEffect(() => {
     return () => {
       if (btAudioRef.current) btAudioRef.current.pause();
+      if (btKeepAliveRef.current) {
+        clearInterval(btKeepAliveRef.current);
+        btKeepAliveRef.current = null;
+      }
     };
   }, []);
 
@@ -700,8 +755,16 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                             </button>
                           </div>
                           <p className="text-[10px] text-blue-400/70 text-center">
-                            Play/Pause • Next/Prev • Volume buttons all count as strokes • Space/Enter also works
+                            Play/Pause • Next/Prev • Seek • Stop • Volume buttons all count as strokes • Space/Enter also works
                           </p>
+                          {/* BT Debug Log — last 10 events */}
+                          {btStrokeLog.length > 0 && (
+                            <div className="mt-2 max-h-20 overflow-y-auto rounded-lg bg-slate-800/80 border border-slate-700 p-2">
+                              {btStrokeLog.map((entry, i) => (
+                                <div key={i} className="text-[9px] text-slate-500 font-mono leading-relaxed">{entry}</div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
