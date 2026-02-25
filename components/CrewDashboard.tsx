@@ -58,8 +58,16 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
   const [btConnected, setBtConnected] = useState(false);
   const [btActivating, setBtActivating] = useState(false);
   const btAudioRef = useRef<HTMLAudioElement | null>(null);
+  const btAudioCtxRef = useRef<AudioContext | null>(null); // Web Audio API backup for Android
   const btKeepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const btWakeLockRef = useRef<any>(null); // Screen Wake Lock for tablets
   const [btStrokeLog, setBtStrokeLog] = useState<string[]>([]);  // recent BT events for debugging
+  const [btWarning, setBtWarning] = useState<string | null>(null);
+
+  // Detect Samsung Internet or non-Chrome Android browsers
+  const isAndroid = /android/i.test(navigator.userAgent);
+  const isSamsungBrowser = /SamsungBrowser/i.test(navigator.userAgent);
+  const isChromeOnAndroid = isAndroid && /Chrome/i.test(navigator.userAgent) && !isSamsungBrowser;
 
   // Strokes per set: prefer job-locked ratio from materials, fallback to user Settings
   const selectedJobForRatio = state.savedEstimates.find(e => e.id === selectedJobId);
@@ -134,6 +142,16 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
   // events instead of controlling system media. No BLE GATT or special
   // Bluetooth permission is needed — the device just needs to be paired
   // at the OS level (phone/computer Bluetooth settings).
+  //
+  // ANDROID / SAMSUNG FIX: Samsung tablets + Android Chrome have aggressive
+  // battery optimization that kills nearly-silent audio. We use:
+  //   (a) Higher audio volume (0.05) so the OS treats it as real playback
+  //   (b) Web Audio API (AudioContext) as a secondary audio source
+  //   (c) Faster keepalive (1s) to re-assert playback
+  //   (d) Screen Wake Lock to prevent the tablet sleeping
+  //   (e) visibilitychange handler to reclaim session on foreground
+  //   (f) Samsung Internet detection + user warning
+
   const ensureAudioPlaying = useCallback(() => {
     const audio = btAudioRef.current;
     if (!audio) return;
@@ -144,29 +162,98 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
     audio.currentTime = 0;
     // Reassert playing state so the OS doesn't reclaim the media session
     try { if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'; } catch { /* ignore */ }
+    // Resume AudioContext if it was suspended (Android does this on visibility change)
+    try {
+      if (btAudioCtxRef.current && btAudioCtxRef.current.state === 'suspended') {
+        btAudioCtxRef.current.resume();
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Screen Wake Lock — keeps the tablet screen on while BT is active
+  const requestWakeLock = useCallback(async () => {
+    try {
+      if ('wakeLock' in navigator) {
+        btWakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+        console.log('[BT] Screen Wake Lock acquired');
+        // Re-acquire on visibility change (Android releases it when tab goes background)
+        btWakeLockRef.current.addEventListener('release', () => {
+          console.log('[BT] Wake Lock released');
+        });
+      }
+    } catch (err) {
+      console.warn('[BT] Wake Lock not available:', err);
+    }
+  }, []);
+
+  const releaseWakeLock = useCallback(() => {
+    try {
+      if (btWakeLockRef.current) {
+        btWakeLockRef.current.release();
+        btWakeLockRef.current = null;
+        console.log('[BT] Wake Lock released manually');
+      }
+    } catch { /* ignore */ }
   }, []);
 
   const connectBluetooth = useCallback(async () => {
     setBtActivating(true);
+    setBtWarning(null);
+
+    // Warn Samsung Internet users
+    if (isSamsungBrowser) {
+      setBtWarning(
+        'Samsung Internet has limited Bluetooth support. ' +
+        'For best results, open this app in Chrome and try again.'
+      );
+    }
+
     try {
-      // Create (or reuse) a tiny inaudible looping audio element
+      // ── 1. HTML Audio element (primary media session claim) ──
       if (!btAudioRef.current) {
         const audio = new Audio();
         // 44-byte WAV: RIFF header + 1 sample of silence
         audio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
         audio.loop = true;
-        audio.volume = 0.01; // nearly silent
-        // Prevent the browser from suspending our audio context
+        // Android fix: volume 0.01 is too quiet — Samsung's battery optimizer
+        // treats it as "not real playback" and kills it. 0.05 is still
+        // effectively inaudible but high enough for Android to respect it.
+        audio.volume = isAndroid ? 0.05 : 0.01;
         audio.setAttribute('playsinline', '');
         audio.setAttribute('webkit-playsinline', '');
         btAudioRef.current = audio;
       }
 
       // .play() requires a user gesture — that's the "permission" step.
-      // Chrome will ask for autoplay permission if needed.
       await btAudioRef.current.play();
 
-      // Label our media session so Chrome shows the app name
+      // ── 2. Web Audio API backup (strengthens media session on Android) ──
+      // Creating an AudioContext tied to the same user gesture gives Android
+      // a stronger signal that this page is "actively playing audio".
+      try {
+        if (!btAudioCtxRef.current) {
+          const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+          if (AudioCtx) {
+            const ctx = new AudioCtx();
+            // Create a very low-frequency, low-volume oscillator (inaudible)
+            const oscillator = ctx.createOscillator();
+            const gain = ctx.createGain();
+            oscillator.frequency.value = 1; // 1 Hz — below human hearing
+            gain.gain.value = 0.001; // essentially silent
+            oscillator.connect(gain);
+            gain.connect(ctx.destination);
+            oscillator.start();
+            btAudioCtxRef.current = ctx;
+            console.log('[BT] AudioContext backup started (Android media session fix)');
+          }
+        } else if (btAudioCtxRef.current.state === 'suspended') {
+          await btAudioCtxRef.current.resume();
+        }
+      } catch (audioCtxErr) {
+        console.warn('[BT] AudioContext backup not available:', audioCtxErr);
+      }
+
+      // ── 3. Label our media session ──
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
           title: 'RFE Stroke Counter',
@@ -176,28 +263,40 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
         navigator.mediaSession.playbackState = 'playing';
       }
 
-      // Start a keepalive interval that ensures audio stays playing
-      // Some BT devices/browsers may pause or release the media session
+      // ── 4. Screen Wake Lock (prevents Samsung tablet from sleeping) ──
+      await requestWakeLock();
+
+      // ── 5. Keepalive interval — faster on Android (1s vs 3s) ──
       if (btKeepAliveRef.current) clearInterval(btKeepAliveRef.current);
+      const keepAliveMs = isAndroid ? 1000 : 3000;
       btKeepAliveRef.current = setInterval(() => {
         ensureAudioPlaying();
-      }, 3000); // check every 3s
+      }, keepAliveMs);
 
       setBtConnected(true);
       setBtStrokeLog([]);
       console.log('[BT] Media session claimed — Bluetooth audio buttons now route to stroke counter');
+      if (isAndroid) {
+        console.log('[BT] Android mode: higher volume, AudioContext backup, 1s keepalive, Wake Lock');
+      }
     } catch (err) {
       console.error('[BT] Activation failed:', err);
+      const isAndroidMsg = isAndroid
+        ? '\n4. On Samsung tablets: make sure Chrome is the default browser\n' +
+          '5. Close other music/media apps that may grab the Bluetooth session\n' +
+          '6. Go to Settings → Apps → Chrome → Battery → Unrestricted'
+        : '';
       alert(
         'Could not activate Bluetooth audio capture.\n\n' +
         '1. Make sure your Bluetooth device is paired in your phone/computer Settings → Bluetooth\n' +
         '2. Tap the Activate button again\n' +
-        '3. Chrome may ask for permission to play audio — tap Allow'
+        '3. Chrome may ask for permission to play audio — tap Allow' +
+        isAndroidMsg
       );
     } finally {
       setBtActivating(false);
     }
-  }, [ensureAudioPlaying]);
+  }, [ensureAudioPlaying, requestWakeLock, isAndroid, isSamsungBrowser]);
 
   // ── DEACTIVATE BLUETOOTH ──
   const disconnectBluetooth = useCallback(() => {
@@ -210,6 +309,13 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
       btAudioRef.current.pause();
       btAudioRef.current.currentTime = 0;
     }
+    // Close AudioContext backup
+    try {
+      if (btAudioCtxRef.current) {
+        btAudioCtxRef.current.close();
+        btAudioCtxRef.current = null;
+      }
+    } catch { /* ignore */ }
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = null;
       navigator.mediaSession.playbackState = 'none';
@@ -218,10 +324,13 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
         try { navigator.mediaSession.setActionHandler(action, null); } catch { /* ignore */ }
       }
     }
+    // Release Screen Wake Lock
+    releaseWakeLock();
     setBtConnected(false);
+    setBtWarning(null);
     setBtStrokeLog([]);
     console.log('[BT] Bluetooth audio capture deactivated');
-  }, []);
+  }, [releaseWakeLock]);
 
   // ── MEDIA SESSION HANDLERS (BT audio buttons → strokes) ──
   // Maps ALL common Bluetooth audio device buttons to stroke increments.
@@ -259,16 +368,40 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
     };
   }, [btConnected, isTimerRunning, selectedJobId, showCompletionModal, incrementStroke, ensureAudioPlaying]);
 
-  // Clean up audio and keepalive on unmount
+  // Clean up audio, AudioContext, keepalive, and Wake Lock on unmount
   useEffect(() => {
     return () => {
       if (btAudioRef.current) btAudioRef.current.pause();
+      try { if (btAudioCtxRef.current) btAudioCtxRef.current.close(); } catch { /* ignore */ }
       if (btKeepAliveRef.current) {
         clearInterval(btKeepAliveRef.current);
         btKeepAliveRef.current = null;
       }
+      releaseWakeLock();
     };
-  }, []);
+  }, [releaseWakeLock]);
+
+  // ── VISIBILITY CHANGE HANDLER (Android fix) ──
+  // When the Samsung tablet screen turns off or the user switches apps,
+  // Android suspends audio and releases the media session.  When the
+  // user returns, we re-assert playback and re-acquire the Wake Lock.
+  useEffect(() => {
+    if (!btConnected) return;
+
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && btConnected) {
+        console.log('[BT] Page visible again — re-asserting audio and media session');
+        ensureAudioPlaying();
+        // Re-acquire Wake Lock (Android releases it on visibility change)
+        await requestWakeLock();
+        // Small delay then re-assert again (Android sometimes needs a moment)
+        setTimeout(() => ensureAudioPlaying(), 500);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [btConnected, ensureAudioPlaying, requestWakeLock]);
 
   // Keyboard listener for USB HID stroke counters (sends Enter/Space/digit keys)
   // Also supports: F9 = OC stroke, F10 = CC stroke (configurable for USB devices)
@@ -734,6 +867,12 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                             <strong>Step 2:</strong> Tap the button above to activate stroke counting<br/>
                             Any button press on your BT device will count as a stroke
                           </p>
+                          {isAndroid && (
+                            <p className="text-[10px] text-yellow-600 text-center font-mono leading-relaxed mt-1">
+                              <strong>Android/Tablet tip:</strong> Use Chrome (not Samsung Internet). Close other media apps.
+                              {isSamsungBrowser && <><br/><strong className="text-red-500">⚠ Samsung Internet detected</strong> — switch to Chrome for Bluetooth support.</>}
+                            </p>
+                          )}
                         </div>
                       ) : (
                         <div className="space-y-2">
@@ -753,6 +892,11 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                           <p className="text-[10px] text-blue-600 text-center font-mono">
                             Play/Pause • Next/Prev • Seek • Stop • Volume buttons all count as strokes • Space/Enter also works
                           </p>
+                          {btWarning && (
+                            <div className="mt-1 py-1.5 px-3 bg-yellow-900/40 border border-yellow-800 text-yellow-400 font-mono text-[10px] text-center">
+                              ⚠ {btWarning}
+                            </div>
+                          )}
                           {/* BT Debug Log — last 10 events */}
                           {btStrokeLog.length > 0 && (
                             <div className="mt-2 max-h-20 overflow-y-auto bg-gray-900 border border-gray-700 p-2">
