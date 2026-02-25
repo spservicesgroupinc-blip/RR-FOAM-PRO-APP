@@ -723,9 +723,9 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
   // --- JOB DETAIL VIEW ---
   if (selectedJob) {
       return (
-        <div className="min-h-screen bg-gray-900 text-white pb-28">
+        <div className="min-h-screen bg-gray-900 text-white pb-28 crew-detail-root">
             <div className="bg-gray-800 border-b-2 border-gray-600 sticky top-0 z-30">
-                <div className="max-w-3xl mx-auto px-3 py-2 flex justify-between items-center">
+                <div className="max-w-3xl mx-auto px-3 py-2 flex justify-between items-center crew-header-bar">
                     <button 
                         data-no-stroke
                         onClick={() => !isTimerRunning && setSelectedJobId(null)} 
@@ -742,7 +742,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                 </div>
                 
                 {/* Time Clock Bar */}
-                <div className={`px-3 py-2 border-b-2 ${isTimerRunning ? 'bg-[#2a1015] border-red-900' : 'bg-[#172032] border-gray-700'}`}>
+                <div className={`px-3 py-2 border-b-2 crew-timer-bar ${isTimerRunning ? 'bg-[#2a1015] border-red-900' : 'bg-[#172032] border-gray-700'}`}>
                     <div className="max-w-3xl mx-auto flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <Clock className={`w-5 h-5 ${isTimerRunning ? 'text-red-500' : 'text-gray-600'}`} />
@@ -806,23 +806,11 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                 </div>
             </div>
 
-            <div className="max-w-3xl mx-auto px-3 py-4 space-y-3">
+            <div className="max-w-3xl mx-auto px-3 py-4 space-y-3 crew-detail-content">
                 
-                {/* Completed Banner */}
-                {selectedJob.executionStatus === 'Completed' && (
-                    <div className="bg-[#152a20] border-2 border-emerald-800 p-3 flex items-center gap-3 text-emerald-500">
-                        <CheckCircle2 className="w-5 h-5" />
-                        <div>
-                            <div className="font-mono font-bold uppercase text-xs tracking-widest">Job Completed</div>
-                            <div className="text-sm font-mono text-emerald-600">Submitted by {selectedJob.actuals?.completedBy} on {new Date(selectedJob.actuals?.completionDate || "").toLocaleDateString()}</div>
-                        </div>
-                    </div>
-                )}
-
-                {/* ════════════════ LIVE STROKE COUNTER ════════════════ */}
-                {/* ALWAYS visible when timer is running — no material conditionals */}
+                {/* ═══ LEFT PANEL: Stroke Counter (landscape tablet: left column) ═══ */}
                 {isTimerRunning && (
-                  <div className="bg-gray-800 p-4 border-2 border-gray-600 relative overflow-hidden">
+                  <div className="crew-stroke-panel bg-gray-800 p-4 border-2 border-gray-600 relative overflow-hidden">
                     {/* Pulse flash on every click */}
                     <div ref={strokeFlashRef} className="absolute inset-0 bg-orange-500/10 pointer-events-none opacity-0" />
                     
@@ -862,17 +850,19 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                               <><Bluetooth className="w-4 h-4" /> Activate Bluetooth Stroke Counter</>
                             )}
                           </button>
-                          <p className="text-[10px] text-gray-600 text-center font-mono leading-relaxed">
-                            <strong>Step 1:</strong> Pair your Bluetooth device in phone/computer Settings → Bluetooth<br/>
-                            <strong>Step 2:</strong> Tap the button above to activate stroke counting<br/>
-                            Any button press on your BT device will count as a stroke
-                          </p>
-                          {isAndroid && (
-                            <p className="text-[10px] text-yellow-600 text-center font-mono leading-relaxed mt-1">
-                              <strong>Android/Tablet tip:</strong> Use Chrome (not Samsung Internet). Close other media apps.
-                              {isSamsungBrowser && <><br/><strong className="text-red-500">⚠ Samsung Internet detected</strong> — switch to Chrome for Bluetooth support.</>}
+                          <div className="bt-instructions">
+                            <p className="text-[10px] text-gray-600 text-center font-mono leading-relaxed">
+                              <strong>Step 1:</strong> Pair your Bluetooth device in phone/computer Settings → Bluetooth<br/>
+                              <strong>Step 2:</strong> Tap the button above to activate stroke counting<br/>
+                              Any button press on your BT device will count as a stroke
                             </p>
-                          )}
+                            {isAndroid && (
+                              <p className="text-[10px] text-yellow-600 text-center font-mono leading-relaxed mt-1">
+                                <strong>Android/Tablet tip:</strong> Use Chrome (not Samsung Internet). Close other media apps.
+                                {isSamsungBrowser && <><br/><strong className="text-red-500">⚠ Samsung Internet detected</strong> — switch to Chrome for Bluetooth support.</>}
+                              </p>
+                            )}
+                          </div>
                         </div>
                       ) : (
                         <div className="space-y-2">
@@ -899,7 +889,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                           )}
                           {/* BT Debug Log — last 10 events */}
                           {btStrokeLog.length > 0 && (
-                            <div className="mt-2 max-h-20 overflow-y-auto bg-gray-900 border border-gray-700 p-2">
+                            <div className="mt-2 max-h-20 overflow-y-auto bg-gray-900 border border-gray-700 p-2 bt-debug-log">
                               {btStrokeLog.map((entry, i) => (
                                 <div key={i} className="text-[9px] text-gray-600 font-mono leading-relaxed">{entry}</div>
                               ))}
@@ -978,7 +968,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                         <>
                           {/* ═══ OVER-BUDGET WARNING BANNER ═══ */}
                           {isOverBudget && (
-                            <div className="mb-4 p-3 bg-[#2a1015] border-2 border-red-700">
+                            <div className="mb-4 p-3 bg-[#2a1015] border-2 border-red-700 over-budget-banner">
                               <div className="flex items-center gap-3 mb-2">
                                 <div className="p-1.5 bg-red-900 border border-red-700">
                                   <AlertTriangle className="w-5 h-5 text-red-500" />
@@ -1009,7 +999,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
                           {/* ═══ NEAR-BUDGET CAUTION BANNER ═══ */}
                           {isNearBudget && (
-                            <div className="mb-4 p-3 bg-[#2a2510] border-2 border-yellow-700">
+                            <div className="mb-4 p-3 bg-[#2a2510] border-2 border-yellow-700 near-budget-banner">
                               <div className="flex items-center gap-3">
                                 <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
                                 <div>
@@ -1026,7 +1016,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
                           {/* ═══ ESTIMATE TARGET BAR ═══ */}
                           {estimatedStrokes > 0 && (
-                            <div className="mb-4 p-3 bg-[#172032] border border-gray-700">
+                            <div className="mb-4 p-3 bg-[#172032] border border-gray-700 estimate-target-bar">
                               <div className="flex items-center justify-between mb-2">
                                 <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-gray-500 flex items-center gap-1.5">
                                   <FileText className="w-3 h-3" /> Estimate Target
@@ -1076,8 +1066,8 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                               </div>
                               
                               {/* Big Counter Display */}
-                              <div className={`w-full p-6 ${counterBg} border-2 text-center select-none`}>
-                                <div className={`text-7xl font-mono font-bold tabular-nums leading-none mb-2 ${isOverBudget ? 'text-red-400' : 'text-white'}`}>
+                              <div className={`w-full p-6 ${counterBg} border-2 text-center select-none stroke-counter-box`}>
+                                <div className={`text-7xl font-mono font-bold tabular-nums leading-none mb-2 stroke-counter-value ${isOverBudget ? 'text-red-400' : 'text-white'}`}>
                                   {liveStrokes.toLocaleString()}
                                 </div>
                                 <div className="text-sm text-gray-400 font-mono font-bold flex items-center justify-center gap-2">
@@ -1092,7 +1082,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                               </div>
 
                               {/* Progress & Sets */}
-                              <div className="mt-4 space-y-2">
+                              <div className="mt-4 space-y-2 stroke-progress-section">
                                 <div className="flex justify-between text-sm font-mono font-bold">
                                   <span className="text-gray-500">{liveStrokes.toLocaleString()} / {strokesPerSet.toLocaleString()} per set</span>
                                   <span className={`font-bold text-lg ${isOverBudget ? 'text-red-500' : accentText}`}>
@@ -1123,7 +1113,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                           </div>
 
                           {/* ═══ Inactive Type Summary ═══ */}
-                          <div className={`mt-3 p-3 border ${inactiveIsOver ? 'bg-[#2a1520] border-red-800' : 'bg-[#172032] border-gray-700'}`}>
+                          <div className={`mt-3 p-3 border inactive-type-summary ${inactiveIsOver ? 'bg-[#2a1520] border-red-800' : 'bg-[#172032] border-gray-700'}`}>
                             <div className="flex justify-between items-center text-xs font-mono">
                               <span className={`font-bold uppercase tracking-widest ${inactiveIsOver ? 'text-red-500' : (isOC ? 'text-sky-500' : 'text-orange-500')}`}>
                                 {isOC ? 'Closed Cell' : 'Open Cell'}
@@ -1158,6 +1148,20 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                       Input: {btConnected ? 'Bluetooth active' : 'Bluetooth (tap Activate above)'} &bull; Keyboard (Space/Enter) &bull; USB HID
                     </div>
                   </div>
+                )}
+
+                {/* ═══ RIGHT PANEL: Job Info (landscape tablet: right column) ═══ */}
+                <div className={`crew-info-panel space-y-3 ${!isTimerRunning ? 'crew-info-full' : ''}`}>
+
+                {/* Completed Banner */}
+                {selectedJob.executionStatus === 'Completed' && (
+                    <div className="bg-[#152a20] border-2 border-emerald-800 p-3 flex items-center gap-3 text-emerald-500">
+                        <CheckCircle2 className="w-5 h-5" />
+                        <div>
+                            <div className="font-mono font-bold uppercase text-xs tracking-widest">Job Completed</div>
+                            <div className="text-sm font-mono text-emerald-600">Submitted by {selectedJob.actuals?.completedBy} on {new Date(selectedJob.actuals?.completionDate || "").toLocaleDateString()}</div>
+                        </div>
+                    </div>
                 )}
 
                 {/* Stroke Summary when paused but has data */}
@@ -1241,7 +1245,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                 </div>
 
                 {/* Customer Info Card */}
-                <div className="bg-gray-800 p-4 border-2 border-gray-600">
+                <div className="bg-gray-800 p-4 border-2 border-gray-600 info-card">
                     <h3 className="text-xs font-mono font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
                         <User className="w-4 h-4" /> Client & Location
                     </h3>
@@ -1255,7 +1259,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                 </div>
 
                 {/* Scope Card */}
-                <div className="bg-gray-800 p-4 border-2 border-gray-600">
+                <div className="bg-gray-800 p-4 border-2 border-gray-600 info-card">
                     <h3 className="text-xs font-mono font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2"> 
                         <HardHat className="w-4 h-4"/> Install Specifications
                     </h3>
@@ -1280,7 +1284,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                 </div>
 
                 {/* Load List Card */}
-                <div className="bg-gray-800 p-4 border-2 border-gray-600">
+                <div className="bg-gray-800 p-4 border-2 border-gray-600 info-card">
                     <h3 className="text-xs font-mono font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
                         <Package className="w-4 h-4" /> Truck Load List
                     </h3>
@@ -1318,7 +1322,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
                 {/* Notes Card */}
                 {selectedJob.notes && (
-                    <div className="bg-[#2a2510] p-4 border-2 border-yellow-800">
+                    <div className="bg-[#2a2510] p-4 border-2 border-yellow-800 info-card">
                         <h3 className="text-xs font-mono font-bold text-yellow-500 uppercase tracking-widest mb-2 flex items-center gap-2">
                             <AlertTriangle className="w-4 h-4" /> Job Notes
                         </h3>
@@ -1327,6 +1331,8 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                         </p>
                     </div>
                 )}
+
+                </div>{/* end crew-info-panel */}
             </div>
 
             {/* Completion Modal */}
@@ -1471,7 +1477,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
   // --- JOB LIST VIEW ---
   return (
-    <div className="min-h-screen bg-gray-900 font-mono text-white pb-20">
+    <div className="min-h-screen bg-gray-900 font-mono text-white pb-20 crew-list-root">
         
         {/* Floating Install Icon for Crew */}
         {installPrompt && (
@@ -1527,7 +1533,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
             </div>
         </header>
 
-        <div className="px-4 mt-4 space-y-2 max-w-2xl mx-auto">
+        <div className="px-4 mt-4 space-y-2 max-w-2xl mx-auto crew-list-content">
             {displayedJobs.length === 0 ? (
                 <div className="bg-gray-800 border-2 border-gray-600 p-8 text-center">
                     <div className="w-12 h-12 bg-gray-700 border border-gray-600 flex items-center justify-center mx-auto mb-4 text-gray-500">
