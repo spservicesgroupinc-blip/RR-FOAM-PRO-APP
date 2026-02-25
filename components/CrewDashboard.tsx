@@ -590,8 +590,8 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
   // --- JOB DETAIL VIEW ---
   if (selectedJob) {
       return (
-        <div className="min-h-screen bg-black text-white pb-28">
-            <div className="bg-[#111] border-b-2 border-gray-700 sticky top-0 z-30">
+        <div className="min-h-screen bg-gray-900 text-white pb-28">
+            <div className="bg-gray-800 border-b-2 border-gray-600 sticky top-0 z-30">
                 <div className="max-w-3xl mx-auto px-3 py-2 flex justify-between items-center">
                     <button 
                         data-no-stroke
@@ -609,7 +609,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                 </div>
                 
                 {/* Time Clock Bar */}
-                <div className={`px-3 py-2 border-b-2 ${isTimerRunning ? 'bg-[#1a0000] border-red-900' : 'bg-[#0a0a0a] border-gray-800'}`}>
+                <div className={`px-3 py-2 border-b-2 ${isTimerRunning ? 'bg-[#2a1015] border-red-900' : 'bg-[#172032] border-gray-700'}`}>
                     <div className="max-w-3xl mx-auto flex items-center justify-between">
                         <div className="flex items-center gap-3">
                             <Clock className={`w-5 h-5 ${isTimerRunning ? 'text-red-500' : 'text-gray-600'}`} />
@@ -636,7 +636,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                         });
                                         setShowCompletionModal(true);
                                     }}
-                                    className="bg-gray-800 border border-gray-600 text-white px-5 py-2 rounded-sm font-mono font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-gray-700"
+                                    className="bg-gray-700 border border-gray-600 text-white px-5 py-2 rounded-sm font-mono font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-gray-600"
                                 >
                                     Edit Details
                                 </button>
@@ -654,7 +654,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                         data-no-stroke
                                         onClick={() => handleStopTimer(false)}
                                         disabled={isSyncingTime}
-                                        className="bg-gray-800 border border-gray-600 text-gray-300 px-4 py-2 rounded-sm font-mono font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-gray-700"
+                                        className="bg-gray-700 border border-gray-600 text-gray-300 px-4 py-2 rounded-sm font-mono font-bold text-xs uppercase tracking-widest flex items-center gap-2 hover:bg-gray-600"
                                     >
                                         {isSyncingTime ? <Loader2 className="w-4 h-4 animate-spin"/> : "Pause / End Day"}
                                     </button>
@@ -677,7 +677,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                 
                 {/* Completed Banner */}
                 {selectedJob.executionStatus === 'Completed' && (
-                    <div className="bg-[#0a1a0a] border-2 border-emerald-800 p-3 flex items-center gap-3 text-emerald-500">
+                    <div className="bg-[#152a20] border-2 border-emerald-800 p-3 flex items-center gap-3 text-emerald-500">
                         <CheckCircle2 className="w-5 h-5" />
                         <div>
                             <div className="font-mono font-bold uppercase text-xs tracking-widest">Job Completed</div>
@@ -689,7 +689,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                 {/* ════════════════ LIVE STROKE COUNTER ════════════════ */}
                 {/* ALWAYS visible when timer is running — no material conditionals */}
                 {isTimerRunning && (
-                  <div className="bg-[#111] p-4 border-2 border-gray-700 relative overflow-hidden">
+                  <div className="bg-gray-800 p-4 border-2 border-gray-600 relative overflow-hidden">
                     {/* Pulse flash on every click */}
                     <div ref={strokeFlashRef} className="absolute inset-0 bg-orange-500/10 pointer-events-none opacity-0" />
                     
@@ -745,7 +745,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                             <button
                               data-no-stroke
                               onClick={disconnectBluetooth}
-                              className="px-3 py-2 bg-gray-800 border border-gray-700 hover:bg-gray-700 text-gray-400 hover:text-white text-xs font-mono font-bold transition-colors"
+                              className="px-3 py-2 bg-gray-700 border border-gray-600 hover:bg-gray-600 text-gray-400 hover:text-white text-xs font-mono font-bold transition-colors"
                             >
                               Deactivate
                             </button>
@@ -755,7 +755,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                           </p>
                           {/* BT Debug Log — last 10 events */}
                           {btStrokeLog.length > 0 && (
-                            <div className="mt-2 max-h-20 overflow-y-auto bg-black border border-gray-800 p-2">
+                            <div className="mt-2 max-h-20 overflow-y-auto bg-gray-900 border border-gray-700 p-2">
                               {btStrokeLog.map((entry, i) => (
                                 <div key={i} className="text-[9px] text-gray-600 font-mono leading-relaxed">{entry}</div>
                               ))}
@@ -773,7 +773,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                         className={`flex-1 py-2 px-4 text-xs font-mono font-bold uppercase tracking-widest transition-colors border ${
                           activeStrokeType === 'oc'
                             ? 'bg-orange-600 text-white border-orange-500'
-                            : 'bg-[#1a1a1a] text-gray-500 border-gray-700 hover:bg-gray-800 hover:text-gray-300'
+                            : 'bg-gray-700 text-gray-500 border-gray-600 hover:bg-gray-700 hover:text-gray-300'
                         }`}
                       >
                         Open Cell
@@ -784,7 +784,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                         className={`flex-1 py-2 px-4 text-xs font-mono font-bold uppercase tracking-widest transition-colors border border-l-0 ${
                           activeStrokeType === 'cc'
                             ? 'bg-sky-700 text-white border-sky-600'
-                            : 'bg-[#1a1a1a] text-gray-500 border-gray-700 hover:bg-gray-800 hover:text-gray-300'
+                            : 'bg-gray-700 text-gray-500 border-gray-600 hover:bg-gray-700 hover:text-gray-300'
                         }`}
                       >
                         Closed Cell
@@ -822,7 +822,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                       const accentColor = isOC ? 'orange-600' : 'sky-700';
                       const accentText = isOC ? 'text-orange-500' : 'text-sky-500';
                       const borderColor = isOverBudget ? 'border-red-600' : isNearBudget ? 'border-yellow-600' : (isOC ? 'border-orange-600' : 'border-sky-700');
-                      const bgTint = isOverBudget ? 'bg-[#1a0505]' : (isOC ? 'bg-[#1a0f05]' : 'bg-[#051a1a]');
+                      const bgTint = isOverBudget ? 'bg-[#2a1520]' : (isOC ? 'bg-[#2a2010]' : 'bg-[#102a2a]');
                       const counterBg = isOverBudget ? 'bg-red-900/30 border-red-700' : isNearBudget ? 'bg-yellow-900/30 border-yellow-700' : (isOC ? 'bg-orange-900/30 border-orange-700' : 'bg-sky-900/30 border-sky-700');
                       const progressColor = isOverBudget
                         ? 'bg-red-600'
@@ -834,7 +834,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                         <>
                           {/* ═══ OVER-BUDGET WARNING BANNER ═══ */}
                           {isOverBudget && (
-                            <div className="mb-4 p-3 bg-[#1a0000] border-2 border-red-700">
+                            <div className="mb-4 p-3 bg-[#2a1015] border-2 border-red-700">
                               <div className="flex items-center gap-3 mb-2">
                                 <div className="p-1.5 bg-red-900 border border-red-700">
                                   <AlertTriangle className="w-5 h-5 text-red-500" />
@@ -865,7 +865,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
                           {/* ═══ NEAR-BUDGET CAUTION BANNER ═══ */}
                           {isNearBudget && (
-                            <div className="mb-4 p-3 bg-[#1a1500] border-2 border-yellow-700">
+                            <div className="mb-4 p-3 bg-[#2a2510] border-2 border-yellow-700">
                               <div className="flex items-center gap-3">
                                 <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0" />
                                 <div>
@@ -882,7 +882,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
                           {/* ═══ ESTIMATE TARGET BAR ═══ */}
                           {estimatedStrokes > 0 && (
-                            <div className="mb-4 p-3 bg-[#0a0a0a] border border-gray-800">
+                            <div className="mb-4 p-3 bg-[#172032] border border-gray-700">
                               <div className="flex items-center justify-between mb-2">
                                 <div className="text-[10px] font-mono font-bold uppercase tracking-widest text-gray-500 flex items-center gap-1.5">
                                   <FileText className="w-3 h-3" /> Estimate Target
@@ -892,7 +892,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                 </div>
                               </div>
                               {/* Estimated vs Actual visual bar */}
-                              <div className="relative h-3 bg-gray-800 overflow-hidden">
+                              <div className="relative h-3 bg-gray-700 overflow-hidden">
                                 <div
                                   className={`absolute inset-y-0 left-0 ${progressColor} transition-all duration-500 ease-out`}
                                   style={{ width: `${Math.min(pctOfEstimate, 100)}%` }}
@@ -924,7 +924,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                 <button
                                   data-no-stroke
                                   onClick={() => resetStrokes(activeStrokeType)}
-                                  className="text-gray-600 hover:text-white p-1 hover:bg-gray-800 transition-colors border border-transparent hover:border-gray-700"
+                                  className="text-gray-600 hover:text-white p-1 hover:bg-gray-700 transition-colors border border-transparent hover:border-gray-600"
                                   title={`Reset ${isOC ? 'OC' : 'CC'} counter`}
                                 >
                                   <RotateCcw className="w-4 h-4" />
@@ -955,7 +955,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                     {liveSets.toFixed(2)} Sets
                                   </span>
                                 </div>
-                                <div className="h-2 bg-gray-800 overflow-hidden">
+                                <div className="h-2 bg-gray-700 overflow-hidden">
                                   <div
                                     className={`h-full ${progressColor} transition-all duration-300`}
                                     style={{ width: `${Math.min((liveStrokes % strokesPerSet) / strokesPerSet * 100, 100)}%` }}
@@ -979,7 +979,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                           </div>
 
                           {/* ═══ Inactive Type Summary ═══ */}
-                          <div className={`mt-3 p-3 border ${inactiveIsOver ? 'bg-[#1a0505] border-red-800' : 'bg-[#0a0a0a] border-gray-800'}`}>
+                          <div className={`mt-3 p-3 border ${inactiveIsOver ? 'bg-[#2a1520] border-red-800' : 'bg-[#172032] border-gray-700'}`}>
                             <div className="flex justify-between items-center text-xs font-mono">
                               <span className={`font-bold uppercase tracking-widest ${inactiveIsOver ? 'text-red-500' : (isOC ? 'text-sky-500' : 'text-orange-500')}`}>
                                 {isOC ? 'Closed Cell' : 'Open Cell'}
@@ -1018,7 +1018,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
                 {/* Stroke Summary when paused but has data */}
                 {!isTimerRunning && (liveOCStrokes > 0 || liveCCStrokes > 0) && selectedJob.executionStatus !== 'Completed' && (
-                  <div className="bg-[#111] p-4 border-2 border-gray-700">
+                  <div className="bg-gray-800 p-4 border-2 border-gray-600">
                     <h3 className="text-xs font-mono font-bold text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2">
                       <Zap className="w-4 h-4 text-orange-500" /> Stroke Count (Paused)
                     </h3>
@@ -1030,7 +1030,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                       return (
                         <>
                           {(ocOver || ccOver) && (
-                            <div className="mb-4 p-3 bg-[#1a0000] border-2 border-red-800 flex items-center gap-2">
+                            <div className="mb-4 p-3 bg-[#2a1015] border-2 border-red-800 flex items-center gap-2">
                               <AlertTriangle className="w-5 h-5 text-red-500 flex-shrink-0" />
                               <span className="text-xs font-mono font-bold text-red-500">
                                 {ocOver && ccOver ? 'Both OC & CC' : ocOver ? 'Open Cell' : 'Closed Cell'} over estimated chemical usage
@@ -1038,7 +1038,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                             </div>
                           )}
                           <div className="grid grid-cols-2 gap-2">
-                            <div className={`p-3 border-2 ${ocOver ? 'bg-[#1a0505] border-red-800' : 'bg-[#1a0f05] border-orange-800'}`}>
+                            <div className={`p-3 border-2 ${ocOver ? 'bg-[#2a1520] border-red-800' : 'bg-[#2a2010] border-orange-800'}`}>
                               <div className="text-[10px] text-orange-500 font-mono font-bold uppercase tracking-widest mb-1">Open Cell</div>
                               <div className={`text-2xl font-mono font-bold ${ocOver ? 'text-red-400' : 'text-white'}`}>{liveOCStrokes.toLocaleString()}</div>
                               <div className="text-xs text-gray-500 font-mono">{(liveOCStrokes / ocStrokesPerSet).toFixed(2)} sets</div>
@@ -1048,7 +1048,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                 </div>
                               )}
                             </div>
-                            <div className={`p-3 border-2 ${ccOver ? 'bg-[#1a0505] border-red-800' : 'bg-[#051a1a] border-sky-800'}`}>
+                            <div className={`p-3 border-2 ${ccOver ? 'bg-[#2a1520] border-red-800' : 'bg-[#102a2a] border-sky-800'}`}>
                               <div className="text-[10px] text-sky-500 font-mono font-bold uppercase tracking-widest mb-1">Closed Cell</div>
                               <div className={`text-2xl font-mono font-bold ${ccOver ? 'text-red-400' : 'text-white'}`}>{liveCCStrokes.toLocaleString()}</div>
                               <div className="text-xs text-gray-500 font-mono">{(liveCCStrokes / ccStrokesPerSet).toFixed(2)} sets</div>
@@ -1072,7 +1072,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                         href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedJob.customer.address + ' ' + selectedJob.customer.zip)}`} 
                         target="_blank" 
                         rel="noreferrer" 
-                        className="bg-[#111] border-2 border-gray-700 text-white p-3 flex flex-col items-center justify-center gap-2 hover:border-orange-600 hover:bg-[#1a1a1a] transition-colors"
+                        className="bg-gray-800 border-2 border-gray-600 text-white p-3 flex flex-col items-center justify-center gap-2 hover:border-orange-600 hover:bg-gray-700 transition-colors"
                     >
                         <MapPin className="w-5 h-5 text-orange-500" /> 
                         <span className="font-mono font-bold text-xs uppercase tracking-widest">GPS Map</span>
@@ -1083,13 +1083,13 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                             href={selectedJob.workOrderSheetUrl} 
                             target="_blank" 
                             rel="noreferrer" 
-                            className="bg-[#111] border-2 border-gray-700 text-white p-3 flex flex-col items-center justify-center gap-2 hover:border-emerald-600 hover:bg-[#1a1a1a] transition-colors"
+                            className="bg-gray-800 border-2 border-gray-600 text-white p-3 flex flex-col items-center justify-center gap-2 hover:border-emerald-600 hover:bg-gray-700 transition-colors"
                         >
                              <FileText className="w-5 h-5 text-emerald-500" /> 
                              <span className="font-mono font-bold text-xs uppercase tracking-widest">View Sheet</span>
                          </a>
                     ) : (
-                         <div className="bg-[#0a0a0a] text-gray-600 p-3 flex flex-col items-center justify-center gap-2 border-2 border-gray-800">
+                         <div className="bg-[#172032] text-gray-600 p-3 flex flex-col items-center justify-center gap-2 border-2 border-gray-700">
                              <FileText className="w-5 h-5" /> 
                              <span className="font-mono font-bold text-xs uppercase tracking-widest">No Sheet</span>
                          </div>
@@ -1097,7 +1097,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                 </div>
 
                 {/* Customer Info Card */}
-                <div className="bg-[#111] p-4 border-2 border-gray-700">
+                <div className="bg-gray-800 p-4 border-2 border-gray-600">
                     <h3 className="text-xs font-mono font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
                         <User className="w-4 h-4" /> Client & Location
                     </h3>
@@ -1111,60 +1111,60 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                 </div>
 
                 {/* Scope Card */}
-                <div className="bg-[#111] p-4 border-2 border-gray-700">
+                <div className="bg-gray-800 p-4 border-2 border-gray-600">
                     <h3 className="text-xs font-mono font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2"> 
                         <HardHat className="w-4 h-4"/> Install Specifications
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                         {(selectedJob.results?.totalWallArea ?? 0) > 0 && (
-                            <div className="p-3 bg-[#0a0a0a] border border-gray-800">
+                            <div className="p-3 bg-[#172032] border border-gray-700">
                                 <div className="text-[10px] text-orange-500 font-mono font-bold uppercase tracking-widest mb-1">Walls</div>
                                 <div className="text-white font-mono font-bold text-base leading-tight">{selectedJob.wallSettings?.type}</div>
                                 <div className="text-gray-400 font-mono text-sm mt-1">@ {selectedJob.wallSettings?.thickness}" Depth</div>
-                                <div className="mt-2 pt-2 border-t border-gray-800 text-xs font-mono font-bold text-gray-500 text-right">{Math.round(selectedJob.results?.totalWallArea ?? 0).toLocaleString()} sqft</div>
+                                <div className="mt-2 pt-2 border-t border-gray-700 text-xs font-mono font-bold text-gray-500 text-right">{Math.round(selectedJob.results?.totalWallArea ?? 0).toLocaleString()} sqft</div>
                             </div>
                         )}
                         {(selectedJob.results?.totalRoofArea ?? 0) > 0 && (
-                            <div className="p-3 bg-[#0a0a0a] border border-gray-800">
+                            <div className="p-3 bg-[#172032] border border-gray-700">
                                 <div className="text-[10px] text-orange-500 font-mono font-bold uppercase tracking-widest mb-1">Roof / Ceiling</div>
                                 <div className="text-white font-mono font-bold text-base leading-tight">{selectedJob.roofSettings?.type}</div>
                                 <div className="text-gray-400 font-mono text-sm mt-1">@ {selectedJob.roofSettings?.thickness}" Depth</div>
-                                <div className="mt-2 pt-2 border-t border-gray-800 text-xs font-mono font-bold text-gray-500 text-right">{Math.round(selectedJob.results?.totalRoofArea ?? 0).toLocaleString()} sqft</div>
+                                <div className="mt-2 pt-2 border-t border-gray-700 text-xs font-mono font-bold text-gray-500 text-right">{Math.round(selectedJob.results?.totalRoofArea ?? 0).toLocaleString()} sqft</div>
                             </div>
                         )}
                     </div>
                 </div>
 
                 {/* Load List Card */}
-                <div className="bg-[#111] p-4 border-2 border-gray-700">
+                <div className="bg-gray-800 p-4 border-2 border-gray-600">
                     <h3 className="text-xs font-mono font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-2">
                         <Package className="w-4 h-4" /> Truck Load List
                     </h3>
                     <div className="space-y-1">
                          {selectedJob.materials?.openCellSets > 0 && (
-                             <div className="flex justify-between items-center p-3 bg-[#0a0a0a] border border-gray-800">
+                             <div className="flex justify-between items-center p-3 bg-[#172032] border border-gray-700">
                                  <div>
                                      <span className="font-mono font-bold text-white block text-sm">Open Cell Foam</span>
                                      <span className="text-[10px] text-gray-600 font-mono font-bold uppercase tracking-wider">
                                          Est. {selectedJob.results?.openCellStrokes?.toLocaleString()} Strokes
                                      </span>
                                  </div>
-                                 <span className="bg-[#1a1a1a] px-3 py-1 border border-orange-700 text-orange-500 font-mono font-bold text-sm">{selectedJob.materials.openCellSets.toFixed(2)} Sets</span>
+                                 <span className="bg-gray-700 px-3 py-1 border border-orange-700 text-orange-500 font-mono font-bold text-sm">{selectedJob.materials.openCellSets.toFixed(2)} Sets</span>
                              </div>
                          )}
                          {selectedJob.materials?.closedCellSets > 0 && (
-                             <div className="flex justify-between items-center p-3 bg-[#0a0a0a] border border-gray-800">
+                             <div className="flex justify-between items-center p-3 bg-[#172032] border border-gray-700">
                                  <div>
                                      <span className="font-mono font-bold text-white block text-sm">Closed Cell Foam</span>
                                      <span className="text-[10px] text-gray-600 font-mono font-bold uppercase tracking-wider">
                                          Est. {selectedJob.results?.closedCellStrokes?.toLocaleString()} Strokes
                                      </span>
                                  </div>
-                                 <span className="bg-[#1a1a1a] px-3 py-1 border border-orange-700 text-orange-500 font-mono font-bold text-sm">{selectedJob.materials.closedCellSets.toFixed(2)} Sets</span>
+                                 <span className="bg-gray-700 px-3 py-1 border border-orange-700 text-orange-500 font-mono font-bold text-sm">{selectedJob.materials.closedCellSets.toFixed(2)} Sets</span>
                              </div>
                          )}
                          {selectedJob.materials?.inventory?.map((item) => (
-                             <div key={item.id} className="flex justify-between items-center p-3 bg-[#0a0a0a] border border-gray-800">
+                             <div key={item.id} className="flex justify-between items-center p-3 bg-[#172032] border border-gray-700">
                                  <span className="font-mono font-bold text-white text-sm">{item.name}</span>
                                  <span className="text-gray-400 font-mono font-bold text-sm">{item.quantity} {item.unit}</span>
                              </div>
@@ -1174,7 +1174,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
                 {/* Notes Card */}
                 {selectedJob.notes && (
-                    <div className="bg-[#1a1500] p-4 border-2 border-yellow-800">
+                    <div className="bg-[#2a2510] p-4 border-2 border-yellow-800">
                         <h3 className="text-xs font-mono font-bold text-yellow-500 uppercase tracking-widest mb-2 flex items-center gap-2">
                             <AlertTriangle className="w-4 h-4" /> Job Notes
                         </h3>
@@ -1187,9 +1187,9 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
             {/* Completion Modal */}
             {showCompletionModal && (
-                <div data-completion-modal className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4">
-                    <div className="bg-[#111] border-2 border-gray-700 w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
-                        <h3 className="text-xl font-mono font-bold text-white uppercase tracking-tight mb-6 border-b border-gray-700 pb-3">Complete Job</h3>
+                <div data-completion-modal className="fixed inset-0 bg-gray-900/90 z-50 flex items-center justify-center p-4">
+                    <div className="bg-gray-800 border-2 border-gray-600 w-full max-w-md p-6 max-h-[90vh] overflow-y-auto">
+                        <h3 className="text-xl font-mono font-bold text-white uppercase tracking-tight mb-6 border-b border-gray-600 pb-3">Complete Job</h3>
                         
                         <div className="space-y-4">
                             <div>
@@ -1198,12 +1198,12 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                     type="number" 
                                     value={actuals.laborHours || ''} 
                                     onChange={(e) => setActuals({...actuals, laborHours: parseFloat(e.target.value) || 0})}
-                                    className="w-full p-3 bg-black border-2 border-gray-700 font-mono font-bold text-2xl text-center text-white focus:border-orange-600 outline-none"
+                                    className="w-full p-3 bg-gray-900 border-2 border-gray-600 font-mono font-bold text-2xl text-center text-white focus:border-orange-600 outline-none"
                                 />
                             </div>
 
-                            <div className="p-3 bg-[#0a0a0a] border border-gray-800 space-y-3">
-                                <h4 className="text-xs font-mono font-bold text-white uppercase tracking-widest border-b border-gray-800 pb-2">Material Usage (Sets)</h4>
+                            <div className="p-3 bg-[#172032] border border-gray-700 space-y-3">
+                                <h4 className="text-xs font-mono font-bold text-white uppercase tracking-widest border-b border-gray-700 pb-2">Material Usage (Sets)</h4>
                                 <div>
                                     <label className="text-xs font-mono font-bold text-gray-500 flex justify-between mb-1"><span>Open Cell</span> <span>Est: {selectedJob.materials?.openCellSets.toFixed(2)}</span></label>
                                     <input 
@@ -1215,7 +1215,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                             setActuals({...actuals, openCellSets: sets, openCellStrokes: derivedStrokes});
                                         }}
                                         placeholder="0.00"
-                                        className="w-full p-3 bg-black border-2 border-gray-700 font-mono font-bold text-lg text-white focus:border-orange-600 outline-none"
+                                        className="w-full p-3 bg-gray-900 border-2 border-gray-600 font-mono font-bold text-lg text-white focus:border-orange-600 outline-none"
                                     />
                                 </div>
                                 <div>
@@ -1229,13 +1229,13 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                             setActuals({...actuals, closedCellSets: sets, closedCellStrokes: derivedStrokes});
                                         }}
                                         placeholder="0.00"
-                                        className="w-full p-3 bg-black border-2 border-gray-700 font-mono font-bold text-lg text-white focus:border-orange-600 outline-none"
+                                        className="w-full p-3 bg-gray-900 border-2 border-gray-600 font-mono font-bold text-lg text-white focus:border-orange-600 outline-none"
                                     />
                                 </div>
                             </div>
 
                             {/* STROKE COUNTS */}
-                            <div className="p-3 bg-[#051015] border border-sky-900 space-y-3">
+                            <div className="p-3 bg-[#102530] border border-sky-900 space-y-3">
                                 <h4 className="text-xs font-mono font-bold text-sky-400 uppercase tracking-widest border-b border-sky-900 pb-2">Machine Counters (Strokes)</h4>
                                 <div>
                                     <label className="text-xs font-mono font-bold text-sky-600 flex justify-between mb-1"><span>Open Cell Strokes</span> <span>Est: {selectedJob.results?.openCellStrokes?.toLocaleString()}</span></label>
@@ -1248,7 +1248,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                             setActuals({...actuals, openCellStrokes: strokes, openCellSets: derivedSets});
                                         }}
                                         placeholder="0"
-                                        className="w-full p-3 bg-black border-2 border-sky-900 font-mono font-bold text-lg text-sky-300 focus:border-sky-500 outline-none"
+                                        className="w-full p-3 bg-gray-900 border-2 border-sky-900 font-mono font-bold text-lg text-sky-300 focus:border-sky-500 outline-none"
                                     />
                                     {actuals.openCellStrokes > 0 && <p className="text-[10px] text-sky-600 font-mono mt-1 text-right">= {(actuals.openCellStrokes / ocStrokesPerSet).toFixed(2)} Sets ({ocStrokesPerSet} strokes/set)</p>}
                                 </div>
@@ -1263,7 +1263,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                             setActuals({...actuals, closedCellStrokes: strokes, closedCellSets: derivedSets});
                                         }}
                                         placeholder="0"
-                                        className="w-full p-3 bg-black border-2 border-sky-900 font-mono font-bold text-lg text-sky-300 focus:border-sky-500 outline-none"
+                                        className="w-full p-3 bg-gray-900 border-2 border-sky-900 font-mono font-bold text-lg text-sky-300 focus:border-sky-500 outline-none"
                                     />
                                     {actuals.closedCellStrokes > 0 && <p className="text-[10px] text-sky-600 font-mono mt-1 text-right">= {(actuals.closedCellStrokes / ccStrokesPerSet).toFixed(2)} Sets ({ccStrokesPerSet} strokes/set)</p>}
                                 </div>
@@ -1271,7 +1271,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
                             {/* INVENTORY ITEMS (Non-Foam Materials) */}
                             {actuals.inventory && actuals.inventory.length > 0 && (
-                                <div className="p-3 bg-[#151005] border border-yellow-900 space-y-3">
+                                <div className="p-3 bg-[#252515] border border-yellow-900 space-y-3">
                                     <h4 className="text-xs font-mono font-bold text-yellow-500 uppercase tracking-widest border-b border-yellow-900 pb-2 flex items-center gap-2">
                                         <Package className="w-3.5 h-3.5" /> Inventory Used (Actual)
                                     </h4>
@@ -1291,7 +1291,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                                     setActuals({ ...actuals, inventory: updatedInv });
                                                 }}
                                                 placeholder="0"
-                                                className="w-full p-3 bg-black border-2 border-yellow-900 font-mono font-bold text-lg text-yellow-300 focus:border-yellow-600 outline-none"
+                                                className="w-full p-3 bg-gray-900 border-2 border-yellow-900 font-mono font-bold text-lg text-yellow-300 focus:border-yellow-600 outline-none"
                                             />
                                         </div>
                                     ))}
@@ -1304,15 +1304,15 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                     <MessageSquare className="w-3 h-3"/> Crew Notes / Issues
                                 </label>
                                 <textarea
-                                    className="w-full p-3 bg-black border-2 border-gray-700 font-mono text-sm text-white focus:border-orange-600 outline-none resize-none h-24"
+                                    className="w-full p-3 bg-gray-900 border-2 border-gray-600 font-mono text-sm text-white focus:border-orange-600 outline-none resize-none h-24"
                                     placeholder="Mention any issues, extra materials used, or specific details for the office..."
                                     value={actuals.notes}
                                     onChange={(e) => setActuals({...actuals, notes: e.target.value})}
                                 />
                             </div>
 
-                            <div className="flex gap-2 pt-4 border-t border-gray-800">
-                                <button onClick={() => setShowCompletionModal(false)} disabled={isCompleting} className="flex-1 p-3 border-2 border-gray-700 font-mono font-bold uppercase text-xs tracking-widest text-gray-500 hover:bg-[#1a1a1a] hover:text-white transition-colors">Cancel</button>
+                            <div className="flex gap-2 pt-4 border-t border-gray-700">
+                                <button onClick={() => setShowCompletionModal(false)} disabled={isCompleting} className="flex-1 p-3 border-2 border-gray-600 font-mono font-bold uppercase text-xs tracking-widest text-gray-500 hover:bg-gray-700 hover:text-white transition-colors">Cancel</button>
                                 <button onClick={handleCompleteJobSubmit} disabled={isCompleting} className="flex-1 p-3 bg-orange-600 text-white border-2 border-orange-500 font-mono font-bold uppercase text-xs tracking-widest hover:bg-orange-500 flex items-center justify-center gap-2 transition-colors">
                                     {isCompleting ? <Loader2 className="w-4 h-4 animate-spin"/> : "Submit & Finish"}
                                 </button>
@@ -1327,14 +1327,14 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
   // --- JOB LIST VIEW ---
   return (
-    <div className="min-h-screen bg-black font-mono text-white pb-20">
+    <div className="min-h-screen bg-gray-900 font-mono text-white pb-20">
         
         {/* Floating Install Icon for Crew */}
         {installPrompt && (
           <div className="fixed bottom-6 right-6 z-[100]">
              <button 
                 onClick={onInstall}
-                className="flex items-center gap-3 bg-[#111] text-white pl-4 pr-6 py-3 border-2 border-gray-700 hover:border-orange-600 transition-colors"
+                className="flex items-center gap-3 bg-gray-800 text-white pl-4 pr-6 py-3 border-2 border-gray-600 hover:border-orange-600 transition-colors"
                 title="Install Desktop App"
              >
                 <Download className="w-5 h-5 text-orange-500" />
@@ -1347,7 +1347,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
         )}
 
         {/* Header */}
-        <header className="bg-[#111] text-white px-4 py-3 border-b-2 border-gray-700">
+        <header className="bg-gray-800 text-white px-4 py-3 border-b-2 border-gray-600">
             <div className="flex justify-between items-center mb-3">
                 <RFESmallLogo />
                 <div className="flex gap-2 items-center">
@@ -1363,7 +1363,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                             <Download className="w-5 h-5" />
                         </button>
                     )}
-                    <button onClick={onLogout} className="p-2 bg-[#1a1a1a] border border-gray-700 text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">
+                    <button onClick={onLogout} className="p-2 bg-gray-700 border border-gray-600 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors">
                         <LogOut className="w-5 h-5" />
                     </button>
                 </div>
@@ -1376,7 +1376,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                 </div>
                 <button 
                     onClick={() => setShowHistory(!showHistory)}
-                    className={`text-xs font-mono font-bold uppercase tracking-widest px-3 py-1.5 border transition-colors flex items-center gap-2 ${showHistory ? 'bg-white text-black border-white' : 'bg-transparent text-gray-500 border-gray-700 hover:border-gray-500 hover:text-gray-300'}`}
+                    className={`text-xs font-mono font-bold uppercase tracking-widest px-3 py-1.5 border transition-colors flex items-center gap-2 ${showHistory ? 'bg-white text-black border-white' : 'bg-transparent text-gray-500 border-gray-600 hover:border-gray-500 hover:text-gray-300'}`}
                 >
                     <History className="w-4 h-4" /> {showHistory ? 'Hide History' : 'History'}
                 </button>
@@ -1385,8 +1385,8 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
         <div className="px-4 mt-4 space-y-2 max-w-2xl mx-auto">
             {displayedJobs.length === 0 ? (
-                <div className="bg-[#111] border-2 border-gray-700 p-8 text-center">
-                    <div className="w-12 h-12 bg-[#1a1a1a] border border-gray-700 flex items-center justify-center mx-auto mb-4 text-gray-500">
+                <div className="bg-gray-800 border-2 border-gray-600 p-8 text-center">
+                    <div className="w-12 h-12 bg-gray-700 border border-gray-600 flex items-center justify-center mx-auto mb-4 text-gray-500">
                         <CheckCircle2 className="w-6 h-6" />
                     </div>
                     <h3 className="text-base font-mono font-bold text-white mb-2 uppercase tracking-widest">{showHistory ? 'No Completed Jobs' : 'All Caught Up'}</h3>
@@ -1402,7 +1402,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                     <button 
                         key={job.id}
                         onClick={() => setSelectedJobId(job.id)}
-                        className={`w-full bg-[#111] p-4 border-2 border-gray-700 text-left hover:border-orange-600 transition-colors group relative ${job.executionStatus === 'Completed' ? 'opacity-70 hover:opacity-100' : ''}`}
+                        className={`w-full bg-gray-800 p-4 border-2 border-gray-600 text-left hover:border-orange-600 transition-colors group relative ${job.executionStatus === 'Completed' ? 'opacity-70 hover:opacity-100' : ''}`}
                     >
                         <div className={`absolute top-0 left-0 w-1 h-full ${job.executionStatus === 'Completed' ? 'bg-emerald-600' : 'bg-gray-700 group-hover:bg-orange-600'} transition-colors`}></div>
                         <div className="flex justify-between items-start mb-3 pl-3">
@@ -1412,7 +1412,7 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                                 </div>
                                 <div className="text-base font-mono font-bold text-orange-500">#{job.id.substring(0,8).toUpperCase()}</div>
                             </div>
-                            <div className="p-1.5 border border-gray-700 text-gray-500 group-hover:text-orange-500 group-hover:border-orange-600 transition-colors">
+                            <div className="p-1.5 border border-gray-600 text-gray-500 group-hover:text-orange-500 group-hover:border-orange-600 transition-colors">
                                 <ArrowRight className="w-4 h-4" />
                             </div>
                         </div>
