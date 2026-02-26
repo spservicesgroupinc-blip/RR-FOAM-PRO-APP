@@ -132,7 +132,7 @@ export interface Database {
         Row: {
           id: string
           organization_id: string
-          customer_id: string
+          customer_id: string | null
           status: string
           execution_status: string
           date: string
@@ -167,7 +167,7 @@ export interface Database {
         Insert: {
           id?: string
           organization_id: string
-          customer_id: string
+          customer_id?: string | null
           status?: string
           execution_status?: string
           date?: string
@@ -449,10 +449,6 @@ export interface Database {
           }
         ]
       }
-    }
-    Views: {
-      [_ in never]: never
-    }
       subscriptions: {
         Row: {
           id: string
@@ -630,6 +626,9 @@ export interface Database {
           }
         ]
       }
+    }
+    Views: {
+      [_ in never]: never
     }
     Functions: {
       verify_crew_pin: {

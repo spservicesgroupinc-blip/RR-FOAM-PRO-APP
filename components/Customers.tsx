@@ -122,7 +122,7 @@ export const Customers: React.FC<CustomersProps> = ({
     () => state.customers.filter(c => c.status !== 'Archived'),
     [state.customers]
   );
-  const customersPagination = usePagination(activeCustomers, 10);
+  const customersPagination = usePagination<CustomerProfile>(activeCustomers, 10);
 
   // Detail View
   if (viewingCustomerId) {

@@ -34,7 +34,7 @@ const isRetryableWriteError = (error: any): boolean => {
 };
 
 const retryWrite = async <T>(
-  fn: () => Promise<{ data: T; error: any }>,
+  fn: () => PromiseLike<{ data: T; error: any }>,
   label: string,
   maxRetries = 3
 ): Promise<{ data: T; error: any }> => {

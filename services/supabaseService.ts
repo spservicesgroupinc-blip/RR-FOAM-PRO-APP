@@ -48,7 +48,7 @@ const isRetryableWriteError = (error: any): boolean => {
 };
 
 const retryWrite = async <T>(
-  fn: () => Promise<{ data: T; error: any }>,
+  fn: () => PromiseLike<{ data: T; error: any }>,
   label: string,
   maxRetries = 3
 ): Promise<{ data: T; error: any }> => {
@@ -974,7 +974,7 @@ export const fetchCrewWorkOrders = async (orgId: string): Promise<Partial<Calcul
     if (estRes.error) console.error('[Crew Sync] Fallback estimates query error:', estRes.error.message);
 
     // Even if some queries fail (RLS), return whatever we got
-    const org = orgRes.data || {};
+    const org = orgRes.data || {} as any;
     const rawCustomers = custRes.data || [];
     const rawEstimates = estRes.data || [];
 
@@ -1150,7 +1150,7 @@ export const fetchWarehouseState = async (
       supabase.from('inventory_items').select('*').eq('organization_id', orgId),
     ]);
 
-    const stock = stockRes.data || {};
+    const stock = (stockRes.data || {}) as any;
     const items = (itemsRes.data || []).map(dbInventoryToWarehouseItem);
 
     return {

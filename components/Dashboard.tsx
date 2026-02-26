@@ -130,7 +130,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   }, [state.savedEstimates, dashboardFilter]);
 
   // Paginate filtered estimates
-  const estimatesPagination = usePagination(filteredEstimates, 10);
+  const estimatesPagination = usePagination<EstimateRecord>(filteredEstimates, 10);
 
   // Reset to page 1 when filter changes
   useEffect(() => {
