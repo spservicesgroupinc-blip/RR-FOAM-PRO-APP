@@ -623,7 +623,11 @@ const SprayFoamCalculator: React.FC = () => {
                 results={results}
                 onUpdateState={handleInputChange}
                 onCancel={() => dispatch({ type: 'SET_VIEW', payload: 'calculator' })}
-                onConfirm={handleConfirmWorkOrder} 
+                onConfirm={handleConfirmWorkOrder}
+                onDownloadPDF={() => {
+                  const rec = appData.savedEstimates.find(e => e.id === ui.editingEstimateId);
+                  if (rec) generateWorkOrderPDF(appData, rec, cloudOpts());
+                }}
             />
         )}
 

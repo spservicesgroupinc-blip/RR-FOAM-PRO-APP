@@ -10,7 +10,8 @@ import {
   Loader2,
   Wrench,
   Plus,
-  Trash2
+  Trash2,
+  Download
 } from 'lucide-react';
 import { CalculatorState, CalculationResults, InvoiceLineItem } from '../types';
 
@@ -20,6 +21,7 @@ interface WorkOrderStageProps {
   onUpdateState: (field: keyof CalculatorState, value: any) => void;
   onCancel: () => void;
   onConfirm: (lines: InvoiceLineItem[]) => Promise<void>;
+  onDownloadPDF?: () => void;
 }
 
 export const WorkOrderStage: React.FC<WorkOrderStageProps> = ({ 
@@ -27,7 +29,8 @@ export const WorkOrderStage: React.FC<WorkOrderStageProps> = ({
   results, 
   onUpdateState, 
   onCancel, 
-  onConfirm 
+  onConfirm,
+  onDownloadPDF 
 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [lines, setLines] = useState<InvoiceLineItem[]>([]);
@@ -224,6 +227,17 @@ export const WorkOrderStage: React.FC<WorkOrderStageProps> = ({
                     </div>
                 </div>
             </div>
+
+            {onDownloadPDF && (
+              <button 
+                onClick={onDownloadPDF}
+                disabled={isProcessing}
+                className="w-full px-6 py-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 transition-all border border-slate-200 mb-3"
+              >
+                <Download className="w-5 h-5" />
+                Download PDF
+              </button>
+            )}
 
             <button 
                 onClick={handleConfirm}

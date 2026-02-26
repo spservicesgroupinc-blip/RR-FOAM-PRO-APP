@@ -17,7 +17,7 @@ import {
   updateEstimateActuals,
   broadcastWorkOrderUpdate,
 } from '../services/supabaseService';
-import { generateWorkOrderPDF, SaveToCloudOptions } from '../utils/pdfGenerator';
+import { SaveToCloudOptions } from '../utils/pdfGenerator';
 import { setInventorySyncLock } from './useSync';
 
 export const useEstimates = () => {
@@ -497,11 +497,7 @@ export const useEstimates = () => {
           : 'Work Order Created — Now generate the Invoice!';
         dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: notifMsg } });
         
-        // 5. Generate PDF Locally + Save to Cloud
-        const cloudOpts: SaveToCloudOptions = { orgId: session?.organizationId, customerId: record!.customerId, estimateId: record!.id };
-        generateWorkOrderPDF(appData, record!, cloudOpts);
-
-        // 6. Background persist to Supabase
+        // 5. Background persist to Supabase
         handleBackgroundWorkOrderSync(record, newWarehouse, updatedEquipment, results);
     }
   };
