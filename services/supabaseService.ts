@@ -20,7 +20,6 @@ import {
   MaterialUsageLogEntry,
   CompanyProfile,
 } from '../types';
-import safeStorage from '../utils/safeStorage';
 
 // ─── TYPES ──────────────────────────────────────────────────────────────────
 
@@ -1046,66 +1045,16 @@ const retryRPC = async <T>(
 };
 
 /**
- * Queue a failed crew update for later retry when the device comes back online.
- * Stored in localStorage so it survives app backgrounding on iOS.
- */
-const OFFLINE_QUEUE_KEY = 'foamPro_offlineCrewQueue';
-
-const queueOfflineCrewUpdate = (orgId: string, estimateId: string, actuals: any, executionStatus: string) => {
-  try {
-    const queue = JSON.parse(safeStorage.getItem(OFFLINE_QUEUE_KEY) || '[]');
-    queue.push({ orgId, estimateId, actuals, executionStatus, timestamp: Date.now() });
-    safeStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue));
-    console.log(`[Offline Queue] Queued crew update for ${estimateId}`);
-  } catch { /* storage full — silently fail */ }
-};
-
-/**
- * Flush any queued offline crew updates. Called on visibility change / app resume.
+ * Local offline queue has been removed to avoid on-device business-data persistence.
+ * Crew updates are written directly to Supabase only.
  */
 export const flushOfflineCrewQueue = async (): Promise<number> => {
-  try {
-    const raw = safeStorage.getItem(OFFLINE_QUEUE_KEY);
-    if (!raw) return 0;
-    const queue = JSON.parse(raw);
-    if (!queue.length) return 0;
-
-    console.log(`[Offline Queue] Flushing ${queue.length} queued update(s)...`);
-    let flushed = 0;
-    const remaining: any[] = [];
-
-    for (const item of queue) {
-      const { data, error } = await retryRPC(
-        () => supabase.rpc('crew_update_job', {
-          p_org_id: item.orgId,
-          p_estimate_id: item.estimateId,
-          p_actuals: item.actuals,
-          p_execution_status: item.executionStatus,
-        }),
-        2,
-        'OfflineFlush'
-      );
-      if (!error && data === true) {
-        flushed++;
-      } else {
-        // Keep items less than 24 hours old for another attempt
-        if (Date.now() - item.timestamp < 86400000) {
-          remaining.push(item);
-        }
-      }
-    }
-
-    safeStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(remaining));
-    if (flushed > 0) console.log(`[Offline Queue] Successfully flushed ${flushed} update(s)`);
-    return flushed;
-  } catch {
-    return 0;
-  }
+  return 0;
 };
 
 /**
  * Crew updates job actuals + execution status via RPC (no auth.uid() needed).
- * Includes retry logic for iOS network drops and offline queue fallback.
+ * Includes retry logic for transient network drops.
  */
 export const crewUpdateJob = async (
   orgId: string,
@@ -1126,8 +1075,6 @@ export const crewUpdateJob = async (
 
   if (error) {
     console.error('crewUpdateJob failed after retries:', error);
-    // Queue for later retry (iOS offline / backgrounded scenario)
-    queueOfflineCrewUpdate(orgId, estimateId, actuals, executionStatus);
     return false;
   }
 

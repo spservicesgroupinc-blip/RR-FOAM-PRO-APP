@@ -464,17 +464,12 @@ export const useSync = () => {
     };
   }, [session?.organizationId, ui.isInitialized, setupRealtimeSubscription]);
 
-  // 4. AUTO-SYNC (debounced write to Supabase) — admin only
+  // 4. AUTO-SYNC (immediate write to Supabase) — admin only
   useEffect(() => {
     if (ui.isLoading || !ui.isInitialized || !session?.organizationId) return;
     if (session.role === 'crew') return;
 
     const currentHash = computeHash(appData);
-
-    // Always backup to localStorage
-    try {
-      safeStorage.setItem(`foamProState_${session.username}`, JSON.stringify(appData));
-    } catch { /* quota exceeded — ignore */ }
 
     if (currentHash === lastSyncedHashRef.current) return;
 
@@ -632,7 +627,7 @@ export const useSync = () => {
         console.error('Auto-sync error:', err);
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
       }
-    }, 3000);
+    }, 0);
 
     return () => {
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
@@ -657,13 +652,6 @@ export const useSync = () => {
       }
     } catch {
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
-      dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Sync Failed. Check Internet.' } });
-    }
-  };
-
-  // 6. FORCE REFRESH (Pull from Supabase) — for crew dashboard & manual refresh
-  // For admin: pushes local data first so nothing is lost, then pulls fresh state.
-  const forceRefresh = async () => {
     if (!session?.organizationId) return;
     dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
 
