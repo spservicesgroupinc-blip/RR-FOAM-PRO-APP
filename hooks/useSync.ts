@@ -664,7 +664,10 @@ export const useSync = () => {
 
   // 6. FORCE REFRESH (Pull from Supabase) — for crew dashboard & manual refresh
   // For admin: pushes local data first so nothing is lost, then pulls fresh state.
-  const forceRefresh = async () => {
+  // Wrapped in useCallback so downstream components (CrewDashboard, auto-sync
+  // intervals) don't see a new function reference on every render, which would
+  // cause unnecessary effect teardown/setup cycles and Realtime channel churn.
+  const forceRefresh = useCallback(async () => {
     if (!session?.organizationId) return;
     dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
 
@@ -717,7 +720,7 @@ export const useSync = () => {
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
       dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Refresh Failed.' } });
     }
-  };
+  }, [session?.organizationId, session?.role, session?.username, dispatch, appData, computeHash, computeWarehouseHash, reconcileCompletedJobs]);
 
   // 7. REFRESH SUBSCRIPTION STATUS
   const refreshSubscription = async () => {

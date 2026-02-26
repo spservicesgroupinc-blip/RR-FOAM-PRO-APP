@@ -1349,16 +1349,42 @@ export const updatePassword = async (newPassword: string): Promise<boolean> => {
 
 export const broadcastWorkOrderUpdate = (orgId: string): void => {
   const channelName = `crew-updates-${orgId}`;
-  const channel = supabase.channel(channelName);
+  // Use a unique channel name for the sender to avoid colliding with any
+  // existing subscription on the admin side (shouldn't exist, but be safe).
+  const senderChannel = supabase.channel(`${channelName}-sender-${Date.now()}`, {
+    config: { broadcast: { ack: true } },
+  });
 
-  channel.subscribe((status) => {
+  senderChannel.subscribe(async (status) => {
     if (status === 'SUBSCRIBED') {
-      channel.send({
-        type: 'broadcast',
-        event: 'work_order_update',
-        payload: { orgId, timestamp: Date.now() },
-      }).catch((err) => console.warn(`[Broadcast] send error for org ${orgId}:`, err));
-      setTimeout(() => supabase.removeChannel(channel), 2000);
+      // Retry the send up to 3 times — Supabase broadcast can occasionally
+      // fail on the first attempt if the WebSocket was recently idle.
+      let sent = false;
+      for (let attempt = 1; attempt <= 3 && !sent; attempt++) {
+        try {
+          const result = await senderChannel.send({
+            type: 'broadcast',
+            event: 'work_order_update',
+            payload: { orgId, timestamp: Date.now() },
+          });
+          if (result === 'ok') {
+            sent = true;
+            console.log(`[Broadcast] Work order update sent to crew (attempt ${attempt})`);
+          } else {
+            console.warn(`[Broadcast] send returned "${result}" on attempt ${attempt}`);
+            // Brief delay before retry
+            await new Promise(r => setTimeout(r, 300 * attempt));
+          }
+        } catch (err) {
+          console.warn(`[Broadcast] send error on attempt ${attempt}:`, err);
+          await new Promise(r => setTimeout(r, 300 * attempt));
+        }
+      }
+      if (!sent) {
+        console.error(`[Broadcast] Failed to send work order update after 3 attempts for org ${orgId}`);
+      }
+      // Clean up the sender channel after a short delay
+      setTimeout(() => supabase.removeChannel(senderChannel), 2000);
     }
   });
 };

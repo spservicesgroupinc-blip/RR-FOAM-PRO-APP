@@ -177,6 +177,11 @@ export const useEstimates = () => {
             pendingEstimateUpsertRef.current = null;
           }
           if (saved) {
+            // Signal to handleBackgroundWorkOrderSync that the DB write is
+            // confirmed, so it can skip the redundant safety-net upsert and
+            // broadcast to crew immediately.
+            cloudSaveSucceededRef.current = true;
+
             if (saved.id !== localId) {
               dispatch({ type: 'RENAME_ESTIMATE_ID', payload: { oldId: localId, newId: saved.id, customerId: saved.customerId } });
               newEstimate.id = saved.id;
@@ -553,17 +558,18 @@ export const useEstimates = () => {
     // from our own writes don't overwrite locally-deducted quantities.
     setInventorySyncLock(true);
     
-    // ── STEP 0: ALWAYS ensure the estimate is persisted to Supabase ────────
-    // Previously we only retried if pendingEstimateUpsertRef was non-null.
-    // But when saveEstimate uses awaitCloud=true, the ref is set to null in
-    // BOTH success and failure branches.  If the initial save failed, the
-    // estimate never reached Supabase and the crew dashboard showed nothing.
-    // Fix: always do a fresh upsert here — it's idempotent (uses onConflict).
+    // ── STEP 0: Ensure the estimate is persisted to Supabase ───────────────
+    // When saveEstimate uses awaitCloud=true, the upsert already completed
+    // before we get here. We track that via cloudSaveSucceededRef so we can
+    // broadcast immediately without a redundant upsert round-trip.
     let persistedJobId = record.id;
-    let estimatePersistedOk = false;
+    let estimatePersistedOk = cloudSaveSucceededRef.current;
+
+    // Reset the flag for next time
+    cloudSaveSucceededRef.current = false;
 
     // First, drain any still-pending promise (fire-and-forget path)
-    if (pendingEstimateUpsertRef.current) {
+    if (!estimatePersistedOk && pendingEstimateUpsertRef.current) {
       try {
         const saved = await pendingEstimateUpsertRef.current;
         if (saved) {
@@ -577,10 +583,9 @@ export const useEstimates = () => {
       }
     }
 
-    // Always do a fresh upsert to guarantee the work order is in Supabase.
-    // This covers: (a) awaitCloud succeeded but we want to confirm,
-    // (b) awaitCloud failed and ref was cleared, (c) ref was null for
-    // any other reason. upsert is idempotent so this is safe.
+    // Safety-net upsert: only if the prior save didn't confirm success.
+    // upsert is idempotent (uses onConflict) so this is safe but adds
+    // a round-trip we can skip when awaitCloud already succeeded.
     if (!estimatePersistedOk) {
       try {
         console.log('[WO Sync] Ensuring estimate is persisted to Supabase...');
@@ -597,6 +602,8 @@ export const useEstimates = () => {
       } catch (retryErr) {
         console.error('[WO Sync] Estimate upsert failed:', retryErr);
       }
+    } else {
+      console.log('[WO Sync] Estimate already confirmed in Supabase (awaitCloud). Skipping redundant upsert.');
     }
 
     // ── STEP 0b: Broadcast IMMEDIATELY after estimate is confirmed saved ───
