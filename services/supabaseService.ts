@@ -99,8 +99,8 @@ const recordToDbEstimate = (record: EstimateRecord, orgId: string) => ({
   invoice_date: record.invoiceDate || null,
   invoice_number: record.invoiceNumber || null,
   payment_terms: record.paymentTerms || 'Due on Receipt',
-  inputs: record.inputs as any,
-  results: record.results as any,
+  inputs: (record.inputs || {}) as any,
+  results: (record.results || {}) as any,
   materials: record.materials as any,
   financials: (record.financials || null) as any,
   settings_snapshot: {
@@ -734,9 +734,22 @@ export const syncAppDataToSupabase = async (
       await upsertCustomer(customer, orgId);
     }
 
-    // 7. Estimates (batch upsert)
+    // 7. Estimates (batch upsert) — continue on individual failures so one
+    //    bad estimate doesn't block the entire sync from completing.
+    let estimateErrors = 0;
     for (const estimate of appData.savedEstimates) {
-      await upsertEstimate(estimate, orgId);
+      try {
+        await upsertEstimate(estimate, orgId);
+      } catch (estErr: any) {
+        estimateErrors++;
+        // Log but continue — subscription limit errors, transient network
+        // issues, or bad data on a single estimate shouldn't abort sync.
+        console.warn(`[syncAppData] Estimate ${estimate.id} failed:`, estErr?.message || estErr);
+      }
+    }
+
+    if (estimateErrors > 0) {
+      console.warn(`[syncAppData] ${estimateErrors}/${appData.savedEstimates.length} estimate(s) failed to sync`);
     }
 
     return true;

@@ -619,6 +619,65 @@ CREATE POLICY "Admin estimates access" ON estimates
   );
 
 
+-- ─── ESTIMATE LIMIT TRIGGER ──────────────────────────────────────────────────
+-- Enforces monthly estimate creation limits based on subscription plan.
+-- IMPORTANT: Allows upsert (re-saving) of existing estimates even when the
+-- monthly limit is reached. Without the EXISTS check, PostgREST upsert
+-- (INSERT ... ON CONFLICT DO UPDATE) would be blocked by the BEFORE INSERT
+-- trigger because it fires before the ON CONFLICT path is reached.
+
+CREATE OR REPLACE FUNCTION check_estimate_limit()
+RETURNS trigger AS $$
+DECLARE
+  v_sub record;
+  v_count integer;
+BEGIN
+  -- If this is an upsert of an existing record, allow it through.
+  -- PostgREST upsert does INSERT ... ON CONFLICT DO UPDATE, which fires
+  -- BEFORE INSERT triggers even for updates of existing rows. Without
+  -- this check, existing estimates can't be re-saved once the monthly
+  -- limit is reached.
+  IF NEW.id IS NOT NULL AND EXISTS (SELECT 1 FROM estimates WHERE id = NEW.id) THEN
+    RETURN NEW;
+  END IF;
+
+  -- Get subscription for this org
+  SELECT * INTO v_sub
+  FROM subscriptions
+  WHERE organization_id = NEW.organization_id
+    AND status = 'active';
+  
+  -- No subscription = no limit (graceful degradation)
+  IF NOT FOUND THEN
+    RETURN NEW;
+  END IF;
+
+  -- Check if trial expired
+  IF v_sub.plan = 'trial' AND v_sub.trial_ends_at < now() THEN
+    RAISE EXCEPTION 'Trial period has expired. Please upgrade to continue creating estimates.';
+  END IF;
+
+  -- Count estimates this month
+  SELECT COUNT(*) INTO v_count
+  FROM estimates
+  WHERE organization_id = NEW.organization_id
+    AND created_at >= date_trunc('month', now());
+
+  IF v_count >= v_sub.max_estimates_per_month THEN
+    RAISE EXCEPTION 'Monthly estimate limit reached (% of %). Upgrade your plan for more.', v_count, v_sub.max_estimates_per_month;
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create the trigger if it doesn't exist (idempotent)
+DROP TRIGGER IF EXISTS enforce_estimate_limit ON estimates;
+CREATE TRIGGER enforce_estimate_limit
+  BEFORE INSERT ON estimates
+  FOR EACH ROW EXECUTE FUNCTION check_estimate_limit();
+
+
 -- ============================================================================
 -- DONE! All RPC functions and supporting tables/columns are now in place.
 -- The crew dashboard should now display work orders after refreshing the app.
