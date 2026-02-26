@@ -208,15 +208,30 @@ export const useSync = () => {
     // Persist to Supabase in background (lock to prevent realtime overwrite)
     acquireInventorySyncLock();
     try {
-      await updateWarehouseStock(orgId, newWarehouse.openCellSets, newWarehouse.closedCellSets);
+      const stockUpdated = await updateWarehouseStock(orgId, newWarehouse.openCellSets, newWarehouse.closedCellSets);
+      if (!stockUpdated) {
+        throw new Error('Supabase updateWarehouseStock returned false during reconciliation');
+      }
+
       for (const item of newWarehouse.items) {
-        await upsertInventoryItem(item, orgId);
+        const savedInventory = await upsertInventoryItem(item, orgId);
+        if (!savedInventory) {
+          throw new Error(`Supabase upsertInventoryItem failed for ${item.id || item.name}`);
+        }
       }
+
       if (allLogEntries.length > 0) {
-        await insertMaterialLogs(allLogEntries, orgId);
+        const logsInserted = await insertMaterialLogs(allLogEntries, orgId);
+        if (!logsInserted) {
+          throw new Error('Supabase insertMaterialLogs returned false during reconciliation');
+        }
       }
+
       for (const id of updatedEstimateIds) {
-        await markEstimateInventoryProcessed(id);
+        const marked = await markEstimateInventoryProcessed(id);
+        if (!marked) {
+          throw new Error(`Supabase markEstimateInventoryProcessed failed for estimate ${id}`);
+        }
       }
       console.log(`[Inventory Reconcile] Successfully processed ${unprocessed.length} job(s).`);
       dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: `Inventory updated for ${unprocessed.length} completed job(s)` } });
@@ -474,7 +489,7 @@ export const useSync = () => {
         acquireInventorySyncLock();
         try {
           // Always sync settings (website lives here too, not in updateCompanyProfile)
-          await updateOrgSettings(session.organizationId, {
+          const settingsUpdated = await updateOrgSettings(session.organizationId, {
             yields: appData.yields,
             costs: appData.costs,
             pricingMode: appData.pricingMode,
@@ -482,41 +497,62 @@ export const useSync = () => {
             lifetimeUsage: appData.lifetimeUsage,
             website: appData.companyProfile?.website || '',
           });
+          if (!settingsUpdated) {
+            throw new Error('Supabase updateOrgSettings returned false');
+          }
 
           // Always sync company profile (name, address, logo, etc.)
-          await updateCompanyProfile(session.organizationId, appData.companyProfile);
+          const profileUpdated = await updateCompanyProfile(session.organizationId, appData.companyProfile);
+          if (!profileUpdated) {
+            throw new Error('Supabase updateCompanyProfile returned false');
+          }
 
           // Always sync equipment items
           if (appData.equipment?.length > 0) {
             await Promise.all(
               appData.equipment.map(item =>
-                upsertEquipment(item, session.organizationId)
+                upsertEquipment(item, session.organizationId).then(saved => {
+                  if (!saved) {
+                    throw new Error(`Supabase upsertEquipment failed for ${item.id || item.name}`);
+                  }
+                  return saved;
+                })
               )
             );
           }
 
-          // Sync estimates — ensures any failed background upserts are retried.
-          // Each estimate is upserted individually so one bad record doesn't
-          // block the rest. Errors are logged but don't abort the sync.
+          // Sync estimates — continue processing all records, then fail the
+          // sync pass if any individual row fails so status reflects reality.
           if (appData.savedEstimates?.length > 0) {
-            await Promise.allSettled(
+            const estimateResults = await Promise.allSettled(
               appData.savedEstimates.map(estimate =>
-                upsertEstimate(estimate, session.organizationId).catch(err => {
-                  console.warn(`[Auto-Sync] Estimate ${estimate.id} sync failed:`, err?.message || err);
+                upsertEstimate(estimate, session.organizationId).then(saved => {
+                  if (!saved) throw new Error(`Supabase upsertEstimate returned null for ${estimate.id}`);
+                  return saved;
                 })
               )
             );
+            const estimateFailures = estimateResults.filter(r => r.status === 'rejected');
+            if (estimateFailures.length > 0) {
+              throw new Error(`${estimateFailures.length} estimate(s) failed to sync to Supabase`);
+            }
           }
 
-          // Sync customers — ensures any failed background upserts are retried.
+          // Sync customers — continue processing all records, then fail the
+          // sync pass if any individual row fails.
           if (appData.customers?.length > 0) {
-            await Promise.allSettled(
+            const customerResults = await Promise.allSettled(
               appData.customers.map(customer =>
-                upsertCustomer(customer, session.organizationId).catch(err => {
-                  console.warn(`[Auto-Sync] Customer ${customer.id} sync failed:`, err?.message || err);
+                upsertCustomer(customer, session.organizationId).then(saved => {
+                  if (!saved) throw new Error(`Supabase upsertCustomer returned null for ${customer.id || customer.name}`);
+                  return saved;
                 })
               )
             );
+            const customerFailures = customerResults.filter(r => r.status === 'rejected');
+            if (customerFailures.length > 0) {
+              throw new Error(`${customerFailures.length} customer(s) failed to sync to Supabase`);
+            }
           }
 
           // Only sync warehouse when it actually changed locally
@@ -532,6 +568,16 @@ export const useSync = () => {
                 upsertInventoryItem(item, session.organizationId)
               ),
             ]);
+
+            const stockSaved = warehouseResults[0] as boolean;
+            if (!stockSaved) {
+              throw new Error('Supabase updateWarehouseStock returned false');
+            }
+
+            const failedInventory = warehouseResults.slice(1).find((saved: any) => !saved);
+            if (failedInventory) {
+              throw new Error('One or more warehouse inventory items failed to sync to Supabase');
+            }
 
             // Backfill Supabase UUIDs for any warehouse items that had local IDs.
             // The first result is warehouse stock; the rest are inventory items.

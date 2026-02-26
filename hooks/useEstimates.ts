@@ -216,7 +216,10 @@ export const useEstimates = () => {
 
       // Persist to Supabase
       try {
-        await deleteEstimateDb(id);
+        const deleted = await deleteEstimateDb(id);
+        if (!deleted) {
+          throw new Error('Supabase deleteEstimateDb returned false');
+        }
         dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Job Deleted' } });
       } catch (err) {
         dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Local delete success, but server failed.' } });
@@ -258,7 +261,10 @@ export const useEstimates = () => {
 
       // Persist to Supabase
       try {
-        await markEstimatePaid(id, financials);
+        const paid = await markEstimatePaid(id, financials);
+        if (!paid) {
+          throw new Error('Supabase markEstimatePaid returned false');
+        }
       } catch (err) {
         console.error('markPaid Supabase error:', err);
         dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Payment saved locally but failed to sync to cloud. Use Force Sync to retry.' } });
@@ -293,6 +299,9 @@ export const useEstimates = () => {
     // Persist to Supabase in background
     if (session?.organizationId) {
       upsertCustomer(customerData, session.organizationId).then(saved => {
+        if (!saved) {
+          throw new Error('Supabase upsertCustomer returned null');
+        }
         if (saved && saved.id !== customerData.id) {
           // DB assigned a new UUID — update local list
           const fixed = updatedCustomers.map(c => c.id === customerData.id ? { ...customerData, id: saved.id } : c);
@@ -506,21 +515,30 @@ export const useEstimates = () => {
       }
 
       // 1. Update warehouse stock in Supabase (foam chemical sets)
-      await updateWarehouseStock(
+      const warehouseUpdated = await updateWarehouseStock(
         session.organizationId,
         currentWarehouse.openCellSets,
         currentWarehouse.closedCellSets
       );
+      if (!warehouseUpdated) {
+        throw new Error('Supabase updateWarehouseStock returned false');
+      }
 
       // 2. Update general inventory items (deducted quantities)
       for (const item of currentWarehouse.items) {
-        await upsertInventoryItem(item, session.organizationId);
+        const savedInventory = await upsertInventoryItem(item, session.organizationId);
+        if (!savedInventory) {
+          throw new Error(`Supabase upsertInventoryItem failed for ${item.id || item.name}`);
+        }
       }
 
       // 3. Update equipment status
       for (const eq of currentEquipment) {
         if (eq.status === 'In Use') {
-          await updateEquipmentStatus(eq.id, eq.status, eq.lastSeen);
+          const updated = await updateEquipmentStatus(eq.id, eq.status, eq.lastSeen);
+          if (!updated) {
+            throw new Error(`Supabase updateEquipmentStatus failed for ${eq.id || eq.name}`);
+          }
         }
       }
 
@@ -569,7 +587,10 @@ export const useEstimates = () => {
       }
       
       if (logEntries.length > 0) {
-        await insertMaterialLogs(logEntries, session.organizationId);
+        const logsInserted = await insertMaterialLogs(logEntries, session.organizationId);
+        if (!logsInserted) {
+          throw new Error('Supabase insertMaterialLogs returned false');
+        }
       }
       
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' });
@@ -614,11 +635,27 @@ export const useEstimates = () => {
       if (session?.organizationId) {
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
         try {
-          await Promise.all([
-            insertPurchaseOrder(po, session.organizationId),
-            updateWarehouseStock(session.organizationId, newWarehouse.openCellSets, newWarehouse.closedCellSets),
-            ...newWarehouse.items.map((item: any) => upsertInventoryItem(item, session.organizationId)),
-          ]);
+          const savedPo = await insertPurchaseOrder(po, session.organizationId);
+          if (!savedPo) {
+            throw new Error('Supabase insertPurchaseOrder returned null');
+          }
+
+          const stockUpdated = await updateWarehouseStock(
+            session.organizationId,
+            newWarehouse.openCellSets,
+            newWarehouse.closedCellSets
+          );
+          if (!stockUpdated) {
+            throw new Error('Supabase updateWarehouseStock returned false');
+          }
+
+          for (const item of newWarehouse.items) {
+            const savedInventory = await upsertInventoryItem(item as any, session.organizationId);
+            if (!savedInventory) {
+              throw new Error(`Supabase upsertInventoryItem failed for ${item.id || item.name}`);
+            }
+          }
+
           dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' });
         } catch (err) {
           console.error('PO sync error:', err);

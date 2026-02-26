@@ -342,8 +342,9 @@ const SprayFoamCalculator: React.FC = () => {
           // Ensure the Supabase upsert completes before marking paid,
           // otherwise markEstimatePaid may target a record that doesn't
           // exist in the DB yet (race condition).
-          await awaitPendingUpsert();
-          await handleMarkPaid(savedRecord.id);
+          const persistedId = await awaitPendingUpsert();
+          const targetId = persistedId || savedRecord.id;
+          await handleMarkPaid(targetId);
       }
   };
 

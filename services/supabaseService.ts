@@ -700,38 +700,64 @@ export const syncAppDataToSupabase = async (
   orgId: string
 ): Promise<boolean> => {
   try {
+    let hasErrors = false;
+
     // 1. Org-level settings (yields, costs, pricingMode, etc.)
-    await updateOrgSettings(orgId, {
+    const settingsOk = await updateOrgSettings(orgId, {
       yields: appData.yields,
       costs: appData.costs,
       pricingMode: appData.pricingMode,
       sqFtRates: appData.sqFtRates,
       lifetimeUsage: appData.lifetimeUsage,
     });
+    if (!settingsOk) {
+      hasErrors = true;
+      console.warn('[syncAppData] Failed to update organization settings');
+    }
 
     // 2. Company profile
-    await updateCompanyProfile(orgId, appData.companyProfile);
+    const companyOk = await updateCompanyProfile(orgId, appData.companyProfile);
+    if (!companyOk) {
+      hasErrors = true;
+      console.warn('[syncAppData] Failed to update company profile');
+    }
 
     // 3. Warehouse stock
-    await updateWarehouseStock(
+    const warehouseStockOk = await updateWarehouseStock(
       orgId,
       appData.warehouse.openCellSets,
       appData.warehouse.closedCellSets
     );
+    if (!warehouseStockOk) {
+      hasErrors = true;
+      console.warn('[syncAppData] Failed to update warehouse stock');
+    }
 
     // 4. Warehouse items (inventory)
     for (const item of appData.warehouse.items) {
-      await upsertInventoryItem(item, orgId);
+      const saved = await upsertInventoryItem(item, orgId);
+      if (!saved) {
+        hasErrors = true;
+        console.warn(`[syncAppData] Failed to sync inventory item ${item.id || item.name}`);
+      }
     }
 
     // 5. Equipment
     for (const item of appData.equipment) {
-      await upsertEquipment(item, orgId);
+      const saved = await upsertEquipment(item, orgId);
+      if (!saved) {
+        hasErrors = true;
+        console.warn(`[syncAppData] Failed to sync equipment item ${item.id || item.name}`);
+      }
     }
 
     // 6. Customers
     for (const customer of appData.customers) {
-      await upsertCustomer(customer, orgId);
+      const saved = await upsertCustomer(customer, orgId);
+      if (!saved) {
+        hasErrors = true;
+        console.warn(`[syncAppData] Failed to sync customer ${customer.id || customer.name}`);
+      }
     }
 
     // 7. Estimates (batch upsert) — continue on individual failures so one
@@ -752,7 +778,7 @@ export const syncAppDataToSupabase = async (
       console.warn(`[syncAppData] ${estimateErrors}/${appData.savedEstimates.length} estimate(s) failed to sync`);
     }
 
-    return true;
+    return !hasErrors && estimateErrors === 0;
   } catch (err) {
     console.error('syncAppDataToSupabase error:', err);
     return false;
