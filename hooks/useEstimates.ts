@@ -550,33 +550,74 @@ export const useEstimates = () => {
     // from our own writes don't overwrite locally-deducted quantities.
     setInventorySyncLock(true);
     
-    try {
-      // 0. Ensure the estimate is persisted to Supabase BEFORE broadcasting.
-      //    saveEstimate fires upsertEstimate as non-blocking; if the promise
-      //    is still pending, await it here so the crew's fetchCrewWorkOrders
-      //    call will find the new work order in the DB.
-      let persistedJobId = record.id;
-      if (pendingEstimateUpsertRef.current) {
-        try {
-          const saved = await pendingEstimateUpsertRef.current;
-          if (saved) {
-            persistedJobId = saved.id;
-          }
-        } catch (upsertErr) {
-          // saveEstimate's .catch() already handled UI notification;
-          // retry the upsert so the estimate reaches Supabase
-          console.warn('[WO Sync] Initial estimate upsert failed, retrying:', upsertErr);
-          try {
-            const retried = await upsertEstimate(record, session.organizationId);
-            if (retried) persistedJobId = retried.id;
-          } catch (retryErr) {
-            console.error('[WO Sync] Estimate upsert retry failed:', retryErr);
-          }
-        } finally {
-          pendingEstimateUpsertRef.current = null;
-        }
-      }
+    // ── STEP 0: ALWAYS ensure the estimate is persisted to Supabase ────────
+    // Previously we only retried if pendingEstimateUpsertRef was non-null.
+    // But when saveEstimate uses awaitCloud=true, the ref is set to null in
+    // BOTH success and failure branches.  If the initial save failed, the
+    // estimate never reached Supabase and the crew dashboard showed nothing.
+    // Fix: always do a fresh upsert here — it's idempotent (uses onConflict).
+    let persistedJobId = record.id;
+    let estimatePersistedOk = false;
 
+    // First, drain any still-pending promise (fire-and-forget path)
+    if (pendingEstimateUpsertRef.current) {
+      try {
+        const saved = await pendingEstimateUpsertRef.current;
+        if (saved) {
+          persistedJobId = saved.id;
+          estimatePersistedOk = true;
+        }
+      } catch (upsertErr) {
+        console.warn('[WO Sync] Pending estimate upsert failed:', upsertErr);
+      } finally {
+        pendingEstimateUpsertRef.current = null;
+      }
+    }
+
+    // Always do a fresh upsert to guarantee the work order is in Supabase.
+    // This covers: (a) awaitCloud succeeded but we want to confirm,
+    // (b) awaitCloud failed and ref was cleared, (c) ref was null for
+    // any other reason. upsert is idempotent so this is safe.
+    if (!estimatePersistedOk) {
+      try {
+        console.log('[WO Sync] Ensuring estimate is persisted to Supabase...');
+        const saved = await upsertEstimate(record, session.organizationId);
+        if (saved) {
+          persistedJobId = saved.id;
+          estimatePersistedOk = true;
+          console.log('[WO Sync] Estimate confirmed in Supabase:', persistedJobId);
+          // Update local state if the ID changed (DB assigned UUID)
+          if (saved.id !== record.id) {
+            dispatch({ type: 'RENAME_ESTIMATE_ID', payload: { oldId: record.id, newId: saved.id, customerId: saved.customerId } });
+          }
+        }
+      } catch (retryErr) {
+        console.error('[WO Sync] Estimate upsert failed:', retryErr);
+      }
+    }
+
+    // ── STEP 0b: Broadcast IMMEDIATELY after estimate is confirmed saved ───
+    // This must happen BEFORE warehouse/inventory sync so that even if those
+    // secondary operations fail, the crew dashboard still gets notified.
+    if (estimatePersistedOk) {
+      try {
+        broadcastWorkOrderUpdate(session.organizationId);
+        console.log('[WO Sync] Broadcast sent to crew dashboard');
+      } catch (broadcastErr) {
+        console.warn('[WO Sync] Broadcast failed (crew will still get data on next poll):', broadcastErr);
+      }
+    } else {
+      console.error('[WO Sync] CRITICAL: Estimate NOT saved to Supabase — cannot notify crew. Will retry on next sync.');
+      dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
+      dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Work order failed to save to cloud. Crew will not see it. Tap Sync to retry.' } });
+      setInventorySyncLock(false);
+      return;
+    }
+
+    // ── STEPS 1-4: Warehouse, inventory, equipment, material logs ──────────
+    // These are secondary — even if they fail, the work order is in Supabase
+    // and the crew has been notified. Wrap in separate try-catch.
+    try {
       // 1. Update warehouse stock in Supabase (foam chemical sets)
       const warehouseUpdated = await updateWarehouseStock(
         session.organizationId,
@@ -659,13 +700,10 @@ export const useEstimates = () => {
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' });
       dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Work Order Synced Successfully' } });
 
-      // Notify crew members in real-time so they see the new work order immediately
-      broadcastWorkOrderUpdate(session.organizationId);
-
     } catch (e) {
-      console.error('Background WO Sync Error:', e);
+      console.error('[WO Sync] Warehouse/inventory sync error (work order IS saved):', e);
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
-      dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Background Sync Failed. Check Connection.' } });
+      dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Work order saved but inventory sync failed. Use Force Sync to retry.' } });
     } finally {
       setInventorySyncLock(false);
     }
