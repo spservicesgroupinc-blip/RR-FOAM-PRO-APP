@@ -28,6 +28,9 @@ export const useEstimates = () => {
   // can await it before broadcasting to crew (prevents race condition where
   // broadcast fires before the estimate row exists in the DB).
   const pendingEstimateUpsertRef = useRef<Promise<EstimateRecord | null> | null>(null);
+  // Set to true when an awaitCloud=true save succeeds, so handleBackgroundWorkOrderSync
+  // knows not to treat the estimate as unsynced (avoids false "not saved" errors).
+  const cloudSaveSucceededRef = useRef<boolean>(false);
   const subscription = state.subscription;
 
   const loadEstimateForEditing = (record: EstimateRecord) => {
