@@ -35,6 +35,49 @@ interface OrgData {
   purchase_orders: any[];
 }
 
+const isRetryableWriteError = (error: any): boolean => {
+  if (!error) return false;
+  const code = String(error.code || '');
+  const message = String(error.message || '').toLowerCase();
+  const status = Number(error.status || error.statusCode || 0);
+
+  if (status >= 500 || status === 408 || status === 429) return true;
+  if (['PGRST000', 'PGRST003', '57014'].includes(code)) return true;
+  if (message.includes('network') || message.includes('fetch') || message.includes('timeout') || message.includes('temporar')) return true;
+  return false;
+};
+
+const retryWrite = async <T>(
+  fn: () => Promise<{ data: T; error: any }>,
+  label: string,
+  maxRetries = 3
+): Promise<{ data: T; error: any }> => {
+  let lastResult: { data: T; error: any } = { data: null as any, error: null };
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await fn();
+      if (!result.error) return result;
+
+      lastResult = result;
+      if (!isRetryableWriteError(result.error) || attempt === maxRetries) {
+        return result;
+      }
+    } catch (err) {
+      lastResult = { data: null as any, error: err };
+      if (!isRetryableWriteError(err) || attempt === maxRetries) {
+        return lastResult;
+      }
+    }
+
+    const delay = Math.min(400 * Math.pow(2, attempt), 4000);
+    console.warn(`[${label}] write attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
+    await new Promise(r => setTimeout(r, delay));
+  }
+
+  return lastResult;
+};
+
 // ─── HELPERS ────────────────────────────────────────────────────────────────
 
 /**
@@ -262,11 +305,14 @@ export const upsertCustomer = async (customer: CustomerProfile, orgId: string): 
     payload.id = customer.id;
   }
 
-  const { data, error } = await supabase
-    .from('customers')
-    .upsert(payload, { onConflict: 'id' })
-    .select()
-    .single();
+  const { data, error } = await retryWrite(
+    () => supabase
+      .from('customers')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single(),
+    'upsertCustomer'
+  );
 
   if (error) {
     console.error('upsertCustomer error:', error);
@@ -277,7 +323,10 @@ export const upsertCustomer = async (customer: CustomerProfile, orgId: string): 
 };
 
 export const deleteCustomer = async (customerId: string): Promise<boolean> => {
-  const { error } = await supabase.from('customers').delete().eq('id', customerId);
+  const { error } = await retryWrite(
+    () => supabase.from('customers').delete().eq('id', customerId),
+    'deleteCustomer'
+  );
   if (error) {
     console.error('deleteCustomer error:', error);
     return false;
@@ -314,11 +363,14 @@ export const upsertEstimate = async (record: EstimateRecord, orgId: string): Pro
     (dbRow as any).customer_id = null;
   }
 
-  const { data, error } = await supabase
-    .from('estimates')
-    .upsert(dbRow, { onConflict: 'id' })
-    .select()
-    .single();
+  const { data, error } = await retryWrite(
+    () => supabase
+      .from('estimates')
+      .upsert(dbRow, { onConflict: 'id' })
+      .select()
+      .single(),
+    'upsertEstimate'
+  );
 
   if (error) {
     console.error('upsertEstimate error:', error);
@@ -331,7 +383,10 @@ export const upsertEstimate = async (record: EstimateRecord, orgId: string): Pro
 };
 
 export const deleteEstimateDb = async (estimateId: string): Promise<boolean> => {
-  const { error } = await supabase.from('estimates').delete().eq('id', estimateId);
+  const { error } = await retryWrite(
+    () => supabase.from('estimates').delete().eq('id', estimateId),
+    'deleteEstimate'
+  );
   if (error) {
     console.error('deleteEstimate error:', error);
     return false;
@@ -347,10 +402,13 @@ export const updateEstimateStatus = async (
   const payload: any = { status, last_modified: new Date().toISOString() };
   if (extraFields) Object.assign(payload, extraFields);
 
-  const { error } = await supabase
-    .from('estimates')
-    .update(payload)
-    .eq('id', estimateId);
+  const { error } = await retryWrite(
+    () => supabase
+      .from('estimates')
+      .update(payload)
+      .eq('id', estimateId),
+    'updateEstimateStatus'
+  );
 
   if (error) {
     console.error('updateEstimateStatus error:', error);
@@ -364,14 +422,17 @@ export const updateEstimateActuals = async (
   actuals: any,
   executionStatus: string
 ): Promise<boolean> => {
-  const { error } = await supabase
-    .from('estimates')
-    .update({
-      actuals,
-      execution_status: executionStatus,
-      last_modified: new Date().toISOString(),
-    })
-    .eq('id', estimateId);
+  const { error } = await retryWrite(
+    () => supabase
+      .from('estimates')
+      .update({
+        actuals,
+        execution_status: executionStatus,
+        last_modified: new Date().toISOString(),
+      })
+      .eq('id', estimateId),
+    'updateEstimateActuals'
+  );
 
   if (error) {
     console.error('updateEstimateActuals error:', error);
@@ -384,14 +445,17 @@ export const markEstimatePaid = async (
   estimateId: string,
   financials: any
 ): Promise<boolean> => {
-  const { error } = await supabase
-    .from('estimates')
-    .update({
-      status: 'Paid',
-      financials,
-      last_modified: new Date().toISOString(),
-    })
-    .eq('id', estimateId);
+  const { error } = await retryWrite(
+    () => supabase
+      .from('estimates')
+      .update({
+        status: 'Paid',
+        financials,
+        last_modified: new Date().toISOString(),
+      })
+      .eq('id', estimateId),
+    'markEstimatePaid'
+  );
 
   if (error) {
     console.error('markEstimatePaid error:', error);
@@ -408,13 +472,16 @@ export const markEstimatePaid = async (
 export const markEstimateInventoryProcessed = async (
   estimateId: string
 ): Promise<boolean> => {
-  const { error } = await supabase
-    .from('estimates')
-    .update({
-      inventory_processed: true,
-      last_modified: new Date().toISOString(),
-    })
-    .eq('id', estimateId);
+  const { error } = await retryWrite(
+    () => supabase
+      .from('estimates')
+      .update({
+        inventory_processed: true,
+        last_modified: new Date().toISOString(),
+      })
+      .eq('id', estimateId),
+    'markEstimateInventoryProcessed'
+  );
 
   if (error) {
     console.error('markEstimateInventoryProcessed error:', error);
@@ -430,13 +497,16 @@ export const updateWarehouseStock = async (
   openCellSets: number,
   closedCellSets: number
 ): Promise<boolean> => {
-  const { error } = await supabase
-    .from('warehouse_stock')
-    .upsert({
-      organization_id: orgId,
-      open_cell_sets: openCellSets,
-      closed_cell_sets: closedCellSets,
-    }, { onConflict: 'organization_id' });
+  const { error } = await retryWrite(
+    () => supabase
+      .from('warehouse_stock')
+      .upsert({
+        organization_id: orgId,
+        open_cell_sets: openCellSets,
+        closed_cell_sets: closedCellSets,
+      }, { onConflict: 'organization_id' }),
+    'updateWarehouseStock'
+  );
 
   if (error) {
     console.error('updateWarehouseStock error:', error);
@@ -482,11 +552,14 @@ export const upsertInventoryItem = async (item: WarehouseItem, orgId: string): P
     }
   }
 
-  const { data, error } = await supabase
-    .from('inventory_items')
-    .upsert(payload, { onConflict: 'id' })
-    .select()
-    .single();
+  const { data, error } = await retryWrite(
+    () => supabase
+      .from('inventory_items')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single(),
+    'upsertInventoryItem'
+  );
 
   if (error) {
     console.error('upsertInventoryItem error:', error);
@@ -496,7 +569,10 @@ export const upsertInventoryItem = async (item: WarehouseItem, orgId: string): P
 };
 
 export const deleteInventoryItem = async (itemId: string): Promise<boolean> => {
-  const { error } = await supabase.from('inventory_items').delete().eq('id', itemId);
+  const { error } = await retryWrite(
+    () => supabase.from('inventory_items').delete().eq('id', itemId),
+    'deleteInventoryItem'
+  );
   if (error) {
     console.error('deleteInventoryItem error:', error);
     return false;
@@ -518,11 +594,14 @@ export const upsertEquipment = async (item: EquipmentItem, orgId: string): Promi
     payload.id = item.id;
   }
 
-  const { data, error } = await supabase
-    .from('equipment')
-    .upsert(payload, { onConflict: 'id' })
-    .select()
-    .single();
+  const { data, error } = await retryWrite(
+    () => supabase
+      .from('equipment')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single(),
+    'upsertEquipment'
+  );
 
   if (error) {
     console.error('upsertEquipment error:', error);
@@ -532,7 +611,10 @@ export const upsertEquipment = async (item: EquipmentItem, orgId: string): Promi
 };
 
 export const deleteEquipmentItem = async (itemId: string): Promise<boolean> => {
-  const { error } = await supabase.from('equipment').delete().eq('id', itemId);
+  const { error } = await retryWrite(
+    () => supabase.from('equipment').delete().eq('id', itemId),
+    'deleteEquipment'
+  );
   if (error) {
     console.error('deleteEquipment error:', error);
     return false;
@@ -548,7 +630,10 @@ export const updateEquipmentStatus = async (
   const payload: any = { status };
   if (lastSeen) payload.last_seen = lastSeen;
 
-  const { error } = await supabase.from('equipment').update(payload).eq('id', itemId);
+  const { error } = await retryWrite(
+    () => supabase.from('equipment').update(payload).eq('id', itemId),
+    'updateEquipmentStatus'
+  );
   if (error) {
     console.error('updateEquipmentStatus error:', error);
     return false;
@@ -576,7 +661,10 @@ export const insertMaterialLogs = async (
     log_type: log.logType || 'estimated',
   }));
 
-  const { error } = await supabase.from('material_logs').insert(rows);
+  const { error } = await retryWrite(
+    () => supabase.from('material_logs').insert(rows),
+    'insertMaterialLogs'
+  );
   if (error) {
     console.error('insertMaterialLogs error:', error);
     return false;
@@ -587,19 +675,22 @@ export const insertMaterialLogs = async (
 // ─── PURCHASE ORDERS ────────────────────────────────────────────────────────
 
 export const insertPurchaseOrder = async (po: PurchaseOrder, orgId: string): Promise<PurchaseOrder | null> => {
-  const { data, error } = await supabase
-    .from('purchase_orders')
-    .insert({
-      organization_id: orgId,
-      date: po.date,
-      vendor_name: po.vendorName,
-      status: po.status || 'Draft',
-      items: po.items as any,
-      total_cost: po.totalCost || 0,
-      notes: po.notes || null,
-    })
-    .select()
-    .single();
+  const { data, error } = await retryWrite(
+    () => supabase
+      .from('purchase_orders')
+      .insert({
+        organization_id: orgId,
+        date: po.date,
+        vendor_name: po.vendorName,
+        status: po.status || 'Draft',
+        items: po.items as any,
+        total_cost: po.totalCost || 0,
+        notes: po.notes || null,
+      })
+      .select()
+      .single(),
+    'insertPurchaseOrder'
+  );
 
   if (error) {
     console.error('insertPurchaseOrder error:', error);
@@ -629,10 +720,13 @@ export const updateOrgSettings = async (
   const existing = (typeof org.settings === 'string' ? JSON.parse(org.settings as string) : org.settings) || {};
   const merged = { ...existing, ...settings };
 
-  const { error } = await supabase
-    .from('organizations')
-    .update({ settings: merged })
-    .eq('id', orgId);
+  const { error } = await retryWrite(
+    () => supabase
+      .from('organizations')
+      .update({ settings: merged })
+      .eq('id', orgId),
+    'updateOrgSettings'
+  );
 
   if (error) {
     console.error('updateOrgSettings error:', error);
@@ -648,23 +742,26 @@ export const updateCompanyProfile = async (
   // NOTE: Do NOT include `settings` here — settings (yields, costs, pricingMode,
   // sqFtRates, lifetimeUsage, website) are managed exclusively by updateOrgSettings.
   // Overwriting `settings` here would destroy all those values on every sync.
-  const { error } = await supabase
-    .from('organizations')
-    .update({
-      name: profile.companyName,
-      phone: profile.phone || null,
-      email: profile.email || null,
-      logo_url: profile.logoUrl || null,
-      crew_pin: profile.crewAccessPin || null,
-      address: {
-        line1: profile.addressLine1 || '',
-        line2: profile.addressLine2 || '',
-        city: profile.city || '',
-        state: profile.state || '',
-        zip: profile.zip || '',
-      },
-    })
-    .eq('id', orgId);
+  const { error } = await retryWrite(
+    () => supabase
+      .from('organizations')
+      .update({
+        name: profile.companyName,
+        phone: profile.phone || null,
+        email: profile.email || null,
+        logo_url: profile.logoUrl || null,
+        crew_pin: profile.crewAccessPin || null,
+        address: {
+          line1: profile.addressLine1 || '',
+          line2: profile.addressLine2 || '',
+          city: profile.city || '',
+          state: profile.state || '',
+          zip: profile.zip || '',
+        },
+      })
+      .eq('id', orgId),
+    'updateCompanyProfile'
+  );
 
   if (error) {
     console.error('updateCompanyProfile error:', error);
@@ -674,10 +771,13 @@ export const updateCompanyProfile = async (
 };
 
 export const updateCrewPinDb = async (orgId: string, newPin: string): Promise<boolean> => {
-  const { error } = await supabase
-    .from('organizations')
-    .update({ crew_pin: newPin })
-    .eq('id', orgId);
+  const { error } = await retryWrite(
+    () => supabase
+      .from('organizations')
+      .update({ crew_pin: newPin })
+      .eq('id', orgId),
+    'updateCrewPin'
+  );
 
   if (error) {
     console.error('updateCrewPin error:', error);
@@ -1131,9 +1231,12 @@ export const uploadImage = async (file: File, orgId: string): Promise<string | n
   const ext = file.name.split('.').pop() || 'jpg';
   const fileName = `${orgId}/${Date.now()}.${ext}`;
 
-  const { error } = await supabase.storage
-    .from('uploads')
-    .upload(fileName, file, { cacheControl: '3600', upsert: false });
+  const { error } = await retryWrite(
+    () => supabase.storage
+      .from('uploads')
+      .upload(fileName, file, { cacheControl: '3600', upsert: false }),
+    'uploadImage'
+  );
 
   if (error) {
     console.error('uploadImage error:', error);
