@@ -34,6 +34,12 @@ interface OrgData {
   purchase_orders: any[];
 }
 
+// ─── SERVER-SIDE RETRY QUEUE ────────────────────────────────────────────────
+// Module-level org ID set during fetchOrgData / fetchCrewWorkOrders so
+// retryWrite can enqueue failures without every call-site passing orgId.
+let _currentOrgId: string | null = null;
+export const setCurrentOrgId = (orgId: string) => { _currentOrgId = orgId; };
+
 const isRetryableWriteError = (error: any): boolean => {
   if (!error) return false;
   const code = String(error.code || '');
@@ -46,10 +52,56 @@ const isRetryableWriteError = (error: any): boolean => {
   return false;
 };
 
+/**
+ * Enqueue a failed write to the server-side retry queue.
+ * Falls back silently (console.error) if the enqueue itself fails — we
+ * never want the retry-queue RPC to crash the caller's UX.
+ */
+const enqueueFailedWrite = async (
+  orgId: string,
+  tableName: string,
+  operation: string,
+  payload: Record<string, any>,
+  conflictKey: string = 'id',
+  errorMsg?: string
+): Promise<string | null> => {
+  try {
+    const { data, error } = await supabase.rpc('enqueue_failed_write', {
+      p_org_id: orgId,
+      p_table_name: tableName,
+      p_operation: operation,
+      p_payload: payload,
+      p_conflict_key: conflictKey,
+      p_error_msg: errorMsg || null,
+    });
+    if (error) {
+      console.error('[RetryQueue] enqueue RPC failed:', error.message);
+      return null;
+    }
+    console.log(`[RetryQueue] Enqueued failed ${operation} on ${tableName} — id=${data}`);
+    return data as string;
+  } catch (err: any) {
+    console.error('[RetryQueue] enqueue exception:', err?.message || err);
+    return null;
+  }
+};
+
+interface RetryWriteOptions {
+  /** Supabase table this write targets (for server-side retry) */
+  table?: string;
+  /** Operation type: 'upsert' | 'update' | 'insert' | 'delete' */
+  operation?: string;
+  /** Payload to persist in retry queue (the DB row data) */
+  payload?: Record<string, any>;
+  /** onConflict column name */
+  conflictKey?: string;
+}
+
 const retryWrite = async <T>(
   fn: () => PromiseLike<{ data: T; error: any }>,
   label: string,
-  maxRetries = 3
+  maxRetries = 3,
+  queueOpts?: RetryWriteOptions
 ): Promise<{ data: T; error: any }> => {
   let lastResult: { data: T; error: any } = { data: null as any, error: null };
 
@@ -60,18 +112,34 @@ const retryWrite = async <T>(
 
       lastResult = result;
       if (!isRetryableWriteError(result.error) || attempt === maxRetries) {
-        return result;
+        break;
       }
     } catch (err) {
       lastResult = { data: null as any, error: err };
       if (!isRetryableWriteError(err) || attempt === maxRetries) {
-        return lastResult;
+        break;
       }
     }
 
     const delay = Math.min(400 * Math.pow(2, attempt), 4000);
     console.warn(`[${label}] write attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
     await new Promise(r => setTimeout(r, delay));
+  }
+
+  // All local retries exhausted — enqueue to server-side retry queue if
+  // the error is retryable and we have enough context to replay the write.
+  if (lastResult.error && isRetryableWriteError(lastResult.error) && queueOpts?.table && queueOpts?.payload) {
+    const orgId = queueOpts.payload.organization_id || _currentOrgId;
+    if (orgId) {
+      enqueueFailedWrite(
+        orgId,
+        queueOpts.table,
+        queueOpts.operation || 'upsert',
+        queueOpts.payload,
+        queueOpts.conflictKey || 'id',
+        String(lastResult.error?.message || lastResult.error)
+      );
+    }
   }
 
   return lastResult;
@@ -222,6 +290,7 @@ const dbPurchaseOrder = (row: any): PurchaseOrder => ({
  */
 export const fetchOrgData = async (orgId: string): Promise<Partial<CalculatorState> | null> => {
   try {
+    _currentOrgId = orgId;
     const { data, error } = await supabase.rpc('get_org_data', { org_id: orgId });
 
     if (error) {
@@ -328,7 +397,9 @@ export const upsertCustomer = async (customer: CustomerProfile, orgId: string): 
       .upsert(payload, { onConflict: 'id' })
       .select()
       .single(),
-    'upsertCustomer'
+    'upsertCustomer',
+    3,
+    { table: 'customers', operation: 'upsert', payload, conflictKey: 'id' }
   );
 
   if (error) {
@@ -386,7 +457,9 @@ export const upsertEstimate = async (record: EstimateRecord, orgId: string): Pro
       .upsert(dbRow, { onConflict: 'id' })
       .select()
       .single(),
-    'upsertEstimate'
+    'upsertEstimate',
+    3,
+    { table: 'estimates', operation: 'upsert', payload: dbRow as Record<string, any>, conflictKey: 'id' }
   );
 
   if (error) {
@@ -514,15 +587,18 @@ export const updateWarehouseStock = async (
   openCellSets: number,
   closedCellSets: number
 ): Promise<boolean> => {
+  const wsPayload = {
+    organization_id: orgId,
+    open_cell_sets: openCellSets,
+    closed_cell_sets: closedCellSets,
+  };
   const { error } = await retryWrite(
     () => supabase
       .from('warehouse_stock')
-      .upsert({
-        organization_id: orgId,
-        open_cell_sets: openCellSets,
-        closed_cell_sets: closedCellSets,
-      }, { onConflict: 'organization_id' }),
-    'updateWarehouseStock'
+      .upsert(wsPayload, { onConflict: 'organization_id' }),
+    'updateWarehouseStock',
+    3,
+    { table: 'warehouse_stock', operation: 'upsert', payload: wsPayload, conflictKey: 'organization_id' }
   );
 
   if (error) {
@@ -575,7 +651,9 @@ export const upsertInventoryItem = async (item: WarehouseItem, orgId: string): P
       .upsert(payload, { onConflict: 'id' })
       .select()
       .single(),
-    'upsertInventoryItem'
+    'upsertInventoryItem',
+    3,
+    { table: 'inventory_items', operation: 'upsert', payload, conflictKey: 'id' }
   );
 
   if (error) {
@@ -617,7 +695,9 @@ export const upsertEquipment = async (item: EquipmentItem, orgId: string): Promi
       .upsert(payload, { onConflict: 'id' })
       .select()
       .single(),
-    'upsertEquipment'
+    'upsertEquipment',
+    3,
+    { table: 'equipment', operation: 'upsert', payload, conflictKey: 'id' }
   );
 
   if (error) {
@@ -678,10 +758,21 @@ export const insertMaterialLogs = async (
     log_type: log.logType || 'estimated',
   }));
 
+  // Enqueue each row individually so the retry queue can replay single inserts
   const { error } = await retryWrite(
     () => supabase.from('material_logs').insert(rows),
-    'insertMaterialLogs'
+    'insertMaterialLogs',
+    3,
+    rows.length === 1
+      ? { table: 'material_logs', operation: 'insert', payload: rows[0] as Record<string, any> }
+      : undefined
   );
+  // For multi-row inserts, enqueue each row individually on failure
+  if (error && isRetryableWriteError(error) && rows.length > 1 && _currentOrgId) {
+    for (const row of rows) {
+      enqueueFailedWrite(_currentOrgId, 'material_logs', 'insert', row as Record<string, any>, 'id', String(error.message || error));
+    }
+  }
   if (error) {
     console.error('insertMaterialLogs error:', error);
     return false;
@@ -952,6 +1043,7 @@ const buildCrewResult = (
  * Crew has no auth.uid() — uses org_id from PIN login session.
  */
 export const fetchCrewWorkOrders = async (orgId: string): Promise<Partial<CalculatorState> | null> => {
+  _currentOrgId = orgId;
   // ── Attempt 1: RPC call (preferred) ──
   try {
     const { data, error } = await supabase.rpc('get_crew_work_orders', { p_org_id: orgId });
@@ -1093,6 +1185,23 @@ export const crewUpdateJob = async (
 
   if (error) {
     console.error('crewUpdateJob failed after retries:', error);
+    // Enqueue the underlying estimate update to the server-side retry queue
+    // so the crew's work isn't silently lost.
+    if (isRetryableWriteError(error)) {
+      enqueueFailedWrite(
+        orgId,
+        'estimates',
+        'update',
+        {
+          id: estimateId,
+          organization_id: orgId,
+          actuals,
+          execution_status: executionStatus,
+        },
+        'id',
+        String(error.message || error)
+      );
+    }
     return false;
   }
 

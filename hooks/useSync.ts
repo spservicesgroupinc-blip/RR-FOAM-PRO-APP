@@ -21,6 +21,7 @@ import {
   insertMaterialLogs,
   markEstimateInventoryProcessed,
   flushOfflineCrewQueue,
+  setCurrentOrgId,
 } from '../services/supabaseService';
 import { fetchSubscriptionStatus } from '../services/subscriptionService';
 import safeStorage from '../utils/safeStorage';
@@ -296,6 +297,7 @@ export const useSync = () => {
     const initializeApp = async () => {
       dispatch({ type: 'SET_LOADING', payload: true });
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
+      setCurrentOrgId(session.organizationId);
 
       try {
         // Use crew-specific RPC if crew role (no auth.uid() available)
