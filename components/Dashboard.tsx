@@ -1,8 +1,8 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { DollarSign, HardHat, Receipt, Filter, Plus, Trash, CheckCircle2, AlertCircle, Clock, TrendingUp, TrendingDown, Wallet, PieChart, Fuel, ArrowRight, AlertTriangle, BarChart3, RefreshCw, Droplet, Zap, Crown, Download } from 'lucide-react';
+import { DollarSign, HardHat, Receipt, Filter, Plus, Trash, CheckCircle2, AlertCircle, Clock, TrendingUp, TrendingDown, Wallet, PieChart, Fuel, ArrowRight, AlertTriangle, BarChart3, RefreshCw, Droplet, Zap, Download } from 'lucide-react';
 import { CalculatorState, EstimateRecord, SubscriptionInfo } from '../types';
-import { getTrialDaysRemaining } from '../services/subscriptionService';
+// import { getTrialDaysRemaining } from '../services/subscriptionService';
 import { usePagination } from '../hooks/usePagination';
 import { PaginationControls } from './PaginationControls';
 import { FeedbackButton } from './FeedbackButton';
@@ -158,51 +158,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
       </button>
   );
 
-  const trialDays = subscription ? getTrialDaysRemaining(subscription) : null;
-
   return (
     <div className="space-y-6 animate-in fade-in zoom-in duration-200">
 
         {/* Feedback */}
         <div className="flex justify-end"><FeedbackButton area="Dashboard" /></div>
 
-        {/* SUBSCRIPTION / TRIAL BANNER */}
-        {subscription && (subscription.isTrialExpired || subscription.plan === 'trial' || subscription.status === 'past_due') && (
-          <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
-            subscription.isTrialExpired
-              ? 'bg-red-50 border-red-200 text-red-800'
-              : subscription.status === 'past_due'
-              ? 'bg-amber-50 border-amber-200 text-amber-800'
-              : 'bg-blue-50 border-blue-200 text-blue-800'
-          }`}>
-            <div className="flex items-center gap-3">
-              <div className={`p-2 rounded-xl ${
-                subscription.isTrialExpired ? 'bg-red-100' : subscription.status === 'past_due' ? 'bg-amber-100' : 'bg-blue-100'
-              }`}>
-                <Crown className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="font-bold text-sm">
-                  {subscription.isTrialExpired
-                    ? 'Your free trial has expired'
-                    : subscription.status === 'past_due'
-                    ? 'Payment past due — update your billing'
-                    : `Free Trial — ${trialDays ?? '?'} day${trialDays === 1 ? '' : 's'} remaining`
-                  }
-                </p>
-                <p className="text-xs opacity-75 mt-0.5">
-                  {subscription.isTrialExpired
-                    ? 'Upgrade to keep using RR Foam Pro. Your data is safe.'
-                    : `${subscription.usage.estimatesThisMonth}/${subscription.usage.maxEstimates} estimates this month · ${subscription.usage.customers}/${subscription.usage.maxCustomers} customers`
-                  }
-                </p>
-              </div>
-            </div>
-            <button className="px-5 py-2 bg-slate-900 text-white font-bold text-xs uppercase tracking-widest rounded-full hover:bg-brand transition-colors whitespace-nowrap">
-              Upgrade Plan
-            </button>
-          </div>
-        )}
+        {/* SUBSCRIPTION / TRIAL BANNER — disabled for testing */}
         
         {/* TOP METRICS ROW */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

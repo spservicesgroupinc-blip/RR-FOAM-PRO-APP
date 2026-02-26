@@ -52,16 +52,16 @@ export const fetchSubscriptionStatus = async (orgId: string): Promise<Subscripti
 // ─── HELPERS ────────────────────────────────────────────────────────────────
 
 const getDefaultTrialInfo = (): SubscriptionInfo => ({
-  plan: 'trial',
+  plan: 'enterprise',
   status: 'active',
   isTrialExpired: false,
   usage: {
     estimatesThisMonth: 0,
-    maxEstimates: PLAN_LIMITS.trial.estimates,
+    maxEstimates: 99999,
     customers: 0,
-    maxCustomers: PLAN_LIMITS.trial.customers,
+    maxCustomers: 99999,
     users: 0,
-    maxUsers: PLAN_LIMITS.trial.users,
+    maxUsers: 50,
   },
 });
 
@@ -73,47 +73,7 @@ export const checkPlanLimit = (
   sub: SubscriptionInfo,
   action: 'create_estimate' | 'create_customer' | 'add_user'
 ): { allowed: boolean; message?: string } => {
-  if (sub.isTrialExpired) {
-    return {
-      allowed: false,
-      message: 'Your trial has expired. Please upgrade to continue using RR Foam Pro.',
-    };
-  }
-
-  if (sub.status === 'cancelled' || sub.status === 'suspended') {
-    return {
-      allowed: false,
-      message: `Your subscription is ${sub.status}. Please contact support.`,
-    };
-  }
-
-  switch (action) {
-    case 'create_estimate':
-      if (sub.usage.estimatesThisMonth >= sub.usage.maxEstimates) {
-        return {
-          allowed: false,
-          message: `Monthly estimate limit reached (${sub.usage.estimatesThisMonth}/${sub.usage.maxEstimates}). Upgrade for more.`,
-        };
-      }
-      break;
-    case 'create_customer':
-      if (sub.usage.customers >= sub.usage.maxCustomers) {
-        return {
-          allowed: false,
-          message: `Customer limit reached (${sub.usage.customers}/${sub.usage.maxCustomers}). Upgrade for more.`,
-        };
-      }
-      break;
-    case 'add_user':
-      if (sub.usage.users >= sub.usage.maxUsers) {
-        return {
-          allowed: false,
-          message: `User limit reached (${sub.usage.users}/${sub.usage.maxUsers}). Upgrade for more.`,
-        };
-      }
-      break;
-  }
-
+  // All limits bypassed for testing
   return { allowed: true };
 };
 
