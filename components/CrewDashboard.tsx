@@ -7,7 +7,7 @@ import {
     MessageSquare, History, Zap, RotateCcw, Bluetooth
 } from 'lucide-react';
 import { CalculatorState, EstimateRecord } from '../types';
-import { crewUpdateJob } from '../services/supabaseService';
+import { crewUpdateJob, subscribeToWorkOrderUpdates } from '../services/supabaseService';
 import safeStorage from '../utils/safeStorage';
 import { FeedbackButton } from './FeedbackButton';
 
@@ -477,6 +477,21 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
     return () => clearInterval(syncInterval);
   }, [showCompletionModal, isCompleting, onSync]);
+
+  // --- REAL-TIME WORK ORDER BROADCAST LISTENER ---
+  // When an admin generates a work order, broadcastWorkOrderUpdate() fires a
+  // Supabase broadcast event on the org's channel. We listen here and trigger
+  // an immediate sync so the crew sees the new job instantly — no 45s wait.
+  useEffect(() => {
+    if (!organizationId) return;
+    const unsubscribe = subscribeToWorkOrderUpdates(organizationId, () => {
+      if (!showCompletionModal && !isCompleting) {
+        console.log('[CrewDashboard] Work order broadcast received — syncing now');
+        onSync();
+      }
+    });
+    return () => unsubscribe();
+  }, [organizationId, showCompletionModal, isCompleting, onSync]);
 
   // Timer Tick
   useEffect(() => {
