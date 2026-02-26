@@ -137,10 +137,11 @@ export const useEstimates = () => {
     dispatch({ type: 'UPDATE_DATA', payload: { savedEstimates: updatedEstimates } });
     dispatch({ type: 'SET_EDITING_ESTIMATE', payload: estimateId });
     
-    // Check for implicit customer creation
+    // Check for implicit customer creation — await so the customer exists
+    // in Supabase before the estimate upsert references it via foreign key.
     if (!appData.customers.find(c => c.id === appData.customerProfile.id)) {
         const newCustomer = { ...appData.customerProfile, id: appData.customerProfile.id || Math.random().toString(36).substr(2, 9) };
-        saveCustomer(newCustomer);
+        await saveCustomer(newCustomer);
     }
 
     // Redirect control
@@ -299,7 +300,7 @@ export const useEstimates = () => {
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' });
   };
 
-  const saveCustomer = (customerData: CustomerProfile) => {
+  const saveCustomer = async (customerData: CustomerProfile) => {
     // Check subscription limits for new customers
     const isNew = !appData.customers.find(c => c.id === customerData.id);
     if (isNew && subscription) {
@@ -322,21 +323,27 @@ export const useEstimates = () => {
         dispatch({ type: 'UPDATE_DATA', payload: { customers: updatedCustomers } });
     }
 
-    // Persist to Supabase in background
+    // Persist to Supabase instantly — await the write so data is confirmed
+    // in the cloud before the user proceeds to the next workflow step.
     if (session?.organizationId) {
-      upsertCustomer(customerData, session.organizationId).then(saved => {
+      try {
+        dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
+        const saved = await upsertCustomer(customerData, session.organizationId);
         if (!saved) {
           throw new Error('Supabase upsertCustomer returned null');
         }
-        if (saved && saved.id !== customerData.id) {
+        if (saved.id !== customerData.id) {
           // DB assigned a new UUID — update local list
           const fixed = updatedCustomers.map(c => c.id === customerData.id ? { ...customerData, id: saved.id } : c);
           dispatch({ type: 'UPDATE_DATA', payload: { customers: fixed } });
         }
-      }).catch(err => {
+        dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
+        setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 2000);
+      } catch (err) {
         console.error('Supabase customer save failed:', err);
+        dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
         dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Customer saved locally but failed to sync to cloud.' } });
-      });
+      }
     }
   };
 

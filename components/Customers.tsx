@@ -12,7 +12,7 @@ interface CustomersProps {
   orgId?: string;
   viewingCustomerId: string | null;
   onSelectCustomer: (id: string | null) => void;
-  onSaveCustomer: (customer: CustomerProfile) => void;
+  onSaveCustomer: (customer: CustomerProfile) => void | Promise<void>;
   onArchiveCustomer: (id: string) => void;
   onStartEstimate: (customer: CustomerProfile) => void;
   onLoadEstimate: (est: EstimateRecord) => void;
@@ -111,10 +111,19 @@ export const Customers: React.FC<CustomersProps> = ({
     setIsModalOpen(true);
   };
 
-  const handleSave = () => {
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
     if (!formData.name) return alert('Name is required');
-    onSaveCustomer(formData);
-    setIsModalOpen(false);
+    setIsSaving(true);
+    try {
+      await onSaveCustomer(formData);
+      setIsModalOpen(false);
+    } catch (err) {
+      console.error('Customer save failed:', err);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Filter and paginate active customers
@@ -323,9 +332,11 @@ export const Customers: React.FC<CustomersProps> = ({
                             <div> <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1 tracking-widest">Phone</label> <input type="text" className="w-full border-2 border-slate-100 rounded-2xl p-4 font-bold" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} /> </div>
                             <div> <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1 tracking-widest">Email</label> <input type="email" className="w-full border-2 border-slate-100 rounded-2xl p-4 font-bold" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} /> </div>
                             </div>
-                            <div className="flex gap-3 pt-6">
-                                <button onClick={() => setIsModalOpen(false)} className="flex-1 p-4 border-2 border-slate-100 rounded-2xl font-black uppercase text-xs tracking-widest text-slate-400 hover:bg-slate-50 transition-colors">Cancel</button>
-                                <button onClick={handleSave} className="flex-1 p-4 bg-brand text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-brand-hover shadow-lg shadow-red-200 transition-all">Save Profile</button>
+                        <div className="flex gap-3 pt-6">
+                                <button onClick={() => setIsModalOpen(false)} disabled={isSaving} className="flex-1 p-4 border-2 border-slate-100 rounded-2xl font-black uppercase text-xs tracking-widest text-slate-400 hover:bg-slate-50 transition-colors">Cancel</button>
+                                <button onClick={handleSave} disabled={isSaving} className="flex-1 p-4 bg-brand text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-brand-hover shadow-lg shadow-red-200 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                                    {isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : 'Save Profile'}
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -404,8 +415,10 @@ export const Customers: React.FC<CustomersProps> = ({
                         <div> <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1 tracking-widest">Email</label> <input type="email" className="w-full border-2 border-slate-100 rounded-2xl p-4 font-bold" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} /> </div>
                         </div>
                         <div className="flex gap-3 pt-6">
-                            <button onClick={() => setIsModalOpen(false)} className="flex-1 p-4 border-2 border-slate-100 rounded-2xl font-black uppercase text-xs tracking-widest text-slate-400 hover:bg-slate-50 transition-colors">Cancel</button>
-                            <button onClick={handleSave} className="flex-1 p-4 bg-brand text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-brand-hover shadow-lg shadow-red-200 transition-all">Save Profile</button>
+                            <button onClick={() => setIsModalOpen(false)} disabled={isSaving} className="flex-1 p-4 border-2 border-slate-100 rounded-2xl font-black uppercase text-xs tracking-widest text-slate-400 hover:bg-slate-50 transition-colors">Cancel</button>
+                            <button onClick={handleSave} disabled={isSaving} className="flex-1 p-4 bg-brand text-white rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-brand-hover shadow-lg shadow-red-200 transition-all disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                                {isSaving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : 'Save Profile'}
+                            </button>
                         </div>
                     </div>
                 </div>
