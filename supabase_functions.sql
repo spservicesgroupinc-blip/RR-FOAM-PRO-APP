@@ -618,6 +618,54 @@ CREATE POLICY "Admin estimates access" ON estimates
     )
   );
 
+-- Admin read/write for inventory_items
+-- (RLS is enabled in the schema but policy was previously missing)
+DROP POLICY IF EXISTS "Admin inventory_items access" ON inventory_items;
+CREATE POLICY "Admin inventory_items access" ON inventory_items
+  FOR ALL TO authenticated USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = (SELECT auth.uid())
+      AND profiles.organization_id = inventory_items.organization_id
+      AND profiles.role = 'admin'
+    )
+  );
+
+
+-- ─── SUBSCRIPTIONS TABLE ─────────────────────────────────────────────────────
+-- Tracks SaaS subscription plans per organization.
+-- Used by the check_estimate_limit trigger to enforce monthly limits.
+-- Without this table the trigger would raise "relation does not exist" and
+-- block ALL new estimate inserts, causing data to appear only locally then
+-- disappear on the next cloud fetch.
+
+CREATE TABLE IF NOT EXISTS subscriptions (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE,
+  plan text NOT NULL DEFAULT 'trial',
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'canceled', 'past_due', 'trialing')),
+  trial_ends_at timestamptz,
+  current_period_end timestamptz,
+  max_estimates_per_month integer DEFAULT 10,
+  stripe_subscription_id text,
+  stripe_customer_id text,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Admin subscriptions access" ON subscriptions;
+CREATE POLICY "Admin subscriptions access" ON subscriptions
+  FOR ALL TO authenticated USING (
+    EXISTS (
+      SELECT 1 FROM profiles
+      WHERE profiles.id = (SELECT auth.uid())
+      AND profiles.organization_id = subscriptions.organization_id
+      AND profiles.role = 'admin'
+    )
+  );
+
 
 -- ─── ESTIMATE LIMIT TRIGGER ──────────────────────────────────────────────────
 -- Enforces monthly estimate creation limits based on subscription plan.
@@ -641,19 +689,30 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- Get subscription for this org
-  SELECT * INTO v_sub
-  FROM subscriptions
-  WHERE organization_id = NEW.organization_id
-    AND status = 'active';
-  
-  -- No subscription = no limit (graceful degradation)
+  -- Get subscription for this org.
+  -- Wrapped in exception handler so a missing subscriptions table (e.g. on
+  -- a fresh database setup that hasn't run this migration yet) does not
+  -- block estimate inserts with "relation does not exist".
+  BEGIN
+    SELECT * INTO v_sub
+    FROM subscriptions
+    WHERE organization_id = NEW.organization_id
+      AND status = 'active';
+  EXCEPTION WHEN undefined_table THEN
+    -- subscriptions table not yet created — allow all inserts through.
+    -- Raise a notice so operators can see in Supabase logs that limit
+    -- enforcement is inactive until the subscriptions table is created.
+    RAISE NOTICE 'check_estimate_limit: subscriptions table not found — skipping limit check for org %', NEW.organization_id;
+    RETURN NEW;
+  END;
+
+  -- No subscription row = no limit (graceful degradation)
   IF NOT FOUND THEN
     RETURN NEW;
   END IF;
 
   -- Check if trial expired
-  IF v_sub.plan = 'trial' AND v_sub.trial_ends_at < now() THEN
+  IF v_sub.plan = 'trial' AND v_sub.trial_ends_at IS NOT NULL AND v_sub.trial_ends_at < now() THEN
     RAISE EXCEPTION 'Trial period has expired. Please upgrade to continue creating estimates.';
   END IF;
 
@@ -663,7 +722,7 @@ BEGIN
   WHERE organization_id = NEW.organization_id
     AND created_at >= date_trunc('month', now());
 
-  IF v_count >= v_sub.max_estimates_per_month THEN
+  IF v_sub.max_estimates_per_month IS NOT NULL AND v_count >= v_sub.max_estimates_per_month THEN
     RAISE EXCEPTION 'Monthly estimate limit reached (% of %). Upgrade your plan for more.', v_count, v_sub.max_estimates_per_month;
   END IF;
 
@@ -676,6 +735,64 @@ DROP TRIGGER IF EXISTS enforce_estimate_limit ON estimates;
 CREATE TRIGGER enforce_estimate_limit
   BEFORE INSERT ON estimates
   FOR EACH ROW EXECUTE FUNCTION check_estimate_limit();
+
+
+-- ─── GET SUBSCRIPTION STATUS RPC ────────────────────────────────────────────
+-- Returns subscription info for an org. Called by the client-side
+-- fetchSubscriptionStatus() to display plan limits in the UI.
+-- Returns 'no_subscription' status when no row exists so the client
+-- falls back to the default enterprise trial (unlimited) settings.
+
+CREATE OR REPLACE FUNCTION get_subscription_status(p_org_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_sub record;
+  v_estimate_count integer;
+  v_customer_count integer;
+BEGIN
+  SELECT * INTO v_sub
+  FROM subscriptions
+  WHERE organization_id = p_org_id
+    AND status = 'active'
+  ORDER BY created_at DESC
+  LIMIT 1;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('status', 'no_subscription');
+  END IF;
+
+  SELECT COUNT(*) INTO v_estimate_count
+  FROM estimates
+  WHERE organization_id = p_org_id
+    AND created_at >= date_trunc('month', now());
+
+  SELECT COUNT(*) INTO v_customer_count
+  FROM customers
+  WHERE organization_id = p_org_id;
+
+  RETURN jsonb_build_object(
+    'plan', v_sub.plan,
+    'status', v_sub.status,
+    'trial_ends_at', v_sub.trial_ends_at,
+    'is_trial_expired', (v_sub.plan = 'trial' AND v_sub.trial_ends_at IS NOT NULL AND v_sub.trial_ends_at < now()),
+    'current_period_end', v_sub.current_period_end,
+    'usage', jsonb_build_object(
+      'estimates_this_month', v_estimate_count,
+      'max_estimates', COALESCE(v_sub.max_estimates_per_month, 10),
+      'customers', v_customer_count,
+      'max_customers', 99999,
+      'users', 1,
+      'max_users', 50
+    )
+  );
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION get_subscription_status(uuid) TO anon, authenticated;
 
 
 -- ============================================================================

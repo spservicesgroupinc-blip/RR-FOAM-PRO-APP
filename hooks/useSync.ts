@@ -48,6 +48,12 @@ export const useSync = () => {
   const lastSyncedHashRef = useRef<string>('');
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
+  // Always-current appData ref so event handlers (visibilitychange, pageshow,
+  // online) can access the latest estimates without being re-registered on
+  // every appData change (which would cause excessive subscription churn).
+  const appDataRef = useRef(appData);
+  appDataRef.current = appData;
+
   // ── Warehouse sync tracking ──────────────────────────────────────────────
   // Tracks the last warehouse state synced from/to the server. This prevents
   // the auto-sync from blindly overwriting crew_update_job warehouse adjustments
@@ -771,7 +777,24 @@ export const useSync = () => {
 
         if (cloudData) {
           const updatePayload: any = {};
-          if (cloudData.savedEstimates) updatePayload.savedEstimates = cloudData.savedEstimates;
+          if (cloudData.savedEstimates) {
+            // Merge cloud estimates with any local-only estimates that may not
+            // have reached Supabase yet (e.g. network request cancelled by iOS
+            // when app was backgrounded right after the estimate was created).
+            // Cloud version is authoritative for estimates present in both;
+            // local-only estimates (not yet confirmed in Supabase) are preserved
+            // so the auto-sync can retry uploading them.
+            const currentLocal = appDataRef.current.savedEstimates || [];
+            if (currentLocal.length > 0) {
+              const cloudIds = new Set(cloudData.savedEstimates.map((e: any) => e.id));
+              const localOnly = currentLocal.filter(e => !cloudIds.has(e.id));
+              updatePayload.savedEstimates = localOnly.length > 0
+                ? [...cloudData.savedEstimates, ...localOnly]
+                : cloudData.savedEstimates;
+            } else {
+              updatePayload.savedEstimates = cloudData.savedEstimates;
+            }
+          }
           if (cloudData.customers) updatePayload.customers = cloudData.customers;
           if (cloudData.warehouse && !isInventorySyncLocked()) {
             updatePayload.warehouse = cloudData.warehouse;
@@ -779,7 +802,7 @@ export const useSync = () => {
           }
           if (Object.keys(updatePayload).length > 0) {
             dispatch({ type: 'UPDATE_DATA', payload: updatePayload });
-            lastSyncedHashRef.current = computeHash({ ...appData, ...updatePayload });
+            lastSyncedHashRef.current = computeHash({ ...appDataRef.current, ...updatePayload });
           }
           dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
           setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 2000);
