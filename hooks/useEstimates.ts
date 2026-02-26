@@ -61,7 +61,7 @@ export const useEstimates = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const saveEstimate = async (results: CalculationResults, targetStatus?: EstimateRecord['status'], extraData?: Partial<EstimateRecord>, shouldRedirect: boolean = true) => {
+  const saveEstimate = async (results: CalculationResults, targetStatus?: EstimateRecord['status'], extraData?: Partial<EstimateRecord>, shouldRedirect: boolean = true, awaitCloud: boolean = false) => {
     if (!appData.customerProfile.name) { 
         dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Customer Name Required to Save' } });
         return null; 
@@ -118,6 +118,7 @@ export const useEstimates = () => {
       financials: existingRecord?.financials,
       inventoryProcessed: existingRecord?.inventoryProcessed || false,
       workOrderSheetUrl: existingRecord?.workOrderSheetUrl,
+      lastModified: new Date().toISOString(),
       
       // Preserve custom lines if not provided in extraData
       invoiceLines: extraData?.invoiceLines || existingRecord?.invoiceLines,
@@ -153,31 +154,56 @@ export const useEstimates = () => {
                         targetStatus === 'Paid' ? 'Payment Recorded' : 'Estimate Saved';
     dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: actionLabel } });
 
-    // Persist to Supabase in background (non-blocking).
-    // Store the promise so handleBackgroundWorkOrderSync can await it
-    // before broadcasting to crew (prevents race condition).
+    // Persist to Supabase.
+    // When awaitCloud is true, we block until the write succeeds so the caller
+    // knows the data is in Supabase before proceeding (critical for workflow
+    // transitions like Draft → Work Order → Invoiced that feed the crew dashboard).
+    // When false, fire-and-forget for snappy UI on casual edits.
     if (session?.organizationId) {
       const upsertPromise = upsertEstimate(newEstimate, session.organizationId);
       pendingEstimateUpsertRef.current = upsertPromise;
-      const localId = newEstimate.id; // Capture the ID at save time for the .then() handler
-      upsertPromise.then(saved => {
-        // Only clear the ref if it's still OUR promise (prevents race with a
-        // subsequent saveEstimate call overwriting the ref).
-        if (pendingEstimateUpsertRef.current === upsertPromise) {
-          pendingEstimateUpsertRef.current = null;
+      const localId = newEstimate.id; // Capture the ID at save time
+
+      if (awaitCloud) {
+        // Synchronous cloud save — block until Supabase write completes
+        try {
+          dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
+          const saved = await upsertPromise;
+          if (pendingEstimateUpsertRef.current === upsertPromise) {
+            pendingEstimateUpsertRef.current = null;
+          }
+          if (saved && saved.id !== localId) {
+            dispatch({ type: 'RENAME_ESTIMATE_ID', payload: { oldId: localId, newId: saved.id, customerId: saved.customerId } });
+            newEstimate.id = saved.id;
+            newEstimate.customerId = saved.customerId;
+          }
+          dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
+          setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 2000);
+        } catch (err) {
+          if (pendingEstimateUpsertRef.current === upsertPromise) {
+            pendingEstimateUpsertRef.current = null;
+          }
+          console.error('Supabase estimate save failed:', err);
+          dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
+          dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Cloud save failed. Data saved locally — will retry automatically.' } });
         }
-        if (saved && saved.id !== localId) {
-          // DB assigned a new UUID — use RENAME_ESTIMATE_ID to safely update
-          // the CURRENT state instead of overwriting with a stale closure array.
-          dispatch({ type: 'RENAME_ESTIMATE_ID', payload: { oldId: localId, newId: saved.id, customerId: saved.customerId } });
-        }
-      }).catch(err => {
-        if (pendingEstimateUpsertRef.current === upsertPromise) {
-          pendingEstimateUpsertRef.current = null;
-        }
-        console.error('Supabase estimate save failed:', err);
-        dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Cloud save failed. Data saved locally.' } });
-      });
+      } else {
+        // Fire-and-forget for non-critical saves (background sync will retry)
+        upsertPromise.then(saved => {
+          if (pendingEstimateUpsertRef.current === upsertPromise) {
+            pendingEstimateUpsertRef.current = null;
+          }
+          if (saved && saved.id !== localId) {
+            dispatch({ type: 'RENAME_ESTIMATE_ID', payload: { oldId: localId, newId: saved.id, customerId: saved.customerId } });
+          }
+        }).catch(err => {
+          if (pendingEstimateUpsertRef.current === upsertPromise) {
+            pendingEstimateUpsertRef.current = null;
+          }
+          console.error('Supabase estimate save failed:', err);
+          dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Cloud save failed. Data saved locally — will retry automatically.' } });
+        });
+      }
     }
 
     return newEstimate;
@@ -249,7 +275,7 @@ export const useEstimates = () => {
       const financials = { revenue, totalCOGS, chemicalCost, laborCost, inventoryCost, miscCost, netProfit, margin };
 
       // Optimistic local update
-      const paidEstimate: EstimateRecord = { ...estimate, status: 'Paid', financials };
+      const paidEstimate: EstimateRecord = { ...estimate, status: 'Paid', financials, lastModified: new Date().toISOString() };
       const updatedEstimates = appData.savedEstimates.map(e => e.id === id ? paidEstimate : e);
       dispatch({ type: 'UPDATE_DATA', payload: { savedEstimates: updatedEstimates } });
       dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Paid! Profit Calculated.' } });
@@ -435,7 +461,7 @@ export const useEstimates = () => {
       equipment: [...appData.jobEquipment]
     };
 
-    const record = await saveEstimate(results, 'Work Order', { workOrderLines, materials: resolvedMaterials, inventoryProcessed: true }, false);
+    const record = await saveEstimate(results, 'Work Order', { workOrderLines, materials: resolvedMaterials, inventoryProcessed: true }, false, true);
     
     if (record) {
         let updatedEquipment = appData.equipment;

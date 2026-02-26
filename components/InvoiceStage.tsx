@@ -202,15 +202,15 @@ export const InvoiceStage: React.FC<InvoiceStageProps> = ({
       setIsProcessing(true);
 
       try {
-          // Update record with lines first
-          // We wait for the save to complete and return the fresh record
+          // Save invoice with lines to Supabase synchronously (awaitCloud=true)
+          // so the data is confirmed persisted before navigating away.
           const updatedRecord = await saveEstimate(results, 'Invoiced', {
               invoiceLines: invoiceLines,
               totalValue: invoiceTotal
-          }, false);
+          }, false, true);
 
           if (updatedRecord) {
-              await onConfirm(updatedRecord); // Pass fresh record to parent for PDF gen
+              await onConfirm(updatedRecord); // Pass fresh record to parent
           }
       } catch (err) {
           console.error('Error saving invoice:', err);

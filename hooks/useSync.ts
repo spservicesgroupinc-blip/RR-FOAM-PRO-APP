@@ -245,7 +245,10 @@ export const useSync = () => {
     lastSyncedWarehouseRef.current = computeWarehouseHash(newWarehouse);
   }, [dispatch, computeWarehouseHash]);
 
-  // Simple hash to detect changes without deep comparison
+  // Hash to detect changes without deep comparison.
+  // Includes estimate statuses, execution statuses, and lastModified timestamps
+  // so that workflow transitions (Draft→Work Order→Invoiced→Paid) and crew
+  // completion updates are detected and synced reliably.
   const computeHash = useCallback((data: any): string => {
     try {
       return JSON.stringify({
@@ -257,6 +260,8 @@ export const useSync = () => {
         costs: data.costs,
         companyProfile: data.companyProfile,
         _ts: data.savedEstimates?.map((e: any) => e.lastModified || e.date).join(','),
+        _st: data.savedEstimates?.map((e: any) => `${e.id}:${e.status}:${e.executionStatus}:${e.totalValue}`).join(','),
+        _cust: data.customers?.map((c: any) => `${c.id}:${c.name}:${c.status}`).join(','),
       });
     } catch {
       return '';

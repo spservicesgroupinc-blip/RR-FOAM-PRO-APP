@@ -43,7 +43,7 @@ const SprayFoamCalculator: React.FC = () => {
   const { state, dispatch } = useCalculator();
   const { appData, ui, session } = state;
   const { handleManualSync, forceRefresh } = useSync(); 
-  const { loadEstimateForEditing, saveEstimate, awaitPendingUpsert, handleDeleteEstimate, handleMarkPaid, saveCustomer, confirmWorkOrder, createPurchaseOrder } = useEstimates();
+  const { loadEstimateForEditing, saveEstimate, handleDeleteEstimate, handleMarkPaid, saveCustomer, confirmWorkOrder, createPurchaseOrder } = useEstimates();
 
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [autoTriggerCustomerModal, setAutoTriggerCustomerModal] = useState(false);
@@ -333,17 +333,16 @@ const SprayFoamCalculator: React.FC = () => {
       // Pass lines here to ensure they are saved.
       const totalFromLines = lines.reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
 
+      // awaitCloud=true ensures the invoice is persisted in Supabase before
+      // marking paid, preventing the race condition where markEstimatePaid
+      // targets a record that doesn't exist in the DB yet.
       const savedRecord = await saveEstimate(results, 'Invoiced', {
           invoiceLines: lines,
           totalValue: totalFromLines
-      }, false); // Don't redirect — we handle navigation after payment
+      }, false, true); // awaitCloud=true
 
       if (savedRecord) {
-          // Ensure the Supabase upsert completes before marking paid,
-          // otherwise markEstimatePaid may target a record that doesn't
-          // exist in the DB yet (race condition).
-          const persistedId = await awaitPendingUpsert();
-          const targetId = persistedId || savedRecord.id;
+          const targetId = savedRecord.id;
           await handleMarkPaid(targetId);
       }
   };
@@ -380,16 +379,22 @@ const SprayFoamCalculator: React.FC = () => {
     dispatch({ type: 'SET_VIEW', payload: 'estimate_stage' });
   };
 
-  // Called after InvoiceStage saves its lines to the record
+  // Called after InvoiceStage saves its lines to the record.
+  // The InvoiceStage already awaited the Supabase write (awaitCloud=true)
+  // before calling this, so we just need to navigate.
   const handleConfirmInvoice = async (record?: EstimateRecord) => {
     const finalRecord = record || appData.savedEstimates.find(e => e.id === ui.editingEstimateId);
 
     if (finalRecord) {
-        // Data is already saved — just navigate to dashboard
+        // If the record doesn't have 'Invoiced' status yet (edge case: the
+        // InvoiceStage save failed silently), do an explicit cloud save now.
+        if (finalRecord.status !== 'Invoiced') {
+            await saveEstimate(results, 'Invoiced', {}, false, true);
+        }
         dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Invoice saved successfully.' } });
         dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
     } else {
-        const newRec = await saveEstimate(results, 'Invoiced');
+        const newRec = await saveEstimate(results, 'Invoiced', {}, true, true);
         if (newRec) {
             dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Invoice saved successfully.' } });
             dispatch({ type: 'SET_VIEW', payload: 'dashboard' });
@@ -397,10 +402,9 @@ const SprayFoamCalculator: React.FC = () => {
     }
   };
 
-  // Called after EstimateStage saves its lines
+  // Called after EstimateStage saves its lines (already cloud-synced via awaitCloud=true)
   const handleConfirmEstimate = async (record: EstimateRecord, shouldPrint: boolean) => {
-      // Data is already saved — advance to Work Order stage in the customer workflow.
-      // PDF is only generated when user explicitly requests it via a download button.
+      // Data is already saved and synced to Supabase — advance to Work Order stage.
       dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Estimate saved! Now generate the Work Order.' } });
       dispatch({ type: 'SET_EDITING_ESTIMATE', payload: record.id });
       dispatch({ type: 'SET_VIEW', payload: 'work_order_stage' });

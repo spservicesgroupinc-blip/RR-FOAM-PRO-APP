@@ -175,11 +175,13 @@ export const EstimateStage: React.FC<EstimateStageProps> = ({
       setIsProcessing(true);
 
       try {
-          // Save record with lines, then generate PDF and advance
+          // Save record with lines, then advance to next stage.
+          // awaitCloud=true ensures the Supabase write completes before
+          // navigating — this guarantees the crew dashboard can see the data.
           const updatedRecord = await saveEstimate(results, undefined, {
               estimateLines: estimateLines,
               totalValue: estimateTotal
-          }, false);
+          }, false, true);
 
           if (updatedRecord) {
               await onConfirm(updatedRecord, true);
