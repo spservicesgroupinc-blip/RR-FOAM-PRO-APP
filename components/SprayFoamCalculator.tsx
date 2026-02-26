@@ -14,7 +14,6 @@ import { useSync } from '../hooks/useSync';
 import { useEstimates } from '../hooks/useEstimates';
 import { calculateResults } from '../utils/calculatorHelpers';
 import { generateDocumentPDF, generateEstimatePDF, generateWorkOrderPDF } from '../utils/pdfGenerator';
-import { syncUp } from '../services/api';
 import { upsertInventoryItem, upsertEquipment, deleteEquipmentItem, upsertCustomer, deleteInventoryItem, updateCompanyProfile } from '../services/supabaseService';
 import { getCurrentSession, signOut } from '../services/auth';
 import safeStorage from '../utils/safeStorage';
@@ -44,7 +43,7 @@ const SprayFoamCalculator: React.FC = () => {
   const { state, dispatch } = useCalculator();
   const { appData, ui, session } = state;
   const { handleManualSync, forceRefresh } = useSync(); 
-  const { loadEstimateForEditing, saveEstimate, handleDeleteEstimate, handleMarkPaid, saveCustomer, confirmWorkOrder, createPurchaseOrder } = useEstimates();
+  const { loadEstimateForEditing, saveEstimate, awaitPendingUpsert, handleDeleteEstimate, handleMarkPaid, saveCustomer, confirmWorkOrder, createPurchaseOrder } = useEstimates();
 
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [autoTriggerCustomerModal, setAutoTriggerCustomerModal] = useState(false);
@@ -337,18 +336,13 @@ const SprayFoamCalculator: React.FC = () => {
       const savedRecord = await saveEstimate(results, 'Invoiced', {
           invoiceLines: lines,
           totalValue: totalFromLines
-      });
+      }, false); // Don't redirect — we handle navigation after payment
 
       if (savedRecord) {
-          if (session?.spreadsheetId) {
-             dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
-             const stateSnapshot = {
-                 ...appData,
-                 savedEstimates: appData.savedEstimates.map(e => e.id === savedRecord.id ? savedRecord : e)
-             };
-             await syncUp(stateSnapshot, session.spreadsheetId);
-          }
-          // Just mark paid — no auto PDF
+          // Ensure the Supabase upsert completes before marking paid,
+          // otherwise markEstimatePaid may target a record that doesn't
+          // exist in the DB yet (race condition).
+          await awaitPendingUpsert();
           await handleMarkPaid(savedRecord.id);
       }
   };

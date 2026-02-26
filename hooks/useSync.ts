@@ -15,6 +15,8 @@ import {
   updateWarehouseStock,
   upsertInventoryItem,
   upsertEquipment,
+  upsertEstimate,
+  upsertCustomer,
   deleteEquipmentItem,
   insertMaterialLogs,
   markEstimateInventoryProcessed,
@@ -489,6 +491,30 @@ export const useSync = () => {
             await Promise.all(
               appData.equipment.map(item =>
                 upsertEquipment(item, session.organizationId)
+              )
+            );
+          }
+
+          // Sync estimates — ensures any failed background upserts are retried.
+          // Each estimate is upserted individually so one bad record doesn't
+          // block the rest. Errors are logged but don't abort the sync.
+          if (appData.savedEstimates?.length > 0) {
+            await Promise.allSettled(
+              appData.savedEstimates.map(estimate =>
+                upsertEstimate(estimate, session.organizationId).catch(err => {
+                  console.warn(`[Auto-Sync] Estimate ${estimate.id} sync failed:`, err?.message || err);
+                })
+              )
+            );
+          }
+
+          // Sync customers — ensures any failed background upserts are retried.
+          if (appData.customers?.length > 0) {
+            await Promise.allSettled(
+              appData.customers.map(customer =>
+                upsertCustomer(customer, session.organizationId).catch(err => {
+                  console.warn(`[Auto-Sync] Customer ${customer.id} sync failed:`, err?.message || err);
+                })
               )
             );
           }

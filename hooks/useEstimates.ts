@@ -179,6 +179,24 @@ export const useEstimates = () => {
     return newEstimate;
   };
 
+  /**
+   * Await the in-flight Supabase upsert started by saveEstimate().
+   * Returns the persisted record ID (may differ from local ID if DB assigned a UUID).
+   * Callers that need the estimate to exist in Supabase before performing
+   * further DB operations (e.g., markEstimatePaid) should call this first.
+   */
+  const awaitPendingUpsert = async (): Promise<string | null> => {
+    if (!pendingEstimateUpsertRef.current) return null;
+    try {
+      const saved = await pendingEstimateUpsertRef.current;
+      return saved?.id || null;
+    } catch {
+      return null;
+    } finally {
+      pendingEstimateUpsertRef.current = null;
+    }
+  };
+
   const handleDeleteEstimate = async (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (confirm("Are you sure you want to delete this job?")) {
@@ -609,6 +627,7 @@ export const useEstimates = () => {
   return {
     loadEstimateForEditing,
     saveEstimate,
+    awaitPendingUpsert,
     handleDeleteEstimate,
     handleMarkPaid,
     saveCustomer,
