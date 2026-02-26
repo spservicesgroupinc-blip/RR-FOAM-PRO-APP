@@ -322,3 +322,1060 @@ const buildCompanyProfile = (org: any): CompanyProfile => {
     crewAccessPin: org.crew_pin || '',
   };
 };
+
+
+// ==========================================
+// FETCH ALL ORG DATA (single RPC call)
+// ==========================================
+
+export const fetchOrgData = async (orgId: string): Promise<Partial<CalculatorState> | null> => {
+  if (!orgId) {
+    console.error('fetchOrgData: orgId is required');
+    return null;
+  }
+
+  try {
+    _currentOrgId = orgId;
+    const { data, error } = await retryRPC(
+      () => supabase.rpc('get_org_data', { org_id: orgId }),
+      2,
+      'fetchOrgData'
+    );
+
+    if (error) {
+      console.error('fetchOrgData RPC error:', error);
+      return null;
+    }
+
+    const orgData = data as unknown as OrgData;
+    if (!orgData) return null;
+
+    const org = orgData.organization || {};
+    const settings = (typeof org.settings === 'string' ? JSON.parse(org.settings) : org.settings) || {};
+    const customers = (orgData.customers || []).map(dbCustomerToProfile);
+    const estimates = (orgData.estimates || []).map((e: any) => dbEstimateToRecord(e, customers));
+    const warehouseItems = (orgData.inventory_items || []).map(dbInventoryToWarehouseItem);
+    const equipmentItems = (orgData.equipment || []).map(dbEquipmentToItem);
+    const materialLogs = (orgData.material_logs || []).map(dbLogToEntry);
+    const purchaseOrders = (orgData.purchase_orders || []).map(dbPurchaseOrder);
+    const whStock = orgData.warehouse_stock || {};
+
+    return {
+      companyProfile: buildCompanyProfile(org),
+      customers,
+      savedEstimates: estimates,
+      warehouse: {
+        openCellSets: Number(whStock.open_cell_sets) || 0,
+        closedCellSets: Number(whStock.closed_cell_sets) || 0,
+        items: warehouseItems,
+      },
+      equipment: equipmentItems,
+      materialLogs,
+      purchaseOrders,
+      yields: settings.yields || undefined,
+      costs: settings.costs || undefined,
+      pricingMode: settings.pricingMode || undefined,
+      sqFtRates: settings.sqFtRates || undefined,
+      lifetimeUsage: settings.lifetimeUsage || undefined,
+    };
+  } catch (err) {
+    console.error('fetchOrgData exception:', err);
+    return null;
+  }
+};
+
+
+// ==========================================
+// CUSTOMERS
+// ==========================================
+
+export const upsertCustomer = async (customer: CustomerProfile, orgId: string): Promise<CustomerProfile | null> => {
+  const payload: any = {
+    organization_id: orgId,
+    name: customer.name,
+    address: customer.address || null,
+    city: customer.city || null,
+    state: customer.state || null,
+    zip: customer.zip || null,
+    email: customer.email || null,
+    phone: customer.phone || null,
+    status: customer.status || 'Active',
+    notes: customer.notes || null,
+  };
+
+  if (isValidUuid(customer.id)) {
+    payload.id = customer.id;
+  }
+
+  if (!payload.id && customer.name) {
+    const { data: existing } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('organization_id', orgId)
+      .ilike('name', customer.name)
+      .limit(1)
+      .maybeSingle();
+    if (existing?.id) {
+      payload.id = existing.id;
+    }
+  }
+
+  const { data, error } = await retryWrite(
+    () => supabase
+      .from('customers')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single(),
+    'upsertCustomer',
+    3,
+    { table: 'customers', operation: 'upsert', payload, conflictKey: 'id' }
+  );
+
+  if (error) {
+    console.error('upsertCustomer error:', error);
+    return null;
+  }
+
+  return dbCustomerToProfile(data);
+};
+
+export const batchUpsertCustomers = async (
+  customers: CustomerProfile[],
+  orgId: string
+): Promise<CustomerProfile[]> => {
+  if (!customers.length) return [];
+
+  const payload = customers.map(c => ({
+    id: isValidUuid(c.id) ? c.id : undefined,
+    name: c.name,
+    address: c.address || null,
+    city: c.city || null,
+    state: c.state || null,
+    zip: c.zip || null,
+    email: c.email || null,
+    phone: c.phone || null,
+    status: c.status || 'Active',
+    notes: c.notes || null,
+  }));
+
+  try {
+    const { data, error } = await retryRPC(
+      () => supabase.rpc('batch_upsert_customers', {
+        p_org_id: orgId,
+        p_customers: payload,
+      }),
+      2,
+      'batchUpsertCustomers'
+    );
+
+    if (error) {
+      console.warn('[batchUpsertCustomers] RPC failed, falling back to individual upserts:', error.message);
+      const results: CustomerProfile[] = [];
+      for (const c of customers) {
+        const saved = await upsertCustomer(c, orgId);
+        if (saved) results.push(saved);
+      }
+      return results;
+    }
+
+    return ((data as any[]) || []).map(dbCustomerToProfile);
+  } catch (err) {
+    console.error('batchUpsertCustomers exception:', err);
+    return [];
+  }
+};
+
+export const deleteCustomer = async (customerId: string): Promise<boolean> => {
+  const { error } = await retryWrite(
+    () => supabase.from('customers').delete().eq('id', customerId),
+    'deleteCustomer'
+  );
+  if (error) {
+    console.error('deleteCustomer error:', error);
+    return false;
+  }
+  return true;
+};
+
+
+// ==========================================
+// ESTIMATES
+// ==========================================
+
+export const upsertEstimate = async (record: EstimateRecord, orgId: string): Promise<EstimateRecord | null> => {
+  if (record.customer?.name) {
+    const savedCustomer = await upsertCustomer(record.customer, orgId);
+    if (savedCustomer) {
+      record.customerId = savedCustomer.id;
+      record.customer = savedCustomer;
+    }
+  }
+
+  const dbRow = recordToDbEstimate(record, orgId);
+
+  if (!isValidUuid(record.id)) {
+    delete (dbRow as any).id;
+  }
+
+  if ((dbRow as any).customer_id && !isValidUuid((dbRow as any).customer_id)) {
+    console.warn('[upsertEstimate] customer_id is not a valid UUID, setting to null:', (dbRow as any).customer_id);
+    (dbRow as any).customer_id = null;
+  }
+
+  const { data, error } = await retryWrite(
+    () => supabase
+      .from('estimates')
+      .upsert(dbRow, { onConflict: 'id' })
+      .select()
+      .single(),
+    'upsertEstimate',
+    3,
+    { table: 'estimates', operation: 'upsert', payload: dbRow as Record<string, any>, conflictKey: 'id' }
+  );
+
+  if (error) {
+    console.error('upsertEstimate error:', error);
+    throw new Error(error.message || 'Failed to save estimate to cloud');
+  }
+
+  return dbEstimateToRecord(data, [record.customer]);
+};
+
+export const deleteEstimateDb = async (estimateId: string): Promise<boolean> => {
+  const { error } = await retryWrite(
+    () => supabase.from('estimates').delete().eq('id', estimateId),
+    'deleteEstimate'
+  );
+  if (error) {
+    console.error('deleteEstimate error:', error);
+    return false;
+  }
+  return true;
+};
+
+export const updateEstimateStatus = async (
+  estimateId: string,
+  status: string,
+  extraFields?: Record<string, any>
+): Promise<boolean> => {
+  const payload: any = { status, last_modified: new Date().toISOString() };
+  if (extraFields) Object.assign(payload, extraFields);
+
+  const { error } = await retryWrite(
+    () => supabase
+      .from('estimates')
+      .update(payload)
+      .eq('id', estimateId),
+    'updateEstimateStatus'
+  );
+
+  if (error) {
+    console.error('updateEstimateStatus error:', error);
+    return false;
+  }
+  return true;
+};
+
+export const updateEstimateActuals = async (
+  estimateId: string,
+  actuals: any,
+  executionStatus: string
+): Promise<boolean> => {
+  const { error } = await retryWrite(
+    () => supabase
+      .from('estimates')
+      .update({
+        actuals,
+        execution_status: executionStatus,
+        last_modified: new Date().toISOString(),
+      })
+      .eq('id', estimateId),
+    'updateEstimateActuals'
+  );
+
+  if (error) {
+    console.error('updateEstimateActuals error:', error);
+    return false;
+  }
+  return true;
+};
+
+export const markEstimatePaid = async (
+  estimateId: string,
+  financials: any
+): Promise<boolean> => {
+  const { error } = await retryWrite(
+    () => supabase
+      .from('estimates')
+      .update({
+        status: 'Paid',
+        financials,
+        last_modified: new Date().toISOString(),
+      })
+      .eq('id', estimateId),
+    'markEstimatePaid'
+  );
+
+  if (error) {
+    console.error('markEstimatePaid error:', error);
+    return false;
+  }
+  return true;
+};
+
+export const markEstimateInventoryProcessed = async (
+  estimateId: string
+): Promise<boolean> => {
+  const { error } = await retryWrite(
+    () => supabase
+      .from('estimates')
+      .update({
+        inventory_processed: true,
+        last_modified: new Date().toISOString(),
+      })
+      .eq('id', estimateId),
+    'markEstimateInventoryProcessed'
+  );
+
+  if (error) {
+    console.error('markEstimateInventoryProcessed error:', error);
+    return false;
+  }
+  return true;
+};
+
+
+// ==========================================
+// WAREHOUSE / INVENTORY
+// ==========================================
+
+export const updateWarehouseStock = async (
+  orgId: string,
+  openCellSets: number,
+  closedCellSets: number
+): Promise<boolean> => {
+  const wsPayload = {
+    organization_id: orgId,
+    open_cell_sets: openCellSets,
+    closed_cell_sets: closedCellSets,
+  };
+  const { error } = await retryWrite(
+    () => supabase
+      .from('warehouse_stock')
+      .upsert(wsPayload, { onConflict: 'organization_id' }),
+    'updateWarehouseStock',
+    3,
+    { table: 'warehouse_stock', operation: 'upsert', payload: wsPayload, conflictKey: 'organization_id' }
+  );
+
+  if (error) {
+    console.error('updateWarehouseStock error:', error);
+    return false;
+  }
+  return true;
+};
+
+export const upsertInventoryItem = async (item: WarehouseItem, orgId: string): Promise<WarehouseItem | null> => {
+  const payload: any = {
+    organization_id: orgId,
+    name: item.name,
+    quantity: item.quantity,
+    unit: item.unit,
+    unit_cost: item.unitCost || 0,
+    category: 'material',
+  };
+
+  if (isValidUuid(item.id)) {
+    payload.id = item.id;
+  }
+
+  if (!payload.id && item.name) {
+    const { data: existing } = await supabase
+      .from('inventory_items')
+      .select('id')
+      .eq('organization_id', orgId)
+      .ilike('name', item.name)
+      .limit(1)
+      .maybeSingle();
+
+    if (existing?.id) {
+      payload.id = existing.id;
+    }
+  }
+
+  const { data, error } = await retryWrite(
+    () => supabase
+      .from('inventory_items')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single(),
+    'upsertInventoryItem',
+    3,
+    { table: 'inventory_items', operation: 'upsert', payload, conflictKey: 'id' }
+  );
+
+  if (error) {
+    console.error('upsertInventoryItem error:', error);
+    return null;
+  }
+  return dbInventoryToWarehouseItem(data);
+};
+
+export const batchUpsertInventoryItems = async (
+  items: WarehouseItem[],
+  orgId: string
+): Promise<WarehouseItem[]> => {
+  if (!items.length) return [];
+
+  const payload = items.map(item => ({
+    id: isValidUuid(item.id) ? item.id : undefined,
+    name: item.name,
+    quantity: item.quantity,
+    unit: item.unit,
+    unit_cost: item.unitCost || 0,
+    category: 'material',
+  }));
+
+  try {
+    const { data, error } = await retryRPC(
+      () => supabase.rpc('batch_upsert_inventory', {
+        p_org_id: orgId,
+        p_items: payload,
+      }),
+      2,
+      'batchUpsertInventory'
+    );
+
+    if (error) {
+      console.warn('[batchUpsertInventory] RPC failed, falling back to individual upserts:', error.message);
+      const results: WarehouseItem[] = [];
+      for (const item of items) {
+        const saved = await upsertInventoryItem(item, orgId);
+        if (saved) results.push(saved);
+      }
+      return results;
+    }
+
+    return ((data as any[]) || []).map(dbInventoryToWarehouseItem);
+  } catch (err) {
+    console.error('batchUpsertInventory exception:', err);
+    return [];
+  }
+};
+
+export const deleteInventoryItem = async (itemId: string): Promise<boolean> => {
+  const { error } = await retryWrite(
+    () => supabase.from('inventory_items').delete().eq('id', itemId),
+    'deleteInventoryItem'
+  );
+  if (error) {
+    console.error('deleteInventoryItem error:', error);
+    return false;
+  }
+  return true;
+};
+
+
+// ==========================================
+// EQUIPMENT
+// ==========================================
+
+export const upsertEquipment = async (item: EquipmentItem, orgId: string): Promise<EquipmentItem | null> => {
+  const payload: any = {
+    organization_id: orgId,
+    name: item.name,
+    status: item.status || 'Available',
+    last_seen: item.lastSeen || null,
+  };
+
+  if (isValidUuid(item.id)) {
+    payload.id = item.id;
+  }
+
+  const { data, error } = await retryWrite(
+    () => supabase
+      .from('equipment')
+      .upsert(payload, { onConflict: 'id' })
+      .select()
+      .single(),
+    'upsertEquipment',
+    3,
+    { table: 'equipment', operation: 'upsert', payload, conflictKey: 'id' }
+  );
+
+  if (error) {
+    console.error('upsertEquipment error:', error);
+    return null;
+  }
+  return dbEquipmentToItem(data);
+};
+
+export const deleteEquipmentItem = async (itemId: string): Promise<boolean> => {
+  const { error } = await retryWrite(
+    () => supabase.from('equipment').delete().eq('id', itemId),
+    'deleteEquipment'
+  );
+  if (error) {
+    console.error('deleteEquipment error:', error);
+    return false;
+  }
+  return true;
+};
+
+export const updateEquipmentStatus = async (
+  itemId: string,
+  status: string,
+  lastSeen?: any
+): Promise<boolean> => {
+  const payload: any = { status };
+  if (lastSeen) payload.last_seen = lastSeen;
+
+  const { error } = await retryWrite(
+    () => supabase.from('equipment').update(payload).eq('id', itemId),
+    'updateEquipmentStatus'
+  );
+  if (error) {
+    console.error('updateEquipmentStatus error:', error);
+    return false;
+  }
+  return true;
+};
+
+
+// ==========================================
+// MATERIAL LOGS (batch insert)
+// ==========================================
+
+export const insertMaterialLogs = async (
+  logs: MaterialUsageLogEntry[],
+  orgId: string
+): Promise<boolean> => {
+  if (!logs.length) return true;
+
+  const rows = logs.map(log => ({
+    organization_id: orgId,
+    date: log.date,
+    job_id: log.jobId || null,
+    customer_name: log.customerName || null,
+    material_name: log.materialName,
+    quantity: log.quantity || 0,
+    unit: log.unit || '',
+    logged_by: log.loggedBy || '',
+    log_type: log.logType || 'estimated',
+  }));
+
+  const { error } = await retryWrite(
+    () => supabase.from('material_logs').insert(rows),
+    'insertMaterialLogs',
+    3,
+    rows.length === 1
+      ? { table: 'material_logs', operation: 'insert', payload: rows[0] as Record<string, any> }
+      : undefined
+  );
+
+  if (error && isRetryableError(error) && rows.length > 1 && _currentOrgId) {
+    for (const row of rows) {
+      enqueueFailedWrite(_currentOrgId, 'material_logs', 'insert', row as Record<string, any>, 'id', String(error.message || error));
+    }
+  }
+  if (error) {
+    console.error('insertMaterialLogs error:', error);
+    return false;
+  }
+  return true;
+};
+
+
+// ==========================================
+// PURCHASE ORDERS
+// ==========================================
+
+export const insertPurchaseOrder = async (po: PurchaseOrder, orgId: string): Promise<PurchaseOrder | null> => {
+  const { data, error } = await retryWrite(
+    () => supabase
+      .from('purchase_orders')
+      .insert({
+        organization_id: orgId,
+        date: po.date,
+        vendor_name: po.vendorName,
+        status: po.status || 'Draft',
+        items: po.items as any,
+        total_cost: po.totalCost || 0,
+        notes: po.notes || null,
+      })
+      .select()
+      .single(),
+    'insertPurchaseOrder'
+  );
+
+  if (error) {
+    console.error('insertPurchaseOrder error:', error);
+    return null;
+  }
+  return dbPurchaseOrder(data);
+};
+
+
+// ==========================================
+// ORG SETTINGS & COMPANY PROFILE
+// ==========================================
+
+export const updateOrgSettings = async (
+  orgId: string,
+  settings: Record<string, any>
+): Promise<boolean> => {
+  const { data: org, error: fetchErr } = await supabase
+    .from('organizations')
+    .select('settings')
+    .eq('id', orgId)
+    .single();
+
+  if (fetchErr || !org) {
+    console.error('fetchOrgSettings error:', fetchErr);
+    return false;
+  }
+
+  const existing = (typeof org.settings === 'string' ? JSON.parse(org.settings as string) : org.settings) || {};
+  const merged = { ...existing, ...settings };
+
+  const { error } = await retryWrite(
+    () => supabase
+      .from('organizations')
+      .update({ settings: merged })
+      .eq('id', orgId),
+    'updateOrgSettings'
+  );
+
+  if (error) {
+    console.error('updateOrgSettings error:', error);
+    return false;
+  }
+  return true;
+};
+
+export const updateCompanyProfile = async (
+  orgId: string,
+  profile: CompanyProfile
+): Promise<boolean> => {
+  const { error } = await retryWrite(
+    () => supabase
+      .from('organizations')
+      .update({
+        name: profile.companyName,
+        phone: profile.phone || null,
+        email: profile.email || null,
+        logo_url: profile.logoUrl || null,
+        crew_pin: profile.crewAccessPin || null,
+        address: {
+          line1: profile.addressLine1 || '',
+          line2: profile.addressLine2 || '',
+          city: profile.city || '',
+          state: profile.state || '',
+          zip: profile.zip || '',
+        },
+      })
+      .eq('id', orgId),
+    'updateCompanyProfile'
+  );
+
+  if (error) {
+    console.error('updateCompanyProfile error:', error);
+    return false;
+  }
+  return true;
+};
+
+export const updateCrewPinDb = async (orgId: string, newPin: string): Promise<boolean> => {
+  const { error } = await retryWrite(
+    () => supabase
+      .from('organizations')
+      .update({ crew_pin: newPin })
+      .eq('id', orgId),
+    'updateCrewPin'
+  );
+
+  if (error) {
+    console.error('updateCrewPin error:', error);
+    return false;
+  }
+  return true;
+};
+
+
+// ==========================================
+// BULK SYNC (save full app state to Supabase)
+// ==========================================
+
+export const syncAppDataToSupabase = async (
+  appData: CalculatorState,
+  orgId: string
+): Promise<boolean> => {
+  try {
+    let hasErrors = false;
+
+    // 1. Org-level settings
+    const settingsOk = await updateOrgSettings(orgId, {
+      yields: appData.yields,
+      costs: appData.costs,
+      pricingMode: appData.pricingMode,
+      sqFtRates: appData.sqFtRates,
+      lifetimeUsage: appData.lifetimeUsage,
+    });
+    if (!settingsOk) {
+      hasErrors = true;
+      console.warn('[syncAppData] Failed to update organization settings');
+    }
+
+    // 2. Company profile
+    const companyOk = await updateCompanyProfile(orgId, appData.companyProfile);
+    if (!companyOk) {
+      hasErrors = true;
+      console.warn('[syncAppData] Failed to update company profile');
+    }
+
+    // 3. Warehouse stock
+    const warehouseStockOk = await updateWarehouseStock(
+      orgId,
+      appData.warehouse.openCellSets,
+      appData.warehouse.closedCellSets
+    );
+    if (!warehouseStockOk) {
+      hasErrors = true;
+      console.warn('[syncAppData] Failed to update warehouse stock');
+    }
+
+    // 4. Batch inventory items
+    if (appData.warehouse.items.length > 0) {
+      const saved = await batchUpsertInventoryItems(appData.warehouse.items, orgId);
+      if (saved.length < appData.warehouse.items.length) {
+        hasErrors = true;
+        console.warn(`[syncAppData] Only ${saved.length}/${appData.warehouse.items.length} inventory items synced`);
+      }
+    }
+
+    // 5. Equipment
+    for (const item of appData.equipment) {
+      const saved = await upsertEquipment(item, orgId);
+      if (!saved) {
+        hasErrors = true;
+        console.warn(`[syncAppData] Failed to sync equipment ${item.id || item.name}`);
+      }
+    }
+
+    // 6. Batch customers
+    if (appData.customers.length > 0) {
+      const saved = await batchUpsertCustomers(appData.customers, orgId);
+      if (saved.length < appData.customers.length) {
+        hasErrors = true;
+        console.warn(`[syncAppData] Only ${saved.length}/${appData.customers.length} customers synced`);
+      }
+    }
+
+    // 7. Estimates — continue on individual failures
+    let estimateErrors = 0;
+    for (const estimate of appData.savedEstimates) {
+      try {
+        await upsertEstimate(estimate, orgId);
+      } catch (estErr: any) {
+        estimateErrors++;
+        console.warn(`[syncAppData] Estimate ${estimate.id} failed:`, estErr?.message || estErr);
+      }
+    }
+
+    if (estimateErrors > 0) {
+      console.warn(`[syncAppData] ${estimateErrors}/${appData.savedEstimates.length} estimate(s) failed`);
+    }
+
+    return !hasErrors && estimateErrors === 0;
+  } catch (err) {
+    console.error('syncAppDataToSupabase error:', err);
+    return false;
+  }
+};
+
+
+// ==========================================
+// CREW FUNCTIONS (PIN-based, no auth.uid())
+// ==========================================
+
+const buildCrewResult = (
+  org: any,
+  rawCustomers: any[],
+  rawEstimates: any[]
+): Partial<CalculatorState> => {
+  const customers = rawCustomers.map(dbCustomerToProfile);
+  const estimates = rawEstimates.map((e: any) => dbEstimateToRecord(e, customers));
+
+  const addr = (typeof org.address === 'string' ? JSON.parse(org.address) : org.address) || {};
+  const settings = (typeof org.settings === 'string' ? JSON.parse(org.settings) : org.settings) || {};
+
+  const companyProfile: CompanyProfile = {
+    companyName: org.name || '',
+    addressLine1: addr.line1 || settings.addressLine1 || '',
+    addressLine2: addr.line2 || settings.addressLine2 || '',
+    city: addr.city || settings.city || '',
+    state: addr.state || settings.state || '',
+    zip: addr.zip || settings.zip || '',
+    phone: org.phone || settings.phone || '',
+    email: org.email || settings.email || '',
+    website: settings.website || '',
+    logoUrl: org.logo_url || settings.logoUrl || '',
+    crewAccessPin: org.crew_pin || '',
+  };
+
+  return {
+    companyProfile,
+    customers,
+    savedEstimates: estimates,
+    yields: settings.yields || undefined,
+    costs: settings.costs || undefined,
+  };
+};
+
+export const fetchCrewWorkOrders = async (orgId: string): Promise<Partial<CalculatorState> | null> => {
+  _currentOrgId = orgId;
+
+  // Attempt 1: RPC (SECURITY DEFINER — bypasses RLS for crew)
+  try {
+    const { data, error } = await supabase.rpc('get_crew_work_orders', { p_org_id: orgId });
+
+    if (!error && data) {
+      const result = data as any;
+      console.log('[Crew Sync] RPC success — estimates:', (result.estimates || []).length);
+      return buildCrewResult(
+        result.organization || {},
+        result.customers || [],
+        result.estimates || []
+      );
+    }
+
+    console.warn('[Crew Sync] RPC get_crew_work_orders failed:', error?.message || 'No data');
+    console.warn('[Crew Sync] Hint: Run supabase_functions.sql in the Supabase SQL Editor.');
+  } catch (err) {
+    console.warn('[Crew Sync] RPC exception:', err);
+  }
+
+  // Attempt 2: Direct queries (only works with anon/crew RLS policies)
+  console.log('[Crew Sync] Trying direct query fallback...');
+  try {
+    const [orgRes, custRes, estRes] = await Promise.all([
+      supabase.from('organizations').select('*').eq('id', orgId).single(),
+      supabase.from('customers').select('*').eq('organization_id', orgId),
+      supabase.from('estimates').select('*').eq('organization_id', orgId).eq('status', 'Work Order'),
+    ]);
+
+    if (!orgRes.data || orgRes.error) {
+      console.error(
+        '[Crew Sync] CRITICAL: Cannot read organization data. ' +
+        'Crew users have no auth.uid() — the get_crew_work_orders RPC is required. ' +
+        'Run supabase_functions.sql in the Supabase SQL Editor to fix.'
+      );
+      return null;
+    }
+
+    const rawCustomers = custRes.data || [];
+    const rawEstimates = estRes.data || [];
+
+    if (rawEstimates.length === 0 && estRes.error) {
+      console.error(
+        '[Crew Sync] CRITICAL: Both RPC and direct queries returned 0 estimates. ' +
+        'Run supabase_functions.sql in the Supabase SQL Editor to fix.'
+      );
+      return null;
+    }
+
+    return buildCrewResult(orgRes.data, rawCustomers, rawEstimates);
+  } catch (err) {
+    console.error('[Crew Sync] Direct query fallback exception:', err);
+    return null;
+  }
+};
+
+export const flushOfflineCrewQueue = async (): Promise<number> => {
+  return 0;
+};
+
+export const crewUpdateJob = async (
+  orgId: string,
+  estimateId: string,
+  actuals: any,
+  executionStatus: string
+): Promise<boolean> => {
+  const { data, error } = await retryRPC(
+    () => supabase.rpc('crew_update_job', {
+      p_org_id: orgId,
+      p_estimate_id: estimateId,
+      p_actuals: actuals,
+      p_execution_status: executionStatus,
+    }),
+    3,
+    'crewUpdateJob'
+  );
+
+  if (error) {
+    console.error('crewUpdateJob failed after retries:', error);
+    if (isRetryableError(error)) {
+      enqueueFailedWrite(
+        orgId,
+        'estimates',
+        'update',
+        {
+          id: estimateId,
+          organization_id: orgId,
+          actuals,
+          execution_status: executionStatus,
+        },
+        'id',
+        String(error.message || error)
+      );
+    }
+    return false;
+  }
+
+  return data === true;
+};
+
+
+// ==========================================
+// WAREHOUSE FETCH (lightweight)
+// ==========================================
+
+export const fetchWarehouseState = async (
+  orgId: string
+): Promise<{ openCellSets: number; closedCellSets: number; items: WarehouseItem[] } | null> => {
+  try {
+    const [stockRes, itemsRes] = await Promise.all([
+      supabase.from('warehouse_stock').select('*').eq('organization_id', orgId).single(),
+      supabase.from('inventory_items').select('*').eq('organization_id', orgId),
+    ]);
+
+    const stock = (stockRes.data || {}) as any;
+    const items = (itemsRes.data || []).map(dbInventoryToWarehouseItem);
+
+    return {
+      openCellSets: Number(stock.open_cell_sets) || 0,
+      closedCellSets: Number(stock.closed_cell_sets) || 0,
+      items,
+    };
+  } catch (err) {
+    console.error('fetchWarehouseState error:', err);
+    return null;
+  }
+};
+
+
+// ==========================================
+// REALTIME SUBSCRIPTIONS
+// ==========================================
+
+export const subscribeToOrgChanges = (
+  orgId: string,
+  onEstimateChange: (payload: any) => void,
+  onCustomerChange: (payload: any) => void,
+  onInventoryChange: (payload: any) => void
+) => {
+  const channel = supabase
+    .channel(`org-${orgId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'estimates', filter: `organization_id=eq.${orgId}` },
+      onEstimateChange
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'customers', filter: `organization_id=eq.${orgId}` },
+      onCustomerChange
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'inventory_items', filter: `organization_id=eq.${orgId}` },
+      onInventoryChange
+    )
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'warehouse_stock', filter: `organization_id=eq.${orgId}` },
+      onInventoryChange
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+};
+
+
+// ==========================================
+// IMAGE UPLOAD
+// ==========================================
+
+export const uploadImage = async (file: File, orgId: string): Promise<string | null> => {
+  const ext = file.name.split('.').pop() || 'jpg';
+  const fileName = `${orgId}/${Date.now()}.${ext}`;
+
+  const { error } = await retryWrite(
+    () => supabase.storage
+      .from('uploads')
+      .upload(fileName, file, { cacheControl: '3600', upsert: false }),
+    'uploadImage'
+  );
+
+  if (error) {
+    console.error('uploadImage error:', error);
+    return null;
+  }
+
+  const { data } = supabase.storage.from('uploads').getPublicUrl(fileName);
+  return data?.publicUrl || null;
+};
+
+
+// ==========================================
+// AUTH HELPERS
+// ==========================================
+
+export const updatePassword = async (newPassword: string): Promise<boolean> => {
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) {
+    console.error('updatePassword error:', error);
+    return false;
+  }
+  return true;
+};
+
+
+// ==========================================
+// CREW REALTIME BROADCAST
+// ==========================================
+
+export const broadcastWorkOrderUpdate = (orgId: string): void => {
+  const channelName = `crew-updates-${orgId}`;
+  const channel = supabase.channel(channelName);
+
+  channel.subscribe((status) => {
+    if (status === 'SUBSCRIBED') {
+      channel.send({
+        type: 'broadcast',
+        event: 'work_order_update',
+        payload: { orgId, timestamp: Date.now() },
+      }).catch((err) => console.warn(`[Broadcast] send error for org ${orgId}:`, err));
+      setTimeout(() => supabase.removeChannel(channel), 2000);
+    }
+  });
+};
+
+export const subscribeToWorkOrderUpdates = (
+  orgId: string,
+  onUpdate: () => void
+): (() => void) => {
+  const channelName = `crew-updates-${orgId}`;
+  const channel = supabase
+    .channel(channelName)
+    .on('broadcast', { event: 'work_order_update' }, () => {
+      onUpdate();
+    })
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+};
