@@ -300,8 +300,26 @@ export const upsertCustomer = async (customer: CustomerProfile, orgId: string): 
   };
 
   // If ID looks like a UUID, include it for upsert; otherwise let DB generate
-  if (customer.id && customer.id.includes('-') && customer.id.length > 20) {
+  const isCustomerUuid = customer.id && customer.id.includes('-') && customer.id.length > 20;
+  if (isCustomerUuid) {
     payload.id = customer.id;
+  }
+
+  // For non-UUID IDs: check by name+org to prevent duplicate customer records.
+  // This mirrors the dedup logic in upsertInventoryItem. Without this check,
+  // calling upsertCustomer twice with the same temp ID (once from saveCustomer
+  // and once from upsertEstimate) creates two separate customer rows in Supabase.
+  if (!payload.id && customer.name) {
+    const { data: existing } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('organization_id', orgId)
+      .ilike('name', customer.name)
+      .limit(1)
+      .maybeSingle();
+    if (existing?.id) {
+      payload.id = existing.id;
+    }
   }
 
   const { data, error } = await retryWrite(

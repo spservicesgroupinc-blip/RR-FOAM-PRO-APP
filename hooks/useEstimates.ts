@@ -173,10 +173,28 @@ export const useEstimates = () => {
           if (pendingEstimateUpsertRef.current === upsertPromise) {
             pendingEstimateUpsertRef.current = null;
           }
-          if (saved && saved.id !== localId) {
-            dispatch({ type: 'RENAME_ESTIMATE_ID', payload: { oldId: localId, newId: saved.id, customerId: saved.customerId } });
-            newEstimate.id = saved.id;
-            newEstimate.customerId = saved.customerId;
+          if (saved) {
+            if (saved.id !== localId) {
+              dispatch({ type: 'RENAME_ESTIMATE_ID', payload: { oldId: localId, newId: saved.id, customerId: saved.customerId } });
+              newEstimate.id = saved.id;
+              newEstimate.customerId = saved.customerId;
+            }
+            // Sync customerProfile with the DB-assigned UUID so subsequent saves
+            // (e.g. Draft → Work Order) don't re-use the temp ID and create
+            // duplicate customer rows in Supabase.
+            if (saved.customer?.id && saved.customer.id !== appData.customerProfile.id) {
+              const savedCustomer = saved.customer;
+              const alreadyInList = appData.customers.some(c => c.id === savedCustomer.id);
+              dispatch({
+                type: 'UPDATE_DATA',
+                payload: {
+                  customerProfile: savedCustomer,
+                  customers: alreadyInList
+                    ? appData.customers.map(c => c.id === savedCustomer.id ? savedCustomer : c)
+                    : [...appData.customers, savedCustomer],
+                },
+              });
+            }
           }
           dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
           setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 2000);
@@ -194,8 +212,24 @@ export const useEstimates = () => {
           if (pendingEstimateUpsertRef.current === upsertPromise) {
             pendingEstimateUpsertRef.current = null;
           }
-          if (saved && saved.id !== localId) {
-            dispatch({ type: 'RENAME_ESTIMATE_ID', payload: { oldId: localId, newId: saved.id, customerId: saved.customerId } });
+          if (saved) {
+            if (saved.id !== localId) {
+              dispatch({ type: 'RENAME_ESTIMATE_ID', payload: { oldId: localId, newId: saved.id, customerId: saved.customerId } });
+            }
+            // Same customer sync for fire-and-forget path
+            if (saved.customer?.id && saved.customer.id !== appData.customerProfile.id) {
+              const savedCustomer = saved.customer;
+              const alreadyInList = appData.customers.some(c => c.id === savedCustomer.id);
+              dispatch({
+                type: 'UPDATE_DATA',
+                payload: {
+                  customerProfile: savedCustomer,
+                  customers: alreadyInList
+                    ? appData.customers.map(c => c.id === savedCustomer.id ? savedCustomer : c)
+                    : [...appData.customers, savedCustomer],
+                },
+              });
+            }
           }
         }).catch(err => {
           if (pendingEstimateUpsertRef.current === upsertPromise) {

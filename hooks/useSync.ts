@@ -349,13 +349,6 @@ export const useSync = () => {
         }
       } catch (e) {
         console.error('Cloud sync failed:', e);
-        // Fallback: try localStorage
-        try {
-          const localData = safeStorage.getItem(`foamProState_${session.username}`);
-          if (localData) {
-            dispatch({ type: 'LOAD_DATA', payload: JSON.parse(localData) });
-          }
-        } catch { /* ignore parse errors */ }
         dispatch({ type: 'SET_INITIALIZED', payload: true });
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
       } finally {
@@ -652,6 +645,13 @@ export const useSync = () => {
       }
     } catch {
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
+      dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Sync Failed. Check Internet.' } });
+    }
+  };
+
+  // 6. FORCE REFRESH (Pull from Supabase) — for crew dashboard & manual refresh
+  // For admin: pushes local data first so nothing is lost, then pulls fresh state.
+  const forceRefresh = async () => {
     if (!session?.organizationId) return;
     dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
 

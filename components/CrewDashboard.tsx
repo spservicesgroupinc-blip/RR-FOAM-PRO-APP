@@ -74,30 +74,31 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
   const ocStrokesPerSet = selectedJobForRatio?.materials?.ocStrokesPerSet || state.yields?.openCellStrokes || 6600;
   const ccStrokesPerSet = selectedJobForRatio?.materials?.ccStrokesPerSet || state.yields?.closedCellStrokes || 6600;
 
-  // Persist stroke counts per job to localStorage
-  const strokeStorageKey = (jobId: string, type: string) => `foamPro_strokeCount_${jobId}_${type}`;
-
-  // Load stroke counts when a job is selected
+  // Keep stroke counters in memory and sync to Supabase while a job is active.
   useEffect(() => {
-    if (selectedJobId) {
-      try {
-        const savedOC = safeStorage.getItem(strokeStorageKey(selectedJobId, 'oc'));
-        const savedCC = safeStorage.getItem(strokeStorageKey(selectedJobId, 'cc'));
-        setLiveOCStrokes(savedOC ? parseInt(savedOC, 10) : 0);
-        setLiveCCStrokes(savedCC ? parseInt(savedCC, 10) : 0);
-      } catch { /* storage unavailable */ }
-    }
-  }, [selectedJobId]);
+    if (!selectedJobId || !isTimerRunning) return;
 
-  // Save stroke counts whenever they change
-  useEffect(() => {
-    if (selectedJobId && (liveOCStrokes > 0 || liveCCStrokes > 0)) {
+    const syncTimer = setTimeout(async () => {
       try {
-        safeStorage.setItem(strokeStorageKey(selectedJobId, 'oc'), liveOCStrokes.toString());
-        safeStorage.setItem(strokeStorageKey(selectedJobId, 'cc'), liveCCStrokes.toString());
-      } catch { /* storage unavailable */ }
-    }
-  }, [selectedJobId, liveOCStrokes, liveCCStrokes]);
+        await crewUpdateJob(
+          resolveSessionOrgId(),
+          selectedJobId,
+          {
+            openCellStrokes: liveOCStrokes,
+            closedCellStrokes: liveCCStrokes,
+            openCellSets: round2(liveOCStrokes / ocStrokesPerSet),
+            closedCellSets: round2(liveCCStrokes / ccStrokesPerSet),
+            lastStrokeSyncAt: new Date().toISOString(),
+          },
+          'In Progress'
+        );
+      } catch (e) {
+        console.warn('Live stroke sync failed:', e);
+      }
+    }, 500);
+
+    return () => clearTimeout(syncTimer);
+  }, [selectedJobId, isTimerRunning, liveOCStrokes, liveCCStrokes, ocStrokesPerSet, ccStrokesPerSet]);
 
   // Stroke increment handler — used by click AND keyboard/USB/BT input
   const incrementStroke = useCallback((type?: 'oc' | 'cc', source?: string) => {
@@ -127,10 +128,8 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
     if (window.confirm(`Reset ${type === 'oc' ? 'Open Cell' : 'Closed Cell'} stroke counter to 0?`)) {
       if (type === 'oc') {
         setLiveOCStrokes(0);
-        safeStorage.setItem(strokeStorageKey(selectedJobId, 'oc'), '0');
       } else {
         setLiveCCStrokes(0);
-        safeStorage.setItem(strokeStorageKey(selectedJobId, 'cc'), '0');
       }
     }
   }, [selectedJobId]);
@@ -479,20 +478,6 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
     return () => clearInterval(syncInterval);
   }, [showCompletionModal, isCompleting, onSync]);
 
-  // Restore timer state on load
-  useEffect(() => {
-      try {
-        const savedStart = safeStorage.getItem('foamPro_crewStartTime');
-        const savedJobId = safeStorage.getItem('foamPro_crewActiveJob');
-        
-        if (savedStart && savedJobId) {
-            setJobStartTime(savedStart);
-            setIsTimerRunning(true);
-            setSelectedJobId(savedJobId);
-        }
-      } catch { /* storage unavailable */ }
-  }, []);
-
   // Timer Tick
   useEffect(() => {
       let interval: ReturnType<typeof setInterval>;
@@ -539,10 +524,6 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
       const now = new Date().toISOString();
       setJobStartTime(now);
       setIsTimerRunning(true);
-      try {
-        safeStorage.setItem('foamPro_crewStartTime', now);
-        if (selectedJobId) safeStorage.setItem('foamPro_crewActiveJob', selectedJobId);
-      } catch { /* iOS storage full — timer still works in memory */ }
 
       // Notify backend that crew started the job (with retry via crewUpdateJob)
       try {
@@ -602,10 +583,6 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
           setIsTimerRunning(false);
           setJobStartTime(null);
           setElapsedSeconds(0);
-          try {
-            safeStorage.removeItem('foamPro_crewStartTime');
-            safeStorage.removeItem('foamPro_crewActiveJob');
-          } catch { /* storage unavailable */ }
           
           if (isCompletion) {
               const estLabor = selectedJob.expenses?.manHours || 0;
@@ -675,9 +652,6 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
         const success = await crewUpdateJob(sessionOrgId, selectedJob.id, finalData, 'Completed');
         
         if (success) {
-            // Clear stroke counter localStorage for this job
-            safeStorage.removeItem(strokeStorageKey(selectedJob.id, 'oc'));
-            safeStorage.removeItem(strokeStorageKey(selectedJob.id, 'cc'));
             setLiveOCStrokes(0);
             setLiveCCStrokes(0);
 
