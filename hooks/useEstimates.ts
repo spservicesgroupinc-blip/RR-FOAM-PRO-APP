@@ -61,7 +61,7 @@ export const useEstimates = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const saveEstimate = async (results: CalculationResults, targetStatus?: EstimateRecord['status'], extraData?: Partial<EstimateRecord>, shouldRedirect: boolean = true, awaitCloud: boolean = false) => {
+  const saveEstimate = async (results: CalculationResults, targetStatus?: EstimateRecord['status'], extraData?: Partial<EstimateRecord>, shouldRedirect: boolean = true, awaitCloud: boolean = true) => {
     if (!appData.customerProfile.name) { 
         dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Customer Name Required to Save' } });
         return null; 

@@ -595,7 +595,7 @@ const SprayFoamCalculator: React.FC = () => {
                 onBatchInventoryUpdate={batchUpdateInventoryItem}
                 onAddInventory={addInventoryItem}
                 onRemoveInventory={removeInventoryItem}
-                onSaveEstimate={(status) => saveEstimate(results, status)}
+                onSaveEstimate={(status) => saveEstimate(results, status, undefined, true, true)}
                 onStageWorkOrder={handleStageWorkOrder}
                 onStageInvoice={handleStageInvoice}
                 onStageEstimate={handleStageEstimate} // Pass new handler
