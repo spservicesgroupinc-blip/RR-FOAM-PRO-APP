@@ -611,11 +611,23 @@ export const useSync = () => {
   };
 
   // 6. FORCE REFRESH (Pull from Supabase) — for crew dashboard & manual refresh
+  // For admin: pushes local data first so nothing is lost, then pulls fresh state.
   const forceRefresh = async () => {
     if (!session?.organizationId) return;
     dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
 
     try {
+      // Admin: push local data to Supabase FIRST so the pull doesn't wipe
+      // any estimates/work orders that haven't been synced yet.
+      if (session.role === 'admin') {
+        console.log('[Refresh] Admin — pushing local data before pulling...');
+        try {
+          await syncAppDataToSupabase(appData, session.organizationId);
+        } catch (pushErr) {
+          console.warn('[Refresh] Push failed, continuing with pull:', pushErr);
+        }
+      }
+
       // Use crew-specific RPC if crew role
       console.log(`[Refresh] Pulling data for role=${session.role}...`);
       const cloudData = session.role === 'crew'

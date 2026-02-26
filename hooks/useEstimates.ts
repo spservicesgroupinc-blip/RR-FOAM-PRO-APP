@@ -159,18 +159,22 @@ export const useEstimates = () => {
     if (session?.organizationId) {
       const upsertPromise = upsertEstimate(newEstimate, session.organizationId);
       pendingEstimateUpsertRef.current = upsertPromise;
+      const localId = newEstimate.id; // Capture the ID at save time for the .then() handler
       upsertPromise.then(saved => {
-        pendingEstimateUpsertRef.current = null;
-        if (saved && saved.id !== newEstimate.id) {
-          // DB assigned a new UUID — update local state
-          const fixedEstimates = updatedEstimates.map(e => 
-            e.id === newEstimate.id ? { ...newEstimate, id: saved.id, customerId: saved.customerId } : e
-          );
-          dispatch({ type: 'UPDATE_DATA', payload: { savedEstimates: fixedEstimates } });
-          dispatch({ type: 'SET_EDITING_ESTIMATE', payload: saved.id });
+        // Only clear the ref if it's still OUR promise (prevents race with a
+        // subsequent saveEstimate call overwriting the ref).
+        if (pendingEstimateUpsertRef.current === upsertPromise) {
+          pendingEstimateUpsertRef.current = null;
+        }
+        if (saved && saved.id !== localId) {
+          // DB assigned a new UUID — use RENAME_ESTIMATE_ID to safely update
+          // the CURRENT state instead of overwriting with a stale closure array.
+          dispatch({ type: 'RENAME_ESTIMATE_ID', payload: { oldId: localId, newId: saved.id, customerId: saved.customerId } });
         }
       }).catch(err => {
-        pendingEstimateUpsertRef.current = null;
+        if (pendingEstimateUpsertRef.current === upsertPromise) {
+          pendingEstimateUpsertRef.current = null;
+        }
         console.error('Supabase estimate save failed:', err);
         dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Cloud save failed. Data saved locally.' } });
       });

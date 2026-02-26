@@ -140,6 +140,7 @@ type Action =
   | { type: 'SET_EDITING_ESTIMATE'; payload: string | null }
   | { type: 'SET_VIEWING_CUSTOMER'; payload: string | null }
   | { type: 'UPDATE_SAVED_ESTIMATE'; payload: EstimateRecord }
+  | { type: 'RENAME_ESTIMATE_ID'; payload: { oldId: string; newId: string; customerId?: string } }
   | { type: 'SET_SUBSCRIPTION'; payload: SubscriptionInfo | null }
   | { type: 'RESET_CALCULATOR' }
   | { type: 'LOGOUT' };
@@ -205,6 +206,27 @@ const calculatorReducer = (state: ContextState, action: Action): ContextState =>
           )
         }
       };
+    case 'RENAME_ESTIMATE_ID': {
+      const { oldId, newId, customerId } = action.payload;
+      // Only rename if the old ID still exists (prevents stale closure overwrites)
+      const hasOldId = state.appData.savedEstimates.some(e => e.id === oldId);
+      if (!hasOldId) return state;
+      return {
+        ...state,
+        appData: {
+          ...state.appData,
+          savedEstimates: state.appData.savedEstimates.map(e =>
+            e.id === oldId
+              ? { ...e, id: newId, customerId: customerId || e.customerId }
+              : e
+          )
+        },
+        ui: {
+          ...state.ui,
+          editingEstimateId: state.ui.editingEstimateId === oldId ? newId : state.ui.editingEstimateId,
+        }
+      };
+    }
     case 'RESET_CALCULATOR':
       return {
         ...state,
