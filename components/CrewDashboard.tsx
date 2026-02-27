@@ -462,21 +462,24 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
   }, [isTimerRunning, selectedJobId, incrementStroke]);
 
   // --- AUTOMATIC BACKGROUND SYNC ---
-  useEffect(() => {
-    // Poll for new jobs every 45 seconds
-    const syncInterval = setInterval(() => {
-        // Skip sync only during completion flow (modal open or submitting)
-        // to prevent UI disruption while entering actuals.
-        // Timer-running state is safe because timer/stroke state lives in
-        // local useState and is not affected by the context data refresh.
-        if (!showCompletionModal && !isCompleting) {
-            console.log("Auto-syncing crew dashboard...");
-            onSync();
-        }
-    }, 45000);
+  // REMOVED: The old 45-second setInterval that called onSync (forceRefresh).
+  // forceRefresh depends on appData which changes every render → the interval
+  // was reset before it could fire, so it NEVER actually ran.
+  // The authoritative crew sync is the 10-second poll in useSync.ts which
+  // uses refs (stable) and dispatches UPDATE_DATA (merge, not replace).
+  // Manual sync is still available via the Refresh button (onSync).
 
-    return () => clearInterval(syncInterval);
-  }, [showCompletionModal, isCompleting, onSync]);
+  // --- EAGER SYNC ON MOUNT ---
+  // Fire a sync immediately when the component mounts so crew sees the
+  // latest work orders without waiting for the 10-second poll cycle.
+  const [hasMountSynced, setHasMountSynced] = useState(false);
+  useEffect(() => {
+    if (!hasMountSynced) {
+      setHasMountSynced(true);
+      console.log('[CrewDashboard] Mount sync — fetching latest work orders...');
+      onSync().catch(err => console.warn('[CrewDashboard] Mount sync failed:', err));
+    }
+  }, [hasMountSynced, onSync]);
 
   // --- REAL-TIME WORK ORDER BROADCAST LISTENER ---
   // Handled centrally by useSync.ts setupRealtimeSubscription().

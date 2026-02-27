@@ -510,7 +510,7 @@ export const useSync = () => {
     };
   }, [session?.organizationId, ui.isInitialized, setupRealtimeSubscription]);
 
-  // 3b. CREW POLLING FALLBACK — reliable work order sync every 15 seconds
+  // 3b. CREW POLLING FALLBACK — reliable work order sync every 10 seconds
   // Because crew users have NO auth session (anon role), Supabase Realtime
   // Postgres Changes won't deliver events (RLS blocks anon SELECT on estimates).
   // The broadcast channel is ephemeral and unreliable. This polling interval
@@ -527,8 +527,12 @@ export const useSync = () => {
 
     const pollCrewWorkOrders = async () => {
       try {
+        console.log('[Crew Poll] Fetching work orders for org:', session.organizationId);
         const cloudData = await fetchCrewWorkOrders(session.organizationId);
-        if (!cloudData?.savedEstimates) return;
+        if (!cloudData?.savedEstimates) {
+          console.warn('[Crew Poll] fetchCrewWorkOrders returned null/empty — RPC may be missing');
+          return;
+        }
 
         // Build a hash of the cloud estimates to avoid unnecessary re-renders
         const cloudHash = JSON.stringify(
@@ -549,17 +553,14 @@ export const useSync = () => {
         );
 
         console.log(`[Crew Poll] Fetched ${cloudData.savedEstimates.length} work orders (${newWOs.length} new)`);
-        dispatch({ type: 'UPDATE_DATA', payload: { savedEstimates: cloudData.savedEstimates } });
 
-        // Also update company profile, yields, costs if they came from cloud
-        const extraPayload: any = {};
-        if (cloudData.companyProfile) extraPayload.companyProfile = cloudData.companyProfile;
-        if (cloudData.yields) extraPayload.yields = cloudData.yields;
-        if (cloudData.costs) extraPayload.costs = cloudData.costs;
-        if (cloudData.customers) extraPayload.customers = cloudData.customers;
-        if (Object.keys(extraPayload).length > 0) {
-          dispatch({ type: 'UPDATE_DATA', payload: extraPayload });
-        }
+        // Single dispatch with ALL crew-relevant data in one payload
+        const updatePayload: any = { savedEstimates: cloudData.savedEstimates };
+        if (cloudData.companyProfile) updatePayload.companyProfile = cloudData.companyProfile;
+        if (cloudData.yields) updatePayload.yields = cloudData.yields;
+        if (cloudData.costs) updatePayload.costs = cloudData.costs;
+        if (cloudData.customers) updatePayload.customers = cloudData.customers;
+        dispatch({ type: 'UPDATE_DATA', payload: updatePayload });
 
         // Update tracking set
         cloudData.savedEstimates.forEach((e: EstimateRecord) => {
@@ -594,11 +595,11 @@ export const useSync = () => {
     };
 
     // Initial poll immediately (catches anything missed during app startup)
-    const initialPollTimeout = setTimeout(pollCrewWorkOrders, 3000);
+    const initialPollTimeout = setTimeout(pollCrewWorkOrders, 2000);
 
-    // Then poll every 15 seconds
-    crewPollRef.current = setInterval(pollCrewWorkOrders, 15000);
-    console.log('[Crew Poll] Started polling every 15 seconds for org:', session.organizationId);
+    // Then poll every 10 seconds (reduced from 15s for faster sync)
+    crewPollRef.current = setInterval(pollCrewWorkOrders, 10000);
+    console.log('[Crew Poll] Started polling every 10 seconds for org:', session.organizationId);
 
     return () => {
       clearTimeout(initialPollTimeout);
@@ -808,9 +809,9 @@ export const useSync = () => {
 
   // 6. FORCE REFRESH (Pull from Supabase) — for crew dashboard & manual refresh
   // For admin: pushes local data first so nothing is lost, then pulls fresh state.
-  // Wrapped in useCallback so downstream components (CrewDashboard, auto-sync
-  // intervals) don't see a new function reference on every render, which would
-  // cause unnecessary effect teardown/setup cycles and Realtime channel churn.
+  // Wrapped in useCallback with STABLE deps (no appData!) so downstream components
+  // (CrewDashboard, auto-sync intervals) don't see a new function reference on
+  // every render. Uses appDataRef for current data access.
   const forceRefresh = useCallback(async () => {
     if (!session?.organizationId) return;
     dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
@@ -821,7 +822,7 @@ export const useSync = () => {
       if (session.role === 'admin') {
         console.log('[Refresh] Admin — pushing local data before pulling...');
         try {
-          await syncAppDataToSupabase(appData, session.organizationId);
+          await syncAppDataToSupabase(appDataRef.current, session.organizationId);
         } catch (pushErr) {
           console.warn('[Refresh] Push failed, continuing with pull:', pushErr);
         }
@@ -833,27 +834,44 @@ export const useSync = () => {
         ? await fetchCrewWorkOrders(session.organizationId)
         : await fetchOrgData(session.organizationId);
       if (cloudData) {
-        // Merge cloudData into appData, but skip undefined/null values so that
-        // default state (yields, costs, etc.) is never overwritten with undefined
-        // when settings were previously corrupted or not yet saved.
-        const mergedState = { ...appData };
-        for (const key of Object.keys(cloudData) as (keyof typeof cloudData)[]) {
-          if ((cloudData as any)[key] !== undefined && (cloudData as any)[key] !== null) {
-            (mergedState as any)[key] = (cloudData as any)[key];
+        if (session.role === 'crew') {
+          // Crew: use UPDATE_DATA (merge) instead of LOAD_DATA (replace).
+          // This prevents clobbering local UI state (yields, costs defaults)
+          // with undefined values from the partial crew payload.
+          const updatePayload: any = {};
+          if (cloudData.savedEstimates !== undefined) updatePayload.savedEstimates = cloudData.savedEstimates;
+          if (cloudData.customers) updatePayload.customers = cloudData.customers;
+          if (cloudData.companyProfile) updatePayload.companyProfile = cloudData.companyProfile;
+          if (cloudData.yields) updatePayload.yields = cloudData.yields;
+          if (cloudData.costs) updatePayload.costs = cloudData.costs;
+
+          const estimateCount = (cloudData.savedEstimates || []).length;
+          console.log(`[Refresh] Crew got ${estimateCount} work orders`);
+          dispatch({ type: 'UPDATE_DATA', payload: updatePayload });
+          lastSyncedHashRef.current = computeHash({ ...appDataRef.current, ...updatePayload });
+        } else {
+          // Admin: full merge with LOAD_DATA as before
+          const currentData = appDataRef.current;
+          const mergedState = { ...currentData };
+          for (const key of Object.keys(cloudData) as (keyof typeof cloudData)[]) {
+            if ((cloudData as any)[key] !== undefined && (cloudData as any)[key] !== null) {
+              (mergedState as any)[key] = (cloudData as any)[key];
+            }
+          }
+          const estimateCount = mergedState.savedEstimates?.length || 0;
+          console.log(`[Refresh] Admin got ${estimateCount} estimates`);
+          dispatch({ type: 'LOAD_DATA', payload: mergedState });
+          lastSyncedHashRef.current = computeHash(mergedState);
+          lastSyncedWarehouseRef.current = computeWarehouseHash(mergedState.warehouse);
+
+          // Admin: reconcile any newly completed jobs
+          if (mergedState.savedEstimates && mergedState.warehouse) {
+            reconcileCompletedJobs(mergedState.savedEstimates, mergedState.warehouse, session.organizationId);
           }
         }
-        const estimateCount = mergedState.savedEstimates?.length || 0;
-        console.log(`[Refresh] Got ${estimateCount} estimates`);
-        dispatch({ type: 'LOAD_DATA', payload: mergedState });
-        lastSyncedHashRef.current = computeHash(mergedState);
-        lastSyncedWarehouseRef.current = computeWarehouseHash(mergedState.warehouse);
+
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
         setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 3000);
-
-        // Admin: reconcile any newly completed jobs
-        if (session?.role === 'admin' && mergedState.savedEstimates && mergedState.warehouse) {
-          reconcileCompletedJobs(mergedState.savedEstimates, mergedState.warehouse, session.organizationId);
-        }
       } else {
         console.warn('[Refresh] No data returned');
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
@@ -864,7 +882,7 @@ export const useSync = () => {
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
       dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Refresh Failed.' } });
     }
-  }, [session?.organizationId, session?.role, session?.username, dispatch, appData, computeHash, computeWarehouseHash, reconcileCompletedJobs]);
+  }, [session?.organizationId, session?.role, dispatch, computeHash, computeWarehouseHash, reconcileCompletedJobs]);
 
   // 7. REFRESH SUBSCRIPTION STATUS
   const refreshSubscription = async () => {

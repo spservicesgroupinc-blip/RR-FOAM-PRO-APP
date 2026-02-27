@@ -1135,13 +1135,27 @@ const buildCrewResult = (
 export const fetchCrewWorkOrders = async (orgId: string): Promise<Partial<CalculatorState> | null> => {
   _currentOrgId = orgId;
 
+  if (!orgId) {
+    console.error('[Crew Sync] CRITICAL: orgId is empty/undefined. Cannot fetch work orders.');
+    return null;
+  }
+
   // Attempt 1: RPC (SECURITY DEFINER — bypasses RLS for crew)
   try {
+    console.log('[Crew Sync] Calling get_crew_work_orders RPC for org:', orgId);
     const { data, error } = await supabase.rpc('get_crew_work_orders', { p_org_id: orgId });
 
     if (!error && data) {
       const result = data as any;
-      console.log('[Crew Sync] RPC success — estimates:', (result.estimates || []).length);
+      const estCount = (result.estimates || []).length;
+      const custCount = (result.customers || []).length;
+      const hasOrg = !!result.organization;
+      console.log(`[Crew Sync] RPC success — org: ${hasOrg}, customers: ${custCount}, estimates: ${estCount}`);
+
+      if (!hasOrg) {
+        console.warn('[Crew Sync] RPC returned null organization — orgId may be invalid:', orgId);
+      }
+
       return buildCrewResult(
         result.organization || {},
         result.customers || [],
@@ -1149,10 +1163,11 @@ export const fetchCrewWorkOrders = async (orgId: string): Promise<Partial<Calcul
       );
     }
 
-    console.warn('[Crew Sync] RPC get_crew_work_orders failed:', error?.message || 'No data');
-    console.warn('[Crew Sync] Hint: Run supabase_functions.sql in the Supabase SQL Editor.');
-  } catch (err) {
-    console.warn('[Crew Sync] RPC exception:', err);
+    console.warn('[Crew Sync] RPC get_crew_work_orders failed:', error?.message || 'No data returned');
+    console.warn('[Crew Sync] Error code:', error?.code, '| Hint:', error?.hint || 'none');
+    console.warn('[Crew Sync] FIX: Run supabase_functions.sql in the Supabase SQL Editor.');
+  } catch (err: any) {
+    console.warn('[Crew Sync] RPC exception:', err?.message || err);
   }
 
   // Attempt 2: Direct queries (only works with anon/crew RLS policies)
@@ -1168,7 +1183,10 @@ export const fetchCrewWorkOrders = async (orgId: string): Promise<Partial<Calcul
       console.error(
         '[Crew Sync] CRITICAL: Cannot read organization data. ' +
         'Crew users have no auth.uid() — the get_crew_work_orders RPC is required. ' +
-        'Run supabase_functions.sql in the Supabase SQL Editor to fix.'
+        'Run supabase_functions.sql in the Supabase SQL Editor to fix.',
+        '\n  orgRes error:', orgRes.error?.message || 'none',
+        '\n  custRes error:', custRes.error?.message || 'none',
+        '\n  estRes error:', estRes.error?.message || 'none'
       );
       return null;
     }
@@ -1176,17 +1194,22 @@ export const fetchCrewWorkOrders = async (orgId: string): Promise<Partial<Calcul
     const rawCustomers = custRes.data || [];
     const rawEstimates = estRes.data || [];
 
+    console.log(`[Crew Sync] Direct query fallback — customers: ${rawCustomers.length}, estimates: ${rawEstimates.length}`);
+
     if (rawEstimates.length === 0 && estRes.error) {
       console.error(
         '[Crew Sync] CRITICAL: Both RPC and direct queries returned 0 estimates. ' +
-        'Run supabase_functions.sql in the Supabase SQL Editor to fix.'
+        'Run supabase_functions.sql in the Supabase SQL Editor to fix.',
+        '\n  estRes error:', estRes.error?.message
       );
-      return null;
+      // Return empty result instead of null so crew sees an empty dashboard
+      // rather than an error state. New work orders will appear on next poll.
+      return buildCrewResult(orgRes.data, rawCustomers, []);
     }
 
     return buildCrewResult(orgRes.data, rawCustomers, rawEstimates);
-  } catch (err) {
-    console.error('[Crew Sync] Direct query fallback exception:', err);
+  } catch (err: any) {
+    console.error('[Crew Sync] Direct query fallback exception:', err?.message || err);
     return null;
   }
 };
