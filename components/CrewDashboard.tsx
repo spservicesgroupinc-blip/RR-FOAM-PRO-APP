@@ -4,10 +4,17 @@ import {
     LogOut, RefreshCw, MapPin, Calendar, HardHat, FileText,
     ChevronLeft, CheckCircle2, Package, AlertTriangle, User,
     ArrowRight, Play, Square, Clock, Save, Loader2, Download,
-    MessageSquare, History, Zap, RotateCcw, Bluetooth
+    MessageSquare, History, Zap, RotateCcw, Bluetooth,
+    Mail, MailOpen, Megaphone, Paperclip, X
 } from 'lucide-react';
-import { CalculatorState, EstimateRecord } from '../types';
+import { CalculatorState, EstimateRecord, CrewMessage } from '../types';
 import { crewUpdateJob } from '../services/supabaseService';
+import {
+    getCrewMessages,
+    markMessageRead,
+    getCrewUnreadCount,
+    subscribeToCrewMessages,
+} from '../services/messagingService';
 import safeStorage from '../utils/safeStorage';
 import { FeedbackButton } from './FeedbackButton';
 
@@ -24,6 +31,10 @@ interface CrewDashboardProps {
 export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizationId, onLogout, syncStatus, onSync, installPrompt, onInstall }) => {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [showMessages, setShowMessages] = useState(false);
+  const [crewMessages, setCrewMessages] = useState<CrewMessage[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   
   // Timer State
   const [isTimerRunning, setIsTimerRunning] = useState(false);
@@ -527,6 +538,62 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
 
   const activeWorkOrders = state.savedEstimates.filter(e => e.status === 'Work Order' && e.executionStatus !== 'Completed');
   const completedWorkOrders = state.savedEstimates.filter(e => e.status === 'Work Order' && e.executionStatus === 'Completed');
+  
+  // ── MESSAGING ──────────────────────────────────────────────────────────
+  const loadCrewMessages = useCallback(async () => {
+    setIsLoadingMessages(true);
+    try {
+      const orgId = resolveSessionOrgId();
+      const [msgs, count] = await Promise.all([
+        getCrewMessages(orgId),
+        getCrewUnreadCount(orgId),
+      ]);
+      setCrewMessages(msgs);
+      setUnreadCount(count);
+    } catch (err) {
+      console.warn('[CrewDashboard] Failed to load messages:', err);
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  }, [organizationId]);
+
+  // Load messages on mount
+  useEffect(() => {
+    loadCrewMessages();
+  }, [loadCrewMessages]);
+
+  // Realtime subscription for new messages
+  useEffect(() => {
+    const orgId = resolveSessionOrgId();
+    const unsub = subscribeToCrewMessages(orgId, (newMsg) => {
+      setCrewMessages(prev => [newMsg, ...prev]);
+      setUnreadCount(prev => prev + 1);
+    });
+    return unsub;
+  }, [organizationId]);
+
+  const handleMarkRead = async (msgId: string) => {
+    const orgId = resolveSessionOrgId();
+    const success = await markMessageRead(orgId, msgId);
+    if (success) {
+      setCrewMessages(prev => prev.map(m => m.id === msgId ? { ...m, isRead: true, readAt: new Date().toISOString() } : m));
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    }
+  };
+
+  const formatMsgDate = (iso: string) => {
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
   
   const displayedJobs = showHistory ? completedWorkOrders : activeWorkOrders;
   const selectedJob = selectedJobId ? state.savedEstimates.find(j => j.id === selectedJobId) : null;
@@ -1509,8 +1576,130 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, organizatio
                 >
                     <History className="w-4 h-4" /> {showHistory ? 'Hide History' : 'History'}
                 </button>
+                <button
+                    onClick={() => { setShowMessages(true); loadCrewMessages(); }}
+                    className="relative text-xs font-mono font-bold uppercase tracking-widest px-3 py-1.5 border transition-colors flex items-center gap-2 bg-transparent text-gray-500 border-gray-600 hover:border-orange-500 hover:text-orange-400"
+                >
+                    <MessageSquare className="w-4 h-4" /> Messages
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-2 -right-2 min-w-[18px] h-[18px] flex items-center justify-center bg-orange-600 text-white text-[10px] font-mono font-bold px-1">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </span>
+                    )}
+                </button>
             </div>
         </header>
+
+        {/* ── MESSAGES PANEL ── */}
+        {showMessages && (
+          <div className="fixed inset-0 z-[90] bg-gray-900/95 flex flex-col">
+            {/* Messages Header */}
+            <div className="bg-gray-800 border-b-2 border-gray-600 px-4 py-3 flex justify-between items-center">
+              <div>
+                <h2 className="text-base font-mono font-bold uppercase tracking-widest text-white">Messages</h2>
+                <p className="text-gray-500 text-xs font-mono">{unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={loadCrewMessages}
+                  disabled={isLoadingMessages}
+                  className="p-2 bg-gray-700 border border-gray-600 text-gray-400 hover:text-white transition-colors"
+                >
+                  <RefreshCw className={`w-5 h-5 ${isLoadingMessages ? 'animate-spin' : ''}`} />
+                </button>
+                <button
+                  onClick={() => setShowMessages(false)}
+                  className="p-2 bg-gray-700 border border-gray-600 text-gray-400 hover:text-white transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Messages List */}
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2 max-w-2xl mx-auto w-full">
+              {isLoadingMessages ? (
+                <div className="flex items-center justify-center py-16 text-gray-500">
+                  <Loader2 className="w-6 h-6 animate-spin mr-3" />
+                  <span className="font-mono text-sm">Loading messages...</span>
+                </div>
+              ) : crewMessages.length === 0 ? (
+                <div className="bg-gray-800 border-2 border-gray-600 p-8 text-center">
+                  <div className="w-12 h-12 bg-gray-700 border border-gray-600 flex items-center justify-center mx-auto mb-4 text-gray-500">
+                    <MessageSquare className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-base font-mono font-bold text-white mb-2 uppercase tracking-widest">No Messages</h3>
+                  <p className="text-gray-500 text-xs font-mono">Messages from admin will appear here.</p>
+                </div>
+              ) : (
+                crewMessages.map(msg => (
+                  <button
+                    key={msg.id}
+                    onClick={() => { if (!msg.isRead) handleMarkRead(msg.id); }}
+                    className={`w-full text-left bg-gray-800 p-4 border-2 transition-colors relative ${
+                      msg.isRead ? 'border-gray-700 opacity-70' : 'border-orange-600'
+                    }`}
+                  >
+                    {/* Unread indicator */}
+                    {!msg.isRead && (
+                      <div className="absolute top-0 left-0 w-1 h-full bg-orange-600" />
+                    )}
+
+                    <div className="pl-3">
+                      {/* Type + Time */}
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          {msg.messageType === 'announcement' && <Megaphone className="w-4 h-4 text-amber-500" />}
+                          {msg.messageType === 'document' && <FileText className="w-4 h-4 text-sky-500" />}
+                          {msg.messageType === 'text' && <MessageSquare className="w-4 h-4 text-gray-500" />}
+                          <span className={`text-[10px] font-mono font-bold uppercase tracking-widest ${
+                            msg.messageType === 'announcement' ? 'text-amber-500' :
+                            msg.messageType === 'document' ? 'text-sky-500' : 'text-gray-500'
+                          }`}>
+                            {msg.messageType === 'announcement' ? 'Announcement' : msg.messageType === 'document' ? 'Document' : 'Message'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {msg.isRead
+                            ? <MailOpen className="w-3 h-3 text-emerald-500" />
+                            : <Mail className="w-3 h-3 text-orange-500" />
+                          }
+                          <span className="text-[10px] font-mono text-gray-500">{formatMsgDate(msg.createdAt)}</span>
+                        </div>
+                      </div>
+
+                      {/* Subject */}
+                      <div className={`text-sm font-mono font-bold mb-1 ${
+                        msg.isRead ? 'text-gray-400' : 'text-white'
+                      }`}>
+                        {msg.subject}
+                      </div>
+
+                      {/* Body */}
+                      {msg.body && (
+                        <p className="text-xs font-mono text-gray-500 line-clamp-2 mb-2">{msg.body}</p>
+                      )}
+
+                      {/* Document Link */}
+                      {msg.documentUrl && msg.documentName && (
+                        <a
+                          href={msg.documentUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          className="inline-flex items-center gap-2 text-xs font-mono font-bold text-sky-400 bg-sky-900/30 border border-sky-800 px-3 py-1.5 hover:bg-sky-900/50 transition-colors"
+                        >
+                          <Paperclip className="w-3.5 h-3.5" />
+                          {msg.documentName}
+                        </a>
+                      )}
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="px-4 mt-4 space-y-2 max-w-2xl mx-auto">
             {displayedJobs.length === 0 ? (

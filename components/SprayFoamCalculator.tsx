@@ -35,6 +35,7 @@ import { MaterialReport } from './MaterialReport';
 import { EstimateDetail } from './EstimateDetail';
 import { EquipmentTracker } from './EquipmentTracker';
 import { EquipmentMaintenance } from './EquipmentMaintenance';
+import { CrewMessaging } from './CrewMessaging';
 import { WalkthroughProvider, useWalkthrough } from '../context/WalkthroughContext';
 import { WalkthroughOverlay } from './Walkthrough';
 import UserManual from './UserManual';
@@ -769,6 +770,14 @@ const SprayFoamCalculator: React.FC = () => {
 
         {ui.view === 'user_manual' && (
             <UserManual />
+        )}
+
+        {ui.view === 'crew_messaging' && session?.organizationId && (
+            <CrewMessaging
+              organizationId={session.organizationId}
+              userId={session.id}
+              userName={session.companyName || session.username || 'Admin'}
+            />
         )}
 
 

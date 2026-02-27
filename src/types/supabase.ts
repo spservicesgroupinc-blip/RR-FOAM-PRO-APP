@@ -562,6 +562,58 @@ export interface Database {
           }
         ]
       }
+      crew_messages: {
+        Row: {
+          id: string
+          organization_id: string
+          sender_id: string | null
+          sender_name: string
+          message_type: 'text' | 'document' | 'announcement'
+          subject: string
+          body: string
+          document_url: string | null
+          document_name: string | null
+          is_read: boolean
+          read_at: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          organization_id: string
+          sender_id?: string | null
+          sender_name?: string
+          message_type?: 'text' | 'document' | 'announcement'
+          subject: string
+          body?: string
+          document_url?: string | null
+          document_name?: string | null
+          is_read?: boolean
+          read_at?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          organization_id?: string
+          sender_id?: string | null
+          sender_name?: string
+          message_type?: 'text' | 'document' | 'announcement'
+          subject?: string
+          body?: string
+          document_url?: string | null
+          document_name?: string | null
+          is_read?: boolean
+          read_at?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'crew_messages_organization_id_fkey'
+            columns: ['organization_id']
+            referencedRelation: 'organizations'
+            referencedColumns: ['id']
+          }
+        ]
+      }
       documents: {
         Row: {
           id: string
@@ -658,6 +710,18 @@ export interface Database {
       get_estimate_documents: {
         Args: { p_org_id: string; p_estimate_id: string }
         Returns: Json
+      }
+      get_crew_messages: {
+        Args: { p_org_id: string }
+        Returns: Json
+      }
+      mark_crew_message_read: {
+        Args: { p_org_id: string; p_message_id: string }
+        Returns: boolean
+      }
+      get_crew_unread_count: {
+        Args: { p_org_id: string }
+        Returns: number
       }
     }
     Enums: {

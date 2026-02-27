@@ -29,7 +29,8 @@ import {
   HardHat,
   MoreHorizontal,
   Cog,
-  BookOpen
+  BookOpen,
+  MessageSquare
 } from 'lucide-react';
 import { UserSession } from '../types';
 
@@ -255,6 +256,14 @@ export const Layout: React.FC<LayoutProps> = ({
             </div>
           )}
 
+          {/* CREW COMMUNICATION */}
+          <SectionHeader title="Communication" section="communication" />
+          {!collapsedSections.communication && (
+            <div className="space-y-0.5">
+              <SidebarItem target="crew_messaging" icon={MessageSquare} label="Crew Messages" />
+            </div>
+          )}
+
           {/* ACCOUNT */}
           <SectionHeader title="Account" section="account" />
           {!collapsedSections.account && (
@@ -369,6 +378,10 @@ export const Layout: React.FC<LayoutProps> = ({
               <MobileMenuButton icon={Truck} label="Equipment Tracker" isActive={view === 'equipment_tracker'} onClick={() => { setView('equipment_tracker'); setIsMobileMoreOpen(false); }} />
               <MobileMenuButton icon={Wrench} label="Equipment Maintenance" isActive={view === 'equipment_maintenance'} onClick={() => { setView('equipment_maintenance'); setIsMobileMoreOpen(false); }} />
               
+              {/* Communication */}
+              <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 px-3 pt-3 pb-1">Communication</div>
+              <MobileMenuButton icon={MessageSquare} label="Crew Messages" isActive={view === 'crew_messaging'} onClick={() => { setView('crew_messaging'); setIsMobileMoreOpen(false); }} />
+
               {/* Account */}
               <div className="text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400 px-3 pt-3 pb-1">Account</div>
               <MobileMenuButton icon={Cog} label="Settings" isActive={view === 'settings'} onClick={() => { setView('settings'); setIsMobileMoreOpen(false); }} />

@@ -358,6 +358,25 @@ export interface UserSession {
   role: 'admin' | 'crew'; 
 }
 
+// ─── CREW MESSAGING TYPES ───────────────────────────────────────────────────
+
+export type CrewMessageType = 'text' | 'document' | 'announcement';
+
+export interface CrewMessage {
+  id: string;
+  organizationId: string;
+  senderId: string | null;
+  senderName: string;
+  messageType: CrewMessageType;
+  subject: string;
+  body: string;
+  documentUrl: string | null;
+  documentName: string | null;
+  isRead: boolean;
+  readAt: string | null;
+  createdAt: string;
+}
+
 // ─── EQUIPMENT MAINTENANCE TYPES ────────────────────────────────────────────
 
 export interface MaintenanceEquipment {
