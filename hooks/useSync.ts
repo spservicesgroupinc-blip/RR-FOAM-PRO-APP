@@ -380,14 +380,57 @@ export const useSync = () => {
     }
 
     if (session.role === 'crew') {
+      // Track existing WO IDs so we can detect NEW arrivals vs updates
+      const existingWOIds = new Set(
+        (appDataRef.current.savedEstimates || [])
+          .filter((e: EstimateRecord) => e.status === 'Work Order')
+          .map((e: EstimateRecord) => e.id)
+      );
+
       const unsubscribe = subscribeToWorkOrderUpdates(
         session.organizationId,
-        async () => {
-          console.log('[Crew Realtime] Work order update received — refreshing...');
+        async (source) => {
+          console.log(`[Crew Realtime] Work order update via ${source} — refreshing...`);
           try {
             const cloudData = await fetchCrewWorkOrders(session.organizationId);
             if (cloudData?.savedEstimates !== undefined) {
+              // Detect new work orders that weren't in the previous state
+              const newWOs = cloudData.savedEstimates.filter(
+                (e: EstimateRecord) =>
+                  e.status === 'Work Order' &&
+                  e.executionStatus !== 'Completed' &&
+                  !existingWOIds.has(e.id)
+              );
+
               dispatch({ type: 'UPDATE_DATA', payload: { savedEstimates: cloudData.savedEstimates } });
+
+              // Update tracking set with new IDs
+              cloudData.savedEstimates.forEach((e: EstimateRecord) => {
+                if (e.status === 'Work Order') existingWOIds.add(e.id);
+              });
+
+              // Notify crew of new work order(s)
+              if (newWOs.length > 0) {
+                const customerNames = newWOs
+                  .map((e: EstimateRecord) => e.customer?.name || 'Unknown')
+                  .join(', ');
+                dispatch({
+                  type: 'SET_NOTIFICATION',
+                  payload: {
+                    type: 'success',
+                    message: newWOs.length === 1
+                      ? `New Work Order: ${customerNames}`
+                      : `${newWOs.length} New Work Orders: ${customerNames}`,
+                  },
+                });
+
+                // Play an audio alert (catches attention on crew tablets)
+                try {
+                  const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAGAACAgICAgICAgICAgICAgICBgYKCg4OEhIWFhoaHh4iIiYmJiYqKioqKiomJiYmIiIeHhoaFhYSEg4OCgoGBgICAgICAgICAgH9/f39/f39/f39/f39/f3+AgICBgYKCg4SEhYaGh4iIiYqKi4uMjI2Njo6Ojo+Pj4+Pj4+Pjo6OjY2NjIyMi4uKiomJiIiHh4aGhYWEhIODgoKBgYCAgH9/fn5+fn19fX19fX19fn5+f3+AgIGBgoKDhISFhoeHiImKi4yMjY6Oj5CQkZGRkZKSkpKSkpKSkZGRkZCQj4+OjY2MjIuKiomIh4eGhYSEg4KBgYB/f35+fX19fHx8fHx8fHx8fX1+fn9/gIGBgoOEhIWGh4iJiouMjY6PkJCRkpKTk5SUlJSVlZWVlJSUlJOTk5KSkZGQj4+OjYyLioqJiIeGhYSEgoKBgH9/fn59fXx8fHx7e3t7e3t8fHx9fn5/gICBgoOEhYaHiImKi4yNjo+QkZKSk5SVlZaWl5eXl5eXl5eXlpaWlZWUk5OSkZCQj46NjIuKiYiHhoWEg4KBgIB/fn59fXx8e3t7e3t7e3t7fHx9fX5/gIGCg4SFhoeIiouMjY6PkJGSk5SVlpeXmJiZmZmZmZmZmZiYmJeXlpWUk5KRkI+OjYyLiomIh4aFhIOCgYB/f359fHx7e3t6enp6enp7e3t8fH1+f4CBgoOEhoeIiYqMjY6PkJGSk5SVlpeYmJmZmpqampqamZmZmJiXlpWUk5KRkI+OjYuKiYiHhoWEg4KBgH9+fXx8e3t6enp6enp6ent7fHx9fn+AgYKDhYaHiImKjI2Oj5CRkpOUlZaXmJmZmpqbm5ubm5uampmZmJeWlZSUkpGQj46NjIuKiIeGhYSDgoGAf359fHt7enp6eXl5eXp6ent7fH1+f4CCg4SFhoeJiouMjY+QkZKTlJWWl5iZmpqbm5ycnJycm5ubmpmYl5aVlJOSkZCPjo2Mi4qJh4aFhIOCgYB/fn18e3t6enl5eXl5eXp6e3t8fX5/gIGDhIWGiImKi42Oj5CRkpOUlZeXmJmam5ucnJ2dnZ2dnJycm5qZmJeWlZOSkZCPjo2Mi4qJiIeGhYOCgYB/fn18e3p6eXl5eXl5eXp6e3x8fX9/gIKDhIaHiImKjI2Oj5GSkpOUlZaXmJmam5ucnJ2dnp6enZ2cnJuamZiXlpWUk5KRj46NjIuKiYiHhoWEg4KAf359fHt6enl5eHh4eHl5enp7fH1+gIGCg4WGh4mKi4yNj5CRkpOUlZaXmJmam5ycnZ2enp6enZ2dnJuamZiXlpSUkpGQj46NjIuKiYeGhYSDoYB/fn18e3p6eXl4eHh4eHl5ent8fX5/gIGDhIWHiImKjI2Oj5CRk5SUlZaXmJmam5ycnZ6enp6fn56dnZycm5qZmJeWlZSTkpCPjo2MiomIh4aFhIOCgYB/fXx7enp5eXh4eHh4eXl6e3x9fn+AgYOEhoeIiouMjo+QkZKTlJWWl5iZmZucnJ2dnp6fn5+fnp6dnJybmpkA');
+                  audio.volume = 0.5;
+                  audio.play().catch(() => { /* user gesture not available */ });
+                } catch { /* ignore audio errors */ }
+              }
             }
           } catch (e) {
             console.error('[Crew Realtime] Refresh failed:', e);

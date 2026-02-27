@@ -1391,17 +1391,68 @@ export const broadcastWorkOrderUpdate = (orgId: string): void => {
 
 export const subscribeToWorkOrderUpdates = (
   orgId: string,
-  onUpdate: () => void
+  onUpdate: (source: 'broadcast' | 'postgres') => void
 ): (() => void) => {
-  const channelName = `crew-updates-${orgId}`;
-  const channel = supabase
-    .channel(channelName)
+  // ── Deduplication guard ────────────────────────────────────────────────
+  // When admin finalizes a WO, two events often fire within milliseconds:
+  //   1) Supabase Broadcast (ephemeral push from broadcastWorkOrderUpdate)
+  //   2) Postgres changes (WAL-backed, from the upsertEstimate DB write)
+  // Without dedup the crew would double-fetch. We suppress any event that
+  // arrives within 2 s of the previous one.
+  let lastUpdateTs = 0;
+  const DEDUP_WINDOW_MS = 2000;
+
+  const dedupedUpdate = (source: 'broadcast' | 'postgres') => {
+    const now = Date.now();
+    if (now - lastUpdateTs < DEDUP_WINDOW_MS) {
+      console.log(`[Crew Realtime] Skipping duplicate ${source} event (within ${DEDUP_WINDOW_MS}ms window)`);
+      return;
+    }
+    lastUpdateTs = now;
+    onUpdate(source);
+  };
+
+  // ── Channel 1: Ephemeral Broadcast (fast, but lost if WS is disconnected) ─
+  const broadcastChannel = supabase
+    .channel(`crew-updates-${orgId}`)
     .on('broadcast', { event: 'work_order_update' }, () => {
-      onUpdate();
+      console.log('[Crew Realtime] Broadcast received');
+      dedupedUpdate('broadcast');
     })
     .subscribe();
 
+  // ── Channel 2: Postgres Changes (WAL-backed, auto-recovers after reconnect) ─
+  // Listens for INSERT/UPDATE on estimates where status = 'Work Order'.
+  // This is the reliable fallback — even if the broadcast was missed because
+  // the crew's WebSocket was temporarily dead, Postgres changes are replayed
+  // once the channel reconnects.
+  const pgChannel = supabase
+    .channel(`crew-pg-estimates-${orgId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
+        schema: 'public',
+        table: 'estimates',
+        filter: `organization_id=eq.${orgId}`,
+      },
+      (payload: any) => {
+        // Only fire for work-order-relevant changes
+        const newRow = payload.new as any;
+        const oldRow = payload.old as any;
+        const isWorkOrder = newRow?.status === 'Work Order';
+        const wasPromoted = oldRow?.status !== 'Work Order' && isWorkOrder;
+        const wasUpdated = isWorkOrder && payload.eventType === 'UPDATE';
+        if (wasPromoted || wasUpdated || payload.eventType === 'INSERT') {
+          console.log(`[Crew Realtime] Postgres change: ${payload.eventType} (status=${newRow?.status})`);
+          dedupedUpdate('postgres');
+        }
+      }
+    )
+    .subscribe();
+
   return () => {
-    supabase.removeChannel(channel);
+    supabase.removeChannel(broadcastChannel);
+    supabase.removeChannel(pgChannel);
   };
 };
