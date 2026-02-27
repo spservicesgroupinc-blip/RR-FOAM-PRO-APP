@@ -723,6 +723,18 @@ export interface Database {
         Args: { p_org_id: string }
         Returns: number
       }
+      enqueue_failed_write: {
+        Args: { p_org_id: string; p_table_name: string; p_operation: string; p_payload: Json; p_conflict_key: string; p_error_msg: string | null }
+        Returns: string
+      }
+      batch_upsert_customers: {
+        Args: { p_org_id: string; p_customers: Json }
+        Returns: Json
+      }
+      batch_upsert_inventory: {
+        Args: { p_org_id: string; p_items: Json }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never

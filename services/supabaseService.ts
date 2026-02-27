@@ -139,7 +139,7 @@ const retryWrite = async <T>(
 };
 
 const retryRPC = async <T>(
-  fn: () => Promise<{ data: T; error: any }>,
+  fn: () => PromiseLike<{ data: T; error: any }>,
   maxRetries = 3,
   label = 'RPC'
 ): Promise<{ data: T; error: any }> => {
