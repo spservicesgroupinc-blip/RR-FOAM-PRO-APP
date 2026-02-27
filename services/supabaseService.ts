@@ -1413,19 +1413,28 @@ export const subscribeToWorkOrderUpdates = (
   };
 
   // ── Channel 1: Ephemeral Broadcast (fast, but lost if WS is disconnected) ─
+  // This is the PRIMARY realtime mechanism for crew because crew users are
+  // unauthenticated (anon role) and Postgres Changes requires RLS SELECT
+  // access which anon doesn't have on the estimates table.
   const broadcastChannel = supabase
     .channel(`crew-updates-${orgId}`)
     .on('broadcast', { event: 'work_order_update' }, () => {
       console.log('[Crew Realtime] Broadcast received');
       dedupedUpdate('broadcast');
     })
-    .subscribe();
+    .subscribe((status) => {
+      console.log(`[Crew Realtime] Broadcast channel status: ${status}`);
+      if (status === 'CHANNEL_ERROR') {
+        console.error('[Crew Realtime] Broadcast channel error — will rely on polling fallback');
+      }
+    });
 
   // ── Channel 2: Postgres Changes (WAL-backed, auto-recovers after reconnect) ─
-  // Listens for INSERT/UPDATE on estimates where status = 'Work Order'.
-  // This is the reliable fallback — even if the broadcast was missed because
-  // the crew's WebSocket was temporarily dead, Postgres changes are replayed
-  // once the channel reconnects.
+  // NOTE: This channel requires:
+  //   1) estimates table added to supabase_realtime publication
+  //   2) RLS SELECT policy for anon role on estimates
+  // If those are not configured, this channel will silently receive no events.
+  // The polling fallback in useSync.ts handles this case.
   const pgChannel = supabase
     .channel(`crew-pg-estimates-${orgId}`)
     .on(
@@ -1449,7 +1458,16 @@ export const subscribeToWorkOrderUpdates = (
         }
       }
     )
-    .subscribe();
+    .subscribe((status) => {
+      console.log(`[Crew Realtime] Postgres Changes channel status: ${status}`);
+      if (status === 'CHANNEL_ERROR') {
+        console.warn(
+          '[Crew Realtime] Postgres Changes channel failed. ' +
+          'This is expected if the estimates table is not in the supabase_realtime publication ' +
+          'or anon role lacks SELECT permission. Crew polling will handle updates.'
+        );
+      }
+    });
 
   return () => {
     supabase.removeChannel(broadcastChannel);

@@ -411,6 +411,107 @@ GRANT EXECUTE ON FUNCTION crew_update_job(uuid, uuid, jsonb, text) TO anon, auth
 GRANT EXECUTE ON FUNCTION get_org_data(uuid) TO anon, authenticated;
 
 
+-- ─── 6a. ENABLE REALTIME FOR ESTIMATES ──────────────────────────────────────
+-- Supabase Realtime Postgres Changes requires tables to be in the
+-- supabase_realtime publication. Without this, NO postgres_changes events
+-- are emitted even if the client subscribes to the channel.
+-- This is CRITICAL for crew to receive live work order updates.
+
+DO $$
+BEGIN
+  -- Add estimates to the realtime publication if not already present
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+      AND schemaname = 'public'
+      AND tablename = 'estimates'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE estimates;
+    RAISE NOTICE 'Added estimates table to supabase_realtime publication';
+  END IF;
+
+  -- Also add customers (useful for admin realtime)
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+      AND schemaname = 'public'
+      AND tablename = 'customers'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE customers;
+    RAISE NOTICE 'Added customers table to supabase_realtime publication';
+  END IF;
+
+  -- Also add inventory_items
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+      AND schemaname = 'public'
+      AND tablename = 'inventory_items'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE inventory_items;
+    RAISE NOTICE 'Added inventory_items table to supabase_realtime publication';
+  END IF;
+
+  -- Also add warehouse_stock
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime'
+      AND schemaname = 'public'
+      AND tablename = 'warehouse_stock'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE warehouse_stock;
+    RAISE NOTICE 'Added warehouse_stock table to supabase_realtime publication';
+  END IF;
+END $$;
+
+
+-- ─── 6b. RLS POLICY FOR ANON ROLE (Crew Realtime) ──────────────────────────
+-- Crew users authenticate via PIN (no auth.uid()), so they use the anon role.
+-- Supabase Realtime Postgres Changes ONLY delivers events to a client if
+-- RLS allows that role to SELECT the row. Without this policy, the crew's
+-- postgres_changes subscription silently receives zero events.
+--
+-- This policy ONLY allows reading estimates with status = 'Work Order'.
+-- Security model: org_id is only known if crew has the valid PIN.
+
+DO $$
+BEGIN
+  -- Drop existing policy if present (safe to re-run)
+  DROP POLICY IF EXISTS "Anon can read work orders for realtime" ON estimates;
+  
+  -- Create SELECT-only policy for anon role
+  CREATE POLICY "Anon can read work orders for realtime" ON estimates
+    FOR SELECT TO anon
+    USING (status = 'Work Order');
+  
+  RAISE NOTICE 'Created anon SELECT policy on estimates for crew realtime';
+END $$;
+
+-- Also allow anon to SELECT customers (needed for crew to resolve customer names)
+DO $$
+BEGIN
+  DROP POLICY IF EXISTS "Anon can read customers for crew" ON customers;
+  
+  CREATE POLICY "Anon can read customers for crew" ON customers
+    FOR SELECT TO anon
+    USING (true);
+  
+  RAISE NOTICE 'Created anon SELECT policy on customers for crew';
+END $$;
+
+-- Also allow anon to SELECT organizations (needed for crew to read company info)
+DO $$
+BEGIN
+  DROP POLICY IF EXISTS "Anon can read organizations for crew" ON organizations;
+  
+  CREATE POLICY "Anon can read organizations for crew" ON organizations
+    FOR SELECT TO anon
+    USING (true);
+  
+  RAISE NOTICE 'Created anon SELECT policy on organizations for crew';
+END $$;
+
+
 -- ─── 6. ADDITIONAL COLUMNS (if missing) ─────────────────────────────────────
 -- The app writes these columns but the original schema may not have them.
 -- These are safe to run even if columns already exist (uses IF NOT EXISTS).
