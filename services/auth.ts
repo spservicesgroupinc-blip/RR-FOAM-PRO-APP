@@ -1,5 +1,14 @@
-import { supabase } from '../src/lib/supabase';
-import { UserSession } from '../types';
+/**
+ * Auth Service - InsForge
+ *
+ * Handles admin signup/login (email+password), crew login (PIN-based RPC),
+ * session management, and auth state listeners.
+ *
+ * Migrated from Supabase to InsForge SDK.
+ */
+
+import { insforge } from '../src/lib/insforge';
+import { UserSession } from './types';
 import safeStorage from '../utils/safeStorage';
 
 /**
@@ -11,95 +20,113 @@ export const signUpAdmin = async (
   fullName: string,
   companyName: string
 ): Promise<UserSession> => {
-  const { data, error } = await supabase.auth.signUp({
+  const { data, error } = await insforge.auth.signUp({
     email,
     password,
-    options: {
-      data: {
-        full_name: fullName,
-        company_name: companyName,
-        role: 'admin',
-      },
-    },
+    name: fullName,
   });
 
   if (error) throw new Error(error.message);
-  if (!data.user) throw new Error('Signup failed. Please try again.');
+  if (!data?.user) throw new Error('Signup failed. Please try again.');
 
-  // Wait for the DB trigger to create profile + org, polling up to 3 seconds.
-  // The trigger runs asynchronously after auth.users INSERT, so we poll
-  // rather than using a fixed delay to handle variable DB/network latency.
-  let profile: any = null;
-  let profileError: any = null;
-  for (let attempt = 0; attempt < 6; attempt++) {
-    await new Promise((r) => setTimeout(r, 500));
-    const res = await supabase
-      .from('profiles')
-      .select('*, organizations(*)')
-      .eq('id', data.user.id)
-      .single();
-    profile = res.data;
-    profileError = res.error;
-    if (profile?.organization_id) break;
+  // If email verification is required, throw informative error
+  if (data.requireEmailVerification) {
+    // Store pending signup info for after verification
+    safeStorage.setItem('foamProPendingSignup', JSON.stringify({
+      userId: data.user.id,
+      email,
+      fullName,
+      companyName,
+      role: 'admin',
+    }));
+    throw new Error('VERIFY_EMAIL');
   }
 
-  // If the trigger didn't create the profile/org, create them manually.
-  // This handles deployments where the handle_new_user trigger is missing.
-  if (profileError || !profile) {
-    console.warn('[Auth] Profile not found after signup — creating org + profile manually.');
-    try {
-      // Create organization
-      const { data: newOrg, error: orgErr } = await supabase
-        .from('organizations')
-        .insert({ name: companyName, crew_pin: '' })
-        .select()
-        .single();
-      if (orgErr) throw orgErr;
+  // Create organization and profile in our database
+  const session = await createOrgAndProfile(data.user.id, email, fullName, companyName, data.accessToken || undefined);
+  return session;
+};
 
-      // Create profile linked to user + org
-      const { error: profErr } = await supabase
-        .from('profiles')
-        .insert({
-          id: data.user.id,
-          organization_id: newOrg.id,
-          role: 'admin',
-          full_name: fullName,
-        });
-      if (profErr) throw profErr;
+/**
+ * After email verification, complete the signup by creating org + profile
+ */
+export const completeSignupAfterVerification = async (
+  accessToken: string,
+  userId: string
+): Promise<UserSession | null> => {
+  const pendingRaw = safeStorage.getItem('foamProPendingSignup');
+  if (!pendingRaw) return null;
 
-      // Re-fetch complete profile
-      const { data: retryProfile } = await supabase
-        .from('profiles')
-        .select('*, organizations(*)')
-        .eq('id', data.user.id)
-        .single();
-      profile = retryProfile;
-    } catch (manualErr) {
-      console.error('[Auth] Manual profile/org creation failed:', manualErr);
-      throw new Error('Account created but profile setup failed. Please login or contact support.');
-    }
+  try {
+    const pending = JSON.parse(pendingRaw);
+    const session = await createOrgAndProfile(
+      userId,
+      pending.email,
+      pending.fullName,
+      pending.companyName,
+      accessToken
+    );
+    safeStorage.removeItem('foamProPendingSignup');
+    return session;
+  } catch (err) {
+    console.error('[Auth] completeSignupAfterVerification failed:', err);
+    return null;
+  }
+};
+
+/**
+ * Helper: Create organization + profile in InsForge DB
+ */
+async function createOrgAndProfile(
+  userId: string,
+  email: string,
+  fullName: string,
+  companyName: string,
+  token?: string
+): Promise<UserSession> {
+  // Create organization
+  const { data: newOrg, error: orgErr } = await insforge.database
+    .from('organizations')
+    .insert({ name: companyName, crew_pin: '' })
+    .select();
+
+  if (orgErr || !newOrg || newOrg.length === 0) {
+    throw new Error('Failed to create company. Please try again.');
   }
 
-  if (!profile) {
-    throw new Error('Account created but profile setup failed. Please login.');
+  const org = newOrg[0];
+
+  // Create profile linked to user + org
+  const { error: profErr } = await insforge.database
+    .from('profiles')
+    .insert({
+      id: userId,
+      organization_id: org.id,
+      role: 'admin',
+      full_name: fullName,
+    });
+
+  if (profErr) {
+    console.error('[Auth] Profile creation failed:', profErr);
+    throw new Error('Account created but profile setup failed. Please login or contact support.');
   }
 
-  // Validate organization_id is present
-  if (!profile.organization_id) {
-    throw new Error('Account created but not linked to a company. Contact support.');
-  }
+  // Create warehouse_stock row
+  await insforge.database
+    .from('warehouse_stock')
+    .insert({ organization_id: org.id, open_cell_sets: 0, closed_cell_sets: 0 });
 
   return {
-    id: data.user.id,
-    email: data.user.email || email,
+    id: userId,
+    email,
     username: email,
-    companyName: companyName,
-    organizationId: profile.organization_id,
-    spreadsheetId: profile.organization_id, // backward compat
+    companyName,
+    organizationId: org.id,
+    spreadsheetId: org.id,
     role: 'admin',
-    token: data.session?.access_token,
+    token,
   };
-};
+}
 
 /**
  * Sign in an existing admin user
@@ -108,97 +135,97 @@ export const signInAdmin = async (
   email: string,
   password: string
 ): Promise<UserSession> => {
-  const { data, error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await insforge.auth.signInWithPassword({
     email,
     password,
   });
 
   if (error) throw new Error(error.message);
-  if (!data.user) throw new Error('Login failed.');
+  if (!data?.user) throw new Error('Login failed.');
 
-  // Fetch profile with company
-  let { data: profile, error: profileError } = await supabase
+  const userId = data.user.id;
+  const accessToken = data.accessToken;
+
+  // Fetch profile with organization
+  let { data: profiles, error: profileError } = await insforge.database
     .from('profiles')
-    .select('*, organizations(*)')
-    .eq('id', data.user.id)
-    .single();
+    .select('*')
+    .eq('id', userId);
 
-  // Recovery: if profile exists but has no organization_id, try to find or create the org
+  let profile = profiles && profiles.length > 0 ? profiles[0] : null;
+
+  // Recovery: if profile exists but has no organization_id
   if (profile && !profile.organization_id) {
     console.warn('[Auth] Profile exists but missing organization_id — attempting recovery.');
-    const meta = data.user.user_metadata;
-    const companyName = meta?.company_name || email;
+    const companyName = data.user.profile?.name || email;
     try {
-      // Try to find existing org by exact company name (case-insensitive trim)
       let orgId: string | null = null;
-      const { data: existingOrg } = await supabase
+
+      // Try to find existing org by name
+      const { data: existingOrgs } = await insforge.database
         .from('organizations')
         .select('id')
         .eq('name', companyName)
-        .limit(1)
-        .single();
+        .limit(1);
 
-      if (existingOrg) {
-        orgId = existingOrg.id;
+      if (existingOrgs && existingOrgs.length > 0) {
+        orgId = existingOrgs[0].id;
       } else {
-        // Create a new organization
-        const { data: newOrg, error: orgErr } = await supabase
+        const { data: newOrgs } = await insforge.database
           .from('organizations')
           .insert({ name: companyName, crew_pin: '' })
-          .select()
-          .single();
-        if (!orgErr && newOrg) orgId = newOrg.id;
+          .select();
+        if (newOrgs && newOrgs.length > 0) orgId = newOrgs[0].id;
       }
 
       if (orgId) {
-        await supabase
+        await insforge.database
           .from('profiles')
           .update({ organization_id: orgId })
-          .eq('id', data.user.id);
-        // Re-fetch profile
-        const { data: updated } = await supabase
+          .eq('id', userId);
+
+        const { data: updated } = await insforge.database
           .from('profiles')
-          .select('*, organizations(*)')
-          .eq('id', data.user.id)
-          .single();
-        if (updated) profile = updated;
+          .select('*')
+          .eq('id', userId);
+        if (updated && updated.length > 0) profile = updated[0];
       }
     } catch (recoveryErr) {
       console.error('[Auth] Organization recovery failed:', recoveryErr);
     }
   }
 
-  // Recovery: if no profile at all, try to create one
+  // Recovery: no profile at all — create one
   if (profileError || !profile) {
     console.warn('[Auth] No profile found — attempting to create one.');
-    const meta = data.user.user_metadata;
-    const companyName = meta?.company_name || email;
+    const companyName = data.user.profile?.name || email;
     try {
-      // Create org
-      const { data: newOrg, error: orgErr } = await supabase
+      const { data: newOrgs } = await insforge.database
         .from('organizations')
         .insert({ name: companyName, crew_pin: '' })
-        .select()
-        .single();
-      if (orgErr) throw orgErr;
+        .select();
 
-      // Create profile
-      const { error: profErr } = await supabase
+      if (!newOrgs || newOrgs.length === 0) throw new Error('Org creation failed');
+
+      await insforge.database
         .from('profiles')
         .insert({
-          id: data.user.id,
-          organization_id: newOrg.id,
+          id: userId,
+          organization_id: newOrgs[0].id,
           role: 'admin',
-          full_name: meta?.full_name || '',
+          full_name: data.user.profile?.name || '',
         });
-      if (profErr) throw profErr;
 
-      const { data: created } = await supabase
+      // Create warehouse_stock row
+      await insforge.database
+        .from('warehouse_stock')
+        .insert({ organization_id: newOrgs[0].id, open_cell_sets: 0, closed_cell_sets: 0 });
+
+      const { data: created } = await insforge.database
         .from('profiles')
-        .select('*, organizations(*)')
-        .eq('id', data.user.id)
-        .single();
-      profile = created;
+        .select('*')
+        .eq('id', userId);
+      if (created && created.length > 0) profile = created[0];
     } catch (createErr) {
       console.error('[Auth] Profile creation during login failed:', createErr);
       throw new Error('Profile not found and auto-creation failed. Contact support.');
@@ -213,17 +240,24 @@ export const signInAdmin = async (
     throw new Error('Your account is not linked to a company. Contact support.');
   }
 
-  const company = (profile as any).organizations;
+  // Fetch org name
+  let companyName = '';
+  const { data: orgData } = await insforge.database
+    .from('organizations')
+    .select('name')
+    .eq('id', profile.organization_id)
+    .single();
+  if (orgData) companyName = orgData.name;
 
   return {
-    id: data.user.id,
+    id: userId,
     email: data.user.email || email,
     username: email,
-    companyName: company?.name || '',
+    companyName,
     organizationId: profile.organization_id,
     spreadsheetId: profile.organization_id,
     role: (profile.role as 'admin' | 'crew') || 'admin',
-    token: data.session?.access_token,
+    token: accessToken,
   };
 };
 
@@ -235,7 +269,7 @@ export const signInCrew = async (
   companyName: string,
   pin: string
 ): Promise<UserSession> => {
-  const { data, error } = await supabase.rpc('verify_crew_pin', {
+  const { data, error } = await insforge.database.rpc('verify_crew_pin', {
     org_name: companyName,
     pin: pin,
   });
@@ -247,7 +281,7 @@ export const signInCrew = async (
     throw new Error(result?.message || 'Invalid company name or PIN.');
   }
 
-  return {
+  const session: UserSession = {
     id: result.organization_id,
     email: undefined,
     username: companyName,
@@ -256,31 +290,38 @@ export const signInCrew = async (
     spreadsheetId: result.organization_id,
     role: 'crew',
   };
+
+  // Persist crew session
+  safeStorage.setItem('foamProCrewSession', JSON.stringify(session));
+
+  return session;
 };
 
 /**
  * Sign out current user
  */
 export const signOut = async (): Promise<void> => {
-  await supabase.auth.signOut();
+  try {
+    await insforge.auth.signOut();
+  } catch {
+    // Ignore sign out errors (crew sessions don't have auth)
+  }
+  safeStorage.removeItem('foamProCrewSession');
 };
 
 /**
  * Get current authenticated session and build UserSession
  */
 export const getCurrentSession = async (): Promise<UserSession | null> => {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  const { data, error } = await insforge.auth.getCurrentSession();
 
-  if (!session?.user) {
-    // Check for crew session (safeStorage handles iOS eviction gracefully)
+  if (!data?.session?.user) {
+    // Check for crew session
     try {
       const crewSession = safeStorage.getItem('foamProCrewSession');
       if (crewSession) {
         try {
           const parsed = JSON.parse(crewSession) as UserSession;
-          // Validate crew session has organizationId
           if (!parsed.organizationId) {
             console.warn('[Auth] Crew session missing organizationId — clearing.');
             safeStorage.removeItem('foamProCrewSession');
@@ -292,71 +333,64 @@ export const getCurrentSession = async (): Promise<UserSession | null> => {
         }
       }
     } catch {
-      // localStorage unavailable (e.g. mobile Safari private browsing)
+      // localStorage unavailable
     }
     return null;
   }
 
-  const { data: profile } = await supabase
+  const user = data.session.user;
+
+  const { data: profiles } = await insforge.database
     .from('profiles')
-    .select('*, organizations(*)')
-    .eq('id', session.user.id)
-    .single();
+    .select('*')
+    .eq('id', user.id);
+
+  const profile = profiles && profiles.length > 0 ? profiles[0] : null;
 
   if (!profile) return null;
 
-  // Warn if organizationId is missing (broken admin-crew link)
   if (!profile.organization_id) {
-    console.error('[Auth] Profile exists but organization_id is null for user', session.user.id,
-      '— the admin-crew link is broken. User should log out and back in to trigger auto-recovery.');
+    console.error('[Auth] Profile exists but organization_id is null for user', user.id);
   }
 
-  const company = (profile as any).organizations;
+  let companyName = '';
+  if (profile.organization_id) {
+    const { data: orgData } = await insforge.database
+      .from('organizations')
+      .select('name')
+      .eq('id', profile.organization_id)
+      .single();
+    if (orgData) companyName = orgData.name;
+  }
 
   return {
-    id: session.user.id,
-    email: session.user.email,
-    username: session.user.email || '',
-    companyName: company?.name || '',
+    id: user.id,
+    email: user.email,
+    username: user.email || '',
+    companyName,
     organizationId: profile.organization_id || '',
     spreadsheetId: profile.organization_id || '',
     role: (profile.role as 'admin' | 'crew') || 'crew',
-    token: session.access_token,
+    token: data.session.accessToken,
   };
 };
 
 /**
  * Listen for auth state changes
+ * Note: InsForge doesn't have an equivalent of onAuthStateChange.
+ * We use a polling approach or manual check after login/logout.
+ * Components should call getCurrentSession() when needed.
  */
 export const onAuthStateChange = (
   callback: (session: UserSession | null) => void
 ) => {
-  return supabase.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'SIGNED_OUT' || !session?.user) {
-      callback(null);
-      return;
-    }
-
-    if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*, organizations(*)')
-        .eq('id', session.user.id)
-        .single();
-
-      if (profile) {
-        const company = (profile as any).organizations;
-        callback({
-          id: session.user.id,
-          email: session.user.email,
-          username: session.user.email || '',
-          companyName: company?.name || '',
-          organizationId: profile.organization_id || '',
-          spreadsheetId: profile.organization_id || '',
-          role: (profile.role as 'admin' | 'crew') || 'crew',
-          token: session.access_token,
-        });
-      }
-    }
-  });
+  // No-op for now — InsForge SDK doesn't provide real-time auth listeners.
+  // The app should call getCurrentSession() on mount and after login/logout.
+  return {
+    data: {
+      subscription: {
+        unsubscribe: () => {},
+      },
+    },
+  };
 };

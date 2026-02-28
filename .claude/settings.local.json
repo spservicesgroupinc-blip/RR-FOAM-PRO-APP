@@ -9,5 +9,8 @@
       "Bash(export PATH=\"/c/Program Files/nodejs:$PATH\")",
       "Bash(npm run dev:*)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "insforge"
+  ]
 }

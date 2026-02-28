@@ -1,7 +1,7 @@
-﻿/**
- * Supabase Data Service - Overhauled
+/**
+ * Data Service - InsForge
  *
- * Complete Supabase backend integration following Supabase Postgres Best Practices:
+ * Complete InsForge backend integration following Postgres Best Practices:
  *   - Batch operations to eliminate N+1 query patterns
  *   - Proper retry logic with server-side fallback queue
  *   - Clean separation between admin (authenticated) and crew (anon/RPC) paths
@@ -9,7 +9,7 @@
  *   - Connection-efficient: single RPC calls replace multi-query waterfalls
  */
 
-import { supabase } from '../src/lib/supabase';
+import { insforge } from '../src/lib/insforge';
 import {
   CalculatorState,
   EstimateRecord,
@@ -71,7 +71,7 @@ const enqueueFailedWrite = async (
   errorMsg?: string
 ): Promise<string | null> => {
   try {
-    const { data, error } = await supabase.rpc('enqueue_failed_write', {
+    const { data, error } = await insforge.database.rpc('enqueue_failed_write', {
       p_org_id: orgId,
       p_table_name: tableName,
       p_operation: operation,
@@ -337,7 +337,7 @@ export const fetchOrgData = async (orgId: string): Promise<Partial<CalculatorSta
   try {
     _currentOrgId = orgId;
     const { data, error } = await retryRPC(
-      () => supabase.rpc('get_org_data', { org_id: orgId }),
+      () => insforge.database.rpc('get_org_data', { org_id: orgId }),
       2,
       'fetchOrgData'
     );
@@ -408,7 +408,7 @@ export const upsertCustomer = async (customer: CustomerProfile, orgId: string): 
   }
 
   if (!payload.id && customer.name) {
-    const { data: existing } = await supabase
+    const { data: existing } = await insforge.database
       .from('customers')
       .select('id')
       .eq('organization_id', orgId)
@@ -421,7 +421,7 @@ export const upsertCustomer = async (customer: CustomerProfile, orgId: string): 
   }
 
   const { data, error } = await retryWrite(
-    () => supabase
+    () => insforge.database
       .from('customers')
       .upsert(payload, { onConflict: 'id' })
       .select()
@@ -460,7 +460,7 @@ export const batchUpsertCustomers = async (
 
   try {
     const { data, error } = await retryRPC(
-      () => supabase.rpc('batch_upsert_customers', {
+      () => insforge.database.rpc('batch_upsert_customers', {
         p_org_id: orgId,
         p_customers: payload,
       }),
@@ -487,7 +487,7 @@ export const batchUpsertCustomers = async (
 
 export const deleteCustomer = async (customerId: string): Promise<boolean> => {
   const { error } = await retryWrite(
-    () => supabase.from('customers').delete().eq('id', customerId),
+    () => insforge.database.from('customers').delete().eq('id', customerId),
     'deleteCustomer'
   );
   if (error) {
@@ -523,7 +523,7 @@ export const upsertEstimate = async (record: EstimateRecord, orgId: string): Pro
   }
 
   const { data, error } = await retryWrite(
-    () => supabase
+    () => insforge.database
       .from('estimates')
       .upsert(dbRow, { onConflict: 'id' })
       .select()
@@ -543,7 +543,7 @@ export const upsertEstimate = async (record: EstimateRecord, orgId: string): Pro
 
 export const deleteEstimateDb = async (estimateId: string): Promise<boolean> => {
   const { error } = await retryWrite(
-    () => supabase.from('estimates').delete().eq('id', estimateId),
+    () => insforge.database.from('estimates').delete().eq('id', estimateId),
     'deleteEstimate'
   );
   if (error) {
@@ -562,7 +562,7 @@ export const updateEstimateStatus = async (
   if (extraFields) Object.assign(payload, extraFields);
 
   const { error } = await retryWrite(
-    () => supabase
+    () => insforge.database
       .from('estimates')
       .update(payload)
       .eq('id', estimateId),
@@ -582,7 +582,7 @@ export const updateEstimateActuals = async (
   executionStatus: string
 ): Promise<boolean> => {
   const { error } = await retryWrite(
-    () => supabase
+    () => insforge.database
       .from('estimates')
       .update({
         actuals,
@@ -605,7 +605,7 @@ export const markEstimatePaid = async (
   financials: any
 ): Promise<boolean> => {
   const { error } = await retryWrite(
-    () => supabase
+    () => insforge.database
       .from('estimates')
       .update({
         status: 'Paid',
@@ -627,7 +627,7 @@ export const markEstimateInventoryProcessed = async (
   estimateId: string
 ): Promise<boolean> => {
   const { error } = await retryWrite(
-    () => supabase
+    () => insforge.database
       .from('estimates')
       .update({
         inventory_processed: true,
@@ -660,7 +660,7 @@ export const updateWarehouseStock = async (
     closed_cell_sets: closedCellSets,
   };
   const { error } = await retryWrite(
-    () => supabase
+    () => insforge.database
       .from('warehouse_stock')
       .upsert(wsPayload, { onConflict: 'organization_id' }),
     'updateWarehouseStock',
@@ -690,7 +690,7 @@ export const upsertInventoryItem = async (item: WarehouseItem, orgId: string): P
   }
 
   if (!payload.id && item.name) {
-    const { data: existing } = await supabase
+    const { data: existing } = await insforge.database
       .from('inventory_items')
       .select('id')
       .eq('organization_id', orgId)
@@ -704,7 +704,7 @@ export const upsertInventoryItem = async (item: WarehouseItem, orgId: string): P
   }
 
   const { data, error } = await retryWrite(
-    () => supabase
+    () => insforge.database
       .from('inventory_items')
       .upsert(payload, { onConflict: 'id' })
       .select()
@@ -738,7 +738,7 @@ export const batchUpsertInventoryItems = async (
 
   try {
     const { data, error } = await retryRPC(
-      () => supabase.rpc('batch_upsert_inventory', {
+      () => insforge.database.rpc('batch_upsert_inventory', {
         p_org_id: orgId,
         p_items: payload,
       }),
@@ -765,7 +765,7 @@ export const batchUpsertInventoryItems = async (
 
 export const deleteInventoryItem = async (itemId: string): Promise<boolean> => {
   const { error } = await retryWrite(
-    () => supabase.from('inventory_items').delete().eq('id', itemId),
+    () => insforge.database.from('inventory_items').delete().eq('id', itemId),
     'deleteInventoryItem'
   );
   if (error) {
@@ -793,7 +793,7 @@ export const upsertEquipment = async (item: EquipmentItem, orgId: string): Promi
   }
 
   const { data, error } = await retryWrite(
-    () => supabase
+    () => insforge.database
       .from('equipment')
       .upsert(payload, { onConflict: 'id' })
       .select()
@@ -812,7 +812,7 @@ export const upsertEquipment = async (item: EquipmentItem, orgId: string): Promi
 
 export const deleteEquipmentItem = async (itemId: string): Promise<boolean> => {
   const { error } = await retryWrite(
-    () => supabase.from('equipment').delete().eq('id', itemId),
+    () => insforge.database.from('equipment').delete().eq('id', itemId),
     'deleteEquipment'
   );
   if (error) {
@@ -831,7 +831,7 @@ export const updateEquipmentStatus = async (
   if (lastSeen) payload.last_seen = lastSeen;
 
   const { error } = await retryWrite(
-    () => supabase.from('equipment').update(payload).eq('id', itemId),
+    () => insforge.database.from('equipment').update(payload).eq('id', itemId),
     'updateEquipmentStatus'
   );
   if (error) {
@@ -865,7 +865,7 @@ export const insertMaterialLogs = async (
   }));
 
   const { error } = await retryWrite(
-    () => supabase.from('material_logs').insert(rows),
+    () => insforge.database.from('material_logs').insert(rows),
     'insertMaterialLogs',
     3,
     rows.length === 1
@@ -892,7 +892,7 @@ export const insertMaterialLogs = async (
 
 export const insertPurchaseOrder = async (po: PurchaseOrder, orgId: string): Promise<PurchaseOrder | null> => {
   const { data, error } = await retryWrite(
-    () => supabase
+    () => insforge.database
       .from('purchase_orders')
       .insert({
         organization_id: orgId,
@@ -924,7 +924,7 @@ export const updateOrgSettings = async (
   orgId: string,
   settings: Record<string, any>
 ): Promise<boolean> => {
-  const { data: org, error: fetchErr } = await supabase
+  const { data: org, error: fetchErr } = await insforge.database
     .from('organizations')
     .select('settings')
     .eq('id', orgId)
@@ -939,7 +939,7 @@ export const updateOrgSettings = async (
   const merged = { ...existing, ...settings };
 
   const { error } = await retryWrite(
-    () => supabase
+    () => insforge.database
       .from('organizations')
       .update({ settings: merged })
       .eq('id', orgId),
@@ -958,7 +958,7 @@ export const updateCompanyProfile = async (
   profile: CompanyProfile
 ): Promise<boolean> => {
   const { error } = await retryWrite(
-    () => supabase
+    () => insforge.database
       .from('organizations')
       .update({
         name: profile.companyName,
@@ -987,7 +987,7 @@ export const updateCompanyProfile = async (
 
 export const updateCrewPinDb = async (orgId: string, newPin: string): Promise<boolean> => {
   const { error } = await retryWrite(
-    () => supabase
+    () => insforge.database
       .from('organizations')
       .update({ crew_pin: newPin })
       .eq('id', orgId),
@@ -1003,7 +1003,7 @@ export const updateCrewPinDb = async (orgId: string, newPin: string): Promise<bo
 
 
 // ==========================================
-// BULK SYNC (save full app state to Supabase)
+// BULK SYNC (save full app state to insforge.database)
 // ==========================================
 
 export const syncAppDataToSupabase = async (
@@ -1071,7 +1071,7 @@ export const syncAppDataToSupabase = async (
       }
     }
 
-    // 7. Estimates — continue on individual failures
+    // 7. Estimates � continue on individual failures
     let estimateErrors = 0;
     for (const estimate of appData.savedEstimates) {
       try {
@@ -1140,20 +1140,20 @@ export const fetchCrewWorkOrders = async (orgId: string): Promise<Partial<Calcul
     return null;
   }
 
-  // Attempt 1: RPC (SECURITY DEFINER — bypasses RLS for crew)
+  // Attempt 1: RPC (SECURITY DEFINER � bypasses RLS for crew)
   try {
     console.log('[Crew Sync] Calling get_crew_work_orders RPC for org:', orgId);
-    const { data, error } = await supabase.rpc('get_crew_work_orders', { p_org_id: orgId });
+    const { data, error } = await insforge.database.rpc('get_crew_work_orders', { p_org_id: orgId });
 
     if (!error && data) {
       const result = data as any;
       const estCount = (result.estimates || []).length;
       const custCount = (result.customers || []).length;
       const hasOrg = !!result.organization;
-      console.log(`[Crew Sync] RPC success — org: ${hasOrg}, customers: ${custCount}, estimates: ${estCount}`);
+      console.log(`[Crew Sync] RPC success � org: ${hasOrg}, customers: ${custCount}, estimates: ${estCount}`);
 
       if (!hasOrg) {
-        console.warn('[Crew Sync] RPC returned null organization — orgId may be invalid:', orgId);
+        console.warn('[Crew Sync] RPC returned null organization � orgId may be invalid:', orgId);
       }
 
       return buildCrewResult(
@@ -1165,7 +1165,7 @@ export const fetchCrewWorkOrders = async (orgId: string): Promise<Partial<Calcul
 
     console.warn('[Crew Sync] RPC get_crew_work_orders failed:', error?.message || 'No data returned');
     console.warn('[Crew Sync] Error code:', error?.code, '| Hint:', error?.hint || 'none');
-    console.warn('[Crew Sync] FIX: Run supabase_functions.sql in the Supabase SQL Editor.');
+    console.warn('[Crew Sync] FIX: Run supabase_functions.sql in the insforge.database SQL Editor.');
   } catch (err: any) {
     console.warn('[Crew Sync] RPC exception:', err?.message || err);
   }
@@ -1174,16 +1174,16 @@ export const fetchCrewWorkOrders = async (orgId: string): Promise<Partial<Calcul
   console.log('[Crew Sync] Trying direct query fallback...');
   try {
     const [orgRes, custRes, estRes] = await Promise.all([
-      supabase.from('organizations').select('*').eq('id', orgId).single(),
-      supabase.from('customers').select('*').eq('organization_id', orgId),
-      supabase.from('estimates').select('*').eq('organization_id', orgId).eq('status', 'Work Order'),
+      insforge.database.from('organizations').select('*').eq('id', orgId).single(),
+      insforge.database.from('customers').select('*').eq('organization_id', orgId),
+      insforge.database.from('estimates').select('*').eq('organization_id', orgId).eq('status', 'Work Order'),
     ]);
 
     if (!orgRes.data || orgRes.error) {
       console.error(
         '[Crew Sync] CRITICAL: Cannot read organization data. ' +
-        'Crew users have no auth.uid() — the get_crew_work_orders RPC is required. ' +
-        'Run supabase_functions.sql in the Supabase SQL Editor to fix.',
+        'Crew users have no auth.uid() � the get_crew_work_orders RPC is required. ' +
+        'Run supabase_functions.sql in the insforge.database SQL Editor to fix.',
         '\n  orgRes error:', orgRes.error?.message || 'none',
         '\n  custRes error:', custRes.error?.message || 'none',
         '\n  estRes error:', estRes.error?.message || 'none'
@@ -1194,12 +1194,12 @@ export const fetchCrewWorkOrders = async (orgId: string): Promise<Partial<Calcul
     const rawCustomers = custRes.data || [];
     const rawEstimates = estRes.data || [];
 
-    console.log(`[Crew Sync] Direct query fallback — customers: ${rawCustomers.length}, estimates: ${rawEstimates.length}`);
+    console.log(`[Crew Sync] Direct query fallback � customers: ${rawCustomers.length}, estimates: ${rawEstimates.length}`);
 
     if (rawEstimates.length === 0 && estRes.error) {
       console.error(
         '[Crew Sync] CRITICAL: Both RPC and direct queries returned 0 estimates. ' +
-        'Run supabase_functions.sql in the Supabase SQL Editor to fix.',
+        'Run supabase_functions.sql in the insforge.database SQL Editor to fix.',
         '\n  estRes error:', estRes.error?.message
       );
       // Return empty result instead of null so crew sees an empty dashboard
@@ -1225,7 +1225,7 @@ export const crewUpdateJob = async (
   executionStatus: string
 ): Promise<boolean> => {
   const { data, error } = await retryRPC(
-    () => supabase.rpc('crew_update_job', {
+    () => insforge.database.rpc('crew_update_job', {
       p_org_id: orgId,
       p_estimate_id: estimateId,
       p_actuals: actuals,
@@ -1268,8 +1268,8 @@ export const fetchWarehouseState = async (
 ): Promise<{ openCellSets: number; closedCellSets: number; items: WarehouseItem[] } | null> => {
   try {
     const [stockRes, itemsRes] = await Promise.all([
-      supabase.from('warehouse_stock').select('*').eq('organization_id', orgId).single(),
-      supabase.from('inventory_items').select('*').eq('organization_id', orgId),
+      insforge.database.from('warehouse_stock').select('*').eq('organization_id', orgId).single(),
+      insforge.database.from('inventory_items').select('*').eq('organization_id', orgId),
     ]);
 
     const stock = (stockRes.data || {}) as any;
@@ -1291,38 +1291,52 @@ export const fetchWarehouseState = async (
 // REALTIME SUBSCRIPTIONS
 // ==========================================
 
+let _realtimeConnected = false;
+
+const ensureRealtimeConnected = async () => {
+  if (!_realtimeConnected) {
+    try {
+      await insforge.realtime.connect();
+      _realtimeConnected = true;
+    } catch (err) {
+      console.warn('[Realtime] Connection failed:', err);
+    }
+  }
+};
+
 export const subscribeToOrgChanges = (
   orgId: string,
   onEstimateChange: (payload: any) => void,
   onCustomerChange: (payload: any) => void,
   onInventoryChange: (payload: any) => void
 ) => {
-  const channel = supabase
-    .channel(`org-${orgId}`)
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'estimates', filter: `organization_id=eq.${orgId}` },
-      onEstimateChange
-    )
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'customers', filter: `organization_id=eq.${orgId}` },
-      onCustomerChange
-    )
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'inventory_items', filter: `organization_id=eq.${orgId}` },
-      onInventoryChange
-    )
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'warehouse_stock', filter: `organization_id=eq.${orgId}` },
-      onInventoryChange
-    )
-    .subscribe();
+  const channelName = `org:${orgId}`;
+
+  (async () => {
+    await ensureRealtimeConnected();
+    await insforge.realtime.subscribe(channelName);
+
+    insforge.realtime.on('estimate_change', (payload: any) => {
+      if (payload?.organization_id === orgId || payload?.meta?.channel === channelName) {
+        onEstimateChange(payload);
+      }
+    });
+
+    insforge.realtime.on('customer_change', (payload: any) => {
+      if (payload?.organization_id === orgId || payload?.meta?.channel === channelName) {
+        onCustomerChange(payload);
+      }
+    });
+
+    insforge.realtime.on('inventory_change', (payload: any) => {
+      if (payload?.organization_id === orgId || payload?.meta?.channel === channelName) {
+        onInventoryChange(payload);
+      }
+    });
+  })();
 
   return () => {
-    supabase.removeChannel(channel);
+    insforge.realtime.unsubscribe(channelName);
   };
 };
 
@@ -1335,20 +1349,21 @@ export const uploadImage = async (file: File, orgId: string): Promise<string | n
   const ext = file.name.split('.').pop() || 'jpg';
   const fileName = `${orgId}/${Date.now()}.${ext}`;
 
-  const { error } = await retryWrite(
-    () => supabase.storage
-      .from('uploads')
-      .upload(fileName, file, { cacheControl: '3600', upsert: false }),
-    'uploadImage'
-  );
+  try {
+    const { data, error } = await insforge.storage
+      .from('documents')
+      .upload(fileName, file);
 
-  if (error) {
-    console.error('uploadImage error:', error);
+    if (error) {
+      console.error('uploadImage error:', error);
+      return null;
+    }
+
+    return data?.url || insforge.storage.from('documents').getPublicUrl(fileName);
+  } catch (err) {
+    console.error('uploadImage exception:', err);
     return null;
   }
-
-  const { data } = supabase.storage.from('uploads').getPublicUrl(fileName);
-  return data?.publicUrl || null;
 };
 
 
@@ -1357,12 +1372,22 @@ export const uploadImage = async (file: File, orgId: string): Promise<string | n
 // ==========================================
 
 export const updatePassword = async (newPassword: string): Promise<boolean> => {
-  const { error } = await supabase.auth.updateUser({ password: newPassword });
-  if (error) {
-    console.error('updatePassword error:', error);
+  // InsForge doesn't support updateUser directly like insforge.database.
+  // Password changes should go through the reset password flow.
+  // For now, use setProfile or a custom RPC if available.
+  try {
+    const { data, error } = await insforge.database.rpc('update_user_password', {
+      p_new_password: newPassword,
+    });
+    if (error) {
+      console.error('updatePassword error:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('updatePassword exception:', err);
     return false;
   }
-  return true;
 };
 
 
@@ -1371,33 +1396,23 @@ export const updatePassword = async (newPassword: string): Promise<boolean> => {
 // ==========================================
 
 export const broadcastWorkOrderUpdate = (orgId: string): void => {
-  const channelName = `crew-updates-${orgId}`;
-  // Use a unique channel name for the sender to avoid colliding with any
-  // existing subscription on the admin side (shouldn't exist, but be safe).
-  const senderChannel = supabase.channel(`${channelName}-sender-${Date.now()}`, {
-    config: { broadcast: { ack: true } },
-  });
+  const channelName = `crew-updates:${orgId}`;
 
-  senderChannel.subscribe(async (status) => {
-    if (status === 'SUBSCRIBED') {
-      // Retry the send up to 3 times — Supabase broadcast can occasionally
-      // fail on the first attempt if the WebSocket was recently idle.
+  (async () => {
+    try {
+      await ensureRealtimeConnected();
+      await insforge.realtime.subscribe(channelName);
+
+      // Retry the send up to 3 times
       let sent = false;
       for (let attempt = 1; attempt <= 3 && !sent; attempt++) {
         try {
-          const result = await senderChannel.send({
-            type: 'broadcast',
-            event: 'work_order_update',
-            payload: { orgId, timestamp: Date.now() },
+          await insforge.realtime.publish(channelName, 'work_order_update', {
+            orgId,
+            timestamp: Date.now(),
           });
-          if (result === 'ok') {
-            sent = true;
-            console.log(`[Broadcast] Work order update sent to crew (attempt ${attempt})`);
-          } else {
-            console.warn(`[Broadcast] send returned "${result}" on attempt ${attempt}`);
-            // Brief delay before retry
-            await new Promise(r => setTimeout(r, 300 * attempt));
-          }
+          sent = true;
+          console.log(`[Broadcast] Work order update sent to crew (attempt ${attempt})`);
         } catch (err) {
           console.warn(`[Broadcast] send error on attempt ${attempt}:`, err);
           await new Promise(r => setTimeout(r, 300 * attempt));
@@ -1406,22 +1421,17 @@ export const broadcastWorkOrderUpdate = (orgId: string): void => {
       if (!sent) {
         console.error(`[Broadcast] Failed to send work order update after 3 attempts for org ${orgId}`);
       }
-      // Clean up the sender channel after a short delay
-      setTimeout(() => supabase.removeChannel(senderChannel), 2000);
+    } catch (err) {
+      console.error('[Broadcast] Connection error:', err);
     }
-  });
+  })();
 };
 
 export const subscribeToWorkOrderUpdates = (
   orgId: string,
   onUpdate: (source: 'broadcast' | 'postgres') => void
 ): (() => void) => {
-  // ── Deduplication guard ────────────────────────────────────────────────
-  // When admin finalizes a WO, two events often fire within milliseconds:
-  //   1) Supabase Broadcast (ephemeral push from broadcastWorkOrderUpdate)
-  //   2) Postgres changes (WAL-backed, from the upsertEstimate DB write)
-  // Without dedup the crew would double-fetch. We suppress any event that
-  // arrives within 2 s of the previous one.
+  // -- Deduplication guard ------------------------------------------------
   let lastUpdateTs = 0;
   const DEDUP_WINDOW_MS = 2000;
 
@@ -1435,65 +1445,26 @@ export const subscribeToWorkOrderUpdates = (
     onUpdate(source);
   };
 
-  // ── Channel 1: Ephemeral Broadcast (fast, but lost if WS is disconnected) ─
-  // This is the PRIMARY realtime mechanism for crew because crew users are
-  // unauthenticated (anon role) and Postgres Changes requires RLS SELECT
-  // access which anon doesn't have on the estimates table.
-  const broadcastChannel = supabase
-    .channel(`crew-updates-${orgId}`)
-    .on('broadcast', { event: 'work_order_update' }, () => {
-      console.log('[Crew Realtime] Broadcast received');
-      dedupedUpdate('broadcast');
-    })
-    .subscribe((status) => {
-      console.log(`[Crew Realtime] Broadcast channel status: ${status}`);
-      if (status === 'CHANNEL_ERROR') {
-        console.error('[Crew Realtime] Broadcast channel error — will rely on polling fallback');
-      }
-    });
+  const channelName = `crew-updates:${orgId}`;
 
-  // ── Channel 2: Postgres Changes (WAL-backed, auto-recovers after reconnect) ─
-  // NOTE: This channel requires:
-  //   1) estimates table added to supabase_realtime publication
-  //   2) RLS SELECT policy for anon role on estimates
-  // If those are not configured, this channel will silently receive no events.
-  // The polling fallback in useSync.ts handles this case.
-  const pgChannel = supabase
-    .channel(`crew-pg-estimates-${orgId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'estimates',
-        filter: `organization_id=eq.${orgId}`,
-      },
-      (payload: any) => {
-        // Only fire for work-order-relevant changes
-        const newRow = payload.new as any;
-        const oldRow = payload.old as any;
-        const isWorkOrder = newRow?.status === 'Work Order';
-        const wasPromoted = oldRow?.status !== 'Work Order' && isWorkOrder;
-        const wasUpdated = isWorkOrder && payload.eventType === 'UPDATE';
-        if (wasPromoted || wasUpdated || payload.eventType === 'INSERT') {
-          console.log(`[Crew Realtime] Postgres change: ${payload.eventType} (status=${newRow?.status})`);
-          dedupedUpdate('postgres');
-        }
-      }
-    )
-    .subscribe((status) => {
-      console.log(`[Crew Realtime] Postgres Changes channel status: ${status}`);
-      if (status === 'CHANNEL_ERROR') {
-        console.warn(
-          '[Crew Realtime] Postgres Changes channel failed. ' +
-          'This is expected if the estimates table is not in the supabase_realtime publication ' +
-          'or anon role lacks SELECT permission. Crew polling will handle updates.'
-        );
-      }
-    });
+  const workOrderHandler = (payload: any) => {
+    console.log('[Crew Realtime] Broadcast received');
+    dedupedUpdate('broadcast');
+  };
+
+  (async () => {
+    try {
+      await ensureRealtimeConnected();
+      await insforge.realtime.subscribe(channelName);
+      insforge.realtime.on('work_order_update', workOrderHandler);
+      console.log('[Crew Realtime] Subscribed to work order updates');
+    } catch (err) {
+      console.error('[Crew Realtime] Subscription failed — will rely on polling fallback:', err);
+    }
+  })();
 
   return () => {
-    supabase.removeChannel(broadcastChannel);
-    supabase.removeChannel(pgChannel);
+    insforge.realtime.off('work_order_update', workOrderHandler);
+    insforge.realtime.unsubscribe(channelName);
   };
 };
