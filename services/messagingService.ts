@@ -1,12 +1,12 @@
 /**
  * Messaging Service
  *
- * Admin → Crew messaging with document sharing via Supabase.
+ * Admin → Crew messaging with document sharing via InsForge.
  * Admin path: direct table queries (authenticated).
  * Crew path: SECURITY DEFINER RPCs (anon/PIN-based).
  */
 
-import { supabase } from '../src/lib/supabase';
+import { insforge } from '../src/lib/insforge';
 import { CrewMessage, CrewMessageType } from '../types';
 
 // ─── MAPPERS ────────────────────────────────────────────────────────────────
@@ -55,7 +55,7 @@ export const sendCrewMessage = async (
     }
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await insforge.database
     .from('crew_messages')
     .insert({
       organization_id: orgId,
@@ -84,7 +84,7 @@ export const sendCrewMessage = async (
  * Admin fetches all sent messages for dashboard view.
  */
 export const getAdminMessages = async (orgId: string): Promise<CrewMessage[]> => {
-  const { data, error } = await supabase
+  const { data, error } = await insforge.database
     .from('crew_messages')
     .select('*')
     .eq('organization_id', orgId)
@@ -102,7 +102,7 @@ export const getAdminMessages = async (orgId: string): Promise<CrewMessage[]> =>
 // ─── ADMIN: DELETE MESSAGE ─────────────────────────────────────────────────
 
 export const deleteCrewMessage = async (orgId: string, messageId: string): Promise<boolean> => {
-  const { error } = await supabase
+  const { error } = await insforge.database
     .from('crew_messages')
     .delete()
     .eq('id', messageId)
@@ -121,7 +121,7 @@ export const deleteCrewMessage = async (orgId: string, messageId: string): Promi
  * Crew fetches messages via SECURITY DEFINER RPC (PIN-based auth).
  */
 export const getCrewMessages = async (orgId: string): Promise<CrewMessage[]> => {
-  const { data, error } = await supabase.rpc('get_crew_messages', {
+  const { data, error } = await insforge.database.rpc('get_crew_messages', {
     p_org_id: orgId,
   });
 
@@ -136,7 +136,7 @@ export const getCrewMessages = async (orgId: string): Promise<CrewMessage[]> => 
 // ─── CREW: MARK AS READ (RPC) ─────────────────────────────────────────────
 
 export const markMessageRead = async (orgId: string, messageId: string): Promise<boolean> => {
-  const { data, error } = await supabase.rpc('mark_crew_message_read', {
+  const { data, error } = await insforge.database.rpc('mark_crew_message_read', {
     p_org_id: orgId,
     p_message_id: messageId,
   });
@@ -152,7 +152,7 @@ export const markMessageRead = async (orgId: string, messageId: string): Promise
 // ─── CREW: UNREAD COUNT (RPC) ──────────────────────────────────────────────
 
 export const getCrewUnreadCount = async (orgId: string): Promise<number> => {
-  const { data, error } = await supabase.rpc('get_crew_unread_count', {
+  const { data, error } = await insforge.database.rpc('get_crew_unread_count', {
     p_org_id: orgId,
   });
 
@@ -167,7 +167,7 @@ export const getCrewUnreadCount = async (orgId: string): Promise<number> => {
 // ─── DOCUMENT UPLOAD ───────────────────────────────────────────────────────
 
 /**
- * Upload a file to Supabase Storage for crew messaging.
+ * Upload a file to InsForge Storage for crew messaging.
  * Uses the existing 'documents' bucket.
  */
 const uploadMessageDocument = async (
@@ -178,24 +178,17 @@ const uploadMessageDocument = async (
   const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
   const storagePath = `${orgId}/crew-messages/${timestamp}_${sanitizedName}`;
 
-  const { error: uploadError } = await supabase.storage
+  const { data: uploadData, error: uploadError } = await insforge.storage
     .from('documents')
-    .upload(storagePath, file, {
-      cacheControl: '3600',
-      upsert: false,
-    });
+    .upload(storagePath, file);
 
   if (uploadError) {
     console.error('[Messaging] Storage upload error:', uploadError.message);
     return null;
   }
 
-  const { data: urlData } = supabase.storage
-    .from('documents')
-    .getPublicUrl(storagePath);
-
   return {
-    url: urlData.publicUrl,
+    url: uploadData?.url || '',
     name: file.name,
   };
 };
@@ -210,25 +203,27 @@ export const subscribeToCrewMessages = (
   orgId: string,
   onNewMessage: (message: CrewMessage) => void
 ): (() => void) => {
-  const channel = supabase
-    .channel(`crew-messages-${orgId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'crew_messages',
-        filter: `organization_id=eq.${orgId}`,
-      },
-      (payload) => {
-        if (payload.new) {
-          onNewMessage(dbRowToCrewMessage(payload.new));
-        }
-      }
-    )
-    .subscribe();
+  const channelName = `crew-messages:${orgId}`;
+
+  const messageHandler = (payload: any) => {
+    if (payload) {
+      onNewMessage(dbRowToCrewMessage(payload));
+    }
+  };
+
+  (async () => {
+    try {
+      await insforge.realtime.connect();
+      await insforge.realtime.subscribe(channelName);
+      insforge.realtime.on('crew_message_insert', messageHandler);
+      console.log('[Messaging] Subscribed to crew message updates');
+    } catch (err) {
+      console.error('[Messaging] Realtime subscription failed:', err);
+    }
+  })();
 
   return () => {
-    supabase.removeChannel(channel);
+    insforge.realtime.off('crew_message_insert', messageHandler);
+    insforge.realtime.unsubscribe(channelName);
   };
 };

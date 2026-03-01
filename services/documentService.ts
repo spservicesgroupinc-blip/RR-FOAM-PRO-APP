@@ -1,11 +1,11 @@
 /**
  * Document Service
  * 
- * Handles uploading generated PDFs to Supabase Storage and tracking
+ * Handles uploading generated PDFs to InsForge Storage and tracking
  * them in the `documents` table for per-customer / per-estimate access.
  */
 
-import { supabase } from '../src/lib/supabase';
+import { insforge } from '../src/lib/insforge';
 
 // ─── TYPES ──────────────────────────────────────────────────────────────────
 
@@ -60,7 +60,7 @@ const mapDocType = (type: 'ESTIMATE' | 'INVOICE' | 'RECEIPT' | 'WORK_ORDER' | 'P
 // ─── UPLOAD & SAVE ──────────────────────────────────────────────────────────
 
 /**
- * Upload a PDF blob to Supabase Storage and record it in the `documents` table.
+ * Upload a PDF blob to InsForge Storage and record it in the `documents` table.
  * 
  * Storage path: `{orgId}/{customerId}/{docType}_{timestamp}.pdf`
  * Falls back to `{orgId}/general/` if no customer.
@@ -87,26 +87,21 @@ export const saveDocument = async (options: {
     const customerFolder = customerId || 'general';
     const storagePath = `${orgId}/${customerFolder}/${docType}_${timestamp}_${sanitizedFilename}`;
 
-    // 1. Upload to Supabase Storage
-    const { error: uploadError } = await supabase.storage
+    // 1. Upload to InsForge Storage
+    const { data: uploadData, error: uploadError } = await insforge.storage
       .from('documents')
-      .upload(storagePath, pdfBlob, {
-        cacheControl: '3600',
-        contentType: 'application/pdf',
-        upsert: false,
-      });
+      .upload(storagePath, pdfBlob);
 
     if (uploadError) {
       console.error('[DocumentService] Storage upload error:', uploadError);
       return null;
     }
 
-    // 2. Get public URL
-    const { data: urlData } = supabase.storage.from('documents').getPublicUrl(storagePath);
-    const publicUrl = urlData?.publicUrl || '';
+    // 2. Get public URL from upload response
+    const publicUrl = uploadData?.url || '';
 
     // 3. Insert record into documents table
-    const { data, error: insertError } = await (supabase
+    const { data, error: insertError } = await (insforge.database
       .from('documents') as any)
       .insert({
         organization_id: orgId,
@@ -147,7 +142,7 @@ export const getCustomerDocuments = async (
 ): Promise<DocumentRecord[]> => {
   try {
     // Try RPC first (bypasses RLS for crew)
-    const { data: rpcData, error: rpcError } = await (supabase as any)
+    const { data: rpcData, error: rpcError } = await (insforge.database as any)
       .rpc('get_customer_documents', { p_org_id: orgId, p_customer_id: customerId });
 
     if (!rpcError && rpcData) {
@@ -155,7 +150,7 @@ export const getCustomerDocuments = async (
     }
 
     // Fallback: direct query
-    const { data, error } = await (supabase
+    const { data, error } = await (insforge.database
       .from('documents') as any)
       .select('*')
       .eq('organization_id', orgId)
@@ -182,7 +177,7 @@ export const getEstimateDocuments = async (
   estimateId: string
 ): Promise<DocumentRecord[]> => {
   try {
-    const { data: rpcData, error: rpcError } = await (supabase as any)
+    const { data: rpcData, error: rpcError } = await (insforge.database as any)
       .rpc('get_estimate_documents', { p_org_id: orgId, p_estimate_id: estimateId });
 
     if (!rpcError && rpcData) {
@@ -190,7 +185,7 @@ export const getEstimateDocuments = async (
     }
 
     // Fallback
-    const { data, error } = await (supabase
+    const { data, error } = await (insforge.database
       .from('documents') as any)
       .select('*')
       .eq('organization_id', orgId)
@@ -217,7 +212,7 @@ export const getOrgDocuments = async (
   filters?: { documentType?: DocumentType; limit?: number }
 ): Promise<DocumentRecord[]> => {
   try {
-    let query = (supabase
+    let query = (insforge.database
       .from('documents') as any)
       .select('*')
       .eq('organization_id', orgId)
@@ -250,16 +245,16 @@ export const getOrgDocuments = async (
 export const deleteDocument = async (documentId: string, storagePath: string): Promise<boolean> => {
   try {
     // Remove from storage
-    const { error: storageError } = await supabase.storage
+    const { error: storageError } = await insforge.storage
       .from('documents')
-      .remove([storagePath]);
+      .remove(storagePath);
 
     if (storageError) {
       console.warn('[DocumentService] Storage delete warning:', storageError);
     }
 
     // Remove from DB
-    const { error: dbError } = await (supabase
+    const { error: dbError } = await (insforge.database
       .from('documents') as any)
       .delete()
       .eq('id', documentId);

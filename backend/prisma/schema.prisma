@@ -1,0 +1,367 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── MULTI-TENANT ROOT ──────────────────────────────────────────────────────
+
+model Organization {
+  id              String   @id @default(uuid())
+  companyName     String   @unique @map("company_name")
+  crewPinHash     String   @map("crew_pin_hash")
+  openCellSets    Float    @default(0) @map("open_cell_sets")
+  closedCellSets  Float    @default(0) @map("closed_cell_sets")
+  yields          Json     @default("{\"openCell\":18000,\"closedCell\":5400,\"openCellStrokes\":10,\"closedCellStrokes\":10}")
+  costs           Json     @default("{\"openCell\":650,\"closedCell\":750,\"laborRate\":45}")
+  pricingMode     String   @default("level_pricing") @map("pricing_mode")
+  sqFtRates       Json     @default("{\"wall\":0,\"roof\":0}") @map("sq_ft_rates")
+  lifetimeUsage   Json     @default("{\"openCell\":0,\"closedCell\":0}") @map("lifetime_usage")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  profile         CompanyProfile?
+  users           User[]
+  customers       Customer[]
+  estimates       Estimate[]
+  warehouseItems  WarehouseItem[]
+  equipment       Equipment[]
+  materialLogs    MaterialUsageLog[]
+  purchaseOrders  PurchaseOrder[]
+  crewMessages    CrewMessage[]
+  maintenanceEquipment MaintenanceEquipment[]
+  maintenanceJobUsage  MaintenanceJobUsage[]
+
+  @@map("organizations")
+}
+
+// ─── COMPANY PROFILE (1:1 with Org) ─────────────────────────────────────────
+
+model CompanyProfile {
+  id              String       @id @default(uuid())
+  organizationId  String       @unique @map("organization_id")
+  companyName     String       @default("") @map("company_name")
+  addressLine1    String       @default("") @map("address_line1")
+  addressLine2    String       @default("") @map("address_line2")
+  city            String       @default("")
+  state           String       @default("")
+  zip             String       @default("")
+  phone           String       @default("")
+  email           String       @default("")
+  website         String       @default("")
+  logoUrl         String       @default("") @map("logo_url")
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("company_profiles")
+}
+
+// ─── USERS ──────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  admin
+  crew
+}
+
+model User {
+  id              String       @id @default(uuid())
+  email           String       @unique
+  passwordHash    String       @map("password_hash")
+  username        String
+  organizationId  String       @map("organization_id")
+  role            UserRole     @default(admin)
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("users")
+}
+
+// ─── CUSTOMERS ──────────────────────────────────────────────────────────────
+
+enum CustomerStatus {
+  Active
+  Archived
+  Lead
+}
+
+model Customer {
+  id              String         @id @default(uuid())
+  organizationId  String         @map("organization_id")
+  name            String
+  address         String         @default("")
+  city            String         @default("")
+  state           String         @default("")
+  zip             String         @default("")
+  email           String         @default("")
+  phone           String         @default("")
+  notes           String         @default("")
+  status          CustomerStatus @default(Active)
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  estimates       Estimate[]
+
+  @@map("customers")
+}
+
+// ─── ESTIMATES ──────────────────────────────────────────────────────────────
+
+enum EstimateStatus {
+  Draft
+  WorkOrder    @map("Work Order")
+  Invoiced
+  Paid
+  Archived
+}
+
+enum ExecutionStatus {
+  NotStarted   @map("Not Started")
+  InProgress   @map("In Progress")
+  Completed
+}
+
+model Estimate {
+  id                   String          @id @default(uuid())
+  organizationId       String          @map("organization_id")
+  customerId           String          @map("customer_id")
+  status               EstimateStatus  @default(Draft)
+  executionStatus      ExecutionStatus @default(NotStarted) @map("execution_status")
+  date                 String
+  inputs               Json            @default("{}")
+  results              Json            @default("{}")
+  materials            Json            @default("{}")
+  wallSettings         Json            @default("{}") @map("wall_settings")
+  roofSettings         Json            @default("{}") @map("roof_settings")
+  expenses             Json            @default("{}")
+  totalValue           Float           @default(0) @map("total_value")
+  notes                String?
+  pricingMode          String?         @map("pricing_mode")
+  sqFtRates            Json?           @map("sq_ft_rates")
+  scheduledDate        String?         @map("scheduled_date")
+  invoiceDate          String?         @map("invoice_date")
+  invoiceNumber        String?         @map("invoice_number")
+  paymentTerms         String?         @map("payment_terms")
+  estimateLines        Json?           @map("estimate_lines")
+  invoiceLines         Json?           @map("invoice_lines")
+  workOrderLines       Json?           @map("work_order_lines")
+  actuals              Json?
+  financials           Json?
+  workOrderSheetUrl    String?         @map("work_order_sheet_url")
+  pdfLink              String?         @map("pdf_link")
+  sitePhotos           Json?           @map("site_photos")
+  inventoryProcessed   Boolean         @default(false) @map("inventory_processed")
+  lastModified         DateTime        @default(now()) @map("last_modified")
+  createdAt            DateTime        @default(now()) @map("created_at")
+
+  organization         Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer             Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("estimates")
+}
+
+// ─── WAREHOUSE INVENTORY ────────────────────────────────────────────────────
+
+model WarehouseItem {
+  id              String       @id @default(uuid())
+  organizationId  String       @map("organization_id")
+  name            String
+  quantity        Float        @default(0)
+  unit            String       @default("units")
+  unitCost        Float        @default(0) @map("unit_cost")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("warehouse_items")
+}
+
+// ─── EQUIPMENT ──────────────────────────────────────────────────────────────
+
+enum EquipmentStatus {
+  Available
+  InUse      @map("In Use")
+  Maintenance
+  Lost
+}
+
+model Equipment {
+  id              String          @id @default(uuid())
+  organizationId  String          @map("organization_id")
+  name            String
+  status          EquipmentStatus @default(Available)
+  lastSeen        Json?           @map("last_seen")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  organization    Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("equipment")
+}
+
+// ─── MATERIAL USAGE LOGS ────────────────────────────────────────────────────
+
+model MaterialUsageLog {
+  id              String       @id @default(uuid())
+  organizationId  String       @map("organization_id")
+  jobId           String?      @map("job_id")
+  customerName    String       @default("") @map("customer_name")
+  materialName    String       @map("material_name")
+  quantity        Float
+  unit            String
+  loggedBy        String       @default("") @map("logged_by")
+  logType         String       @default("estimated") @map("log_type")
+  date            String
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("material_usage_logs")
+}
+
+// ─── PURCHASE ORDERS ────────────────────────────────────────────────────────
+
+enum PurchaseOrderStatus {
+  Draft
+  Sent
+  Received
+  Cancelled
+}
+
+model PurchaseOrder {
+  id              String              @id @default(uuid())
+  organizationId  String              @map("organization_id")
+  date            String
+  vendorName      String              @map("vendor_name")
+  status          PurchaseOrderStatus @default(Draft)
+  items           Json                @default("[]")
+  totalCost       Float               @default(0) @map("total_cost")
+  notes           String?
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  organization    Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("purchase_orders")
+}
+
+// ─── CREW MESSAGES ──────────────────────────────────────────────────────────
+
+enum MessageType {
+  text
+  document
+  announcement
+}
+
+model CrewMessage {
+  id              String       @id @default(uuid())
+  organizationId  String       @map("organization_id")
+  senderId        String?      @map("sender_id")
+  senderName      String       @map("sender_name")
+  messageType     MessageType  @default(text) @map("message_type")
+  subject         String       @default("")
+  body            String       @default("")
+  documentUrl     String?      @map("document_url")
+  documentName    String?      @map("document_name")
+  isRead          Boolean      @default(false) @map("is_read")
+  readAt          DateTime?    @map("read_at")
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("crew_messages")
+}
+
+// ─── MAINTENANCE EQUIPMENT ──────────────────────────────────────────────────
+
+enum MaintenanceStatus {
+  active
+  inactive
+  retired
+}
+
+model MaintenanceEquipment {
+  id                  String              @id @default(uuid())
+  organizationId      String              @map("organization_id")
+  name                String
+  description         String              @default("")
+  category            String              @default("")
+  totalSetsSprayed    Float               @default(0) @map("total_sets_sprayed")
+  totalHoursOperated  Float               @default(0) @map("total_hours_operated")
+  lifetimeSets        Float               @default(0) @map("lifetime_sets")
+  lifetimeHours       Float               @default(0) @map("lifetime_hours")
+  status              MaintenanceStatus   @default(active)
+  lastServiceDate     DateTime?           @map("last_service_date")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+
+  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  serviceItems        MaintenanceServiceItem[]
+  serviceLogs         MaintenanceServiceLog[]
+
+  @@map("maintenance_equipment")
+}
+
+model MaintenanceServiceItem {
+  id                      String               @id @default(uuid())
+  equipmentId             String               @map("equipment_id")
+  organizationId          String               @map("organization_id")
+  name                    String
+  description             String               @default("")
+  intervalSets            Float                @default(0) @map("interval_sets")
+  intervalHours           Float                @default(0) @map("interval_hours")
+  setsSinceLastService    Float                @default(0) @map("sets_since_last_service")
+  hoursSinceLastService   Float                @default(0) @map("hours_since_last_service")
+  lastServicedAt          DateTime?            @map("last_serviced_at")
+  lastServicedBy          String               @default("") @map("last_serviced_by")
+  isActive                Boolean              @default(true) @map("is_active")
+  createdAt               DateTime             @default(now()) @map("created_at")
+  updatedAt               DateTime             @updatedAt @map("updated_at")
+
+  equipment               MaintenanceEquipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@map("maintenance_service_items")
+}
+
+model MaintenanceServiceLog {
+  id              String               @id @default(uuid())
+  organizationId  String               @map("organization_id")
+  equipmentId     String               @map("equipment_id")
+  serviceItemId   String?              @map("service_item_id")
+  serviceDate     DateTime             @map("service_date")
+  performedBy     String               @map("performed_by")
+  notes           String               @default("")
+  setsAtService   Float                @default(0) @map("sets_at_service")
+  hoursAtService  Float                @default(0) @map("hours_at_service")
+  createdAt       DateTime             @default(now()) @map("created_at")
+
+  equipment       MaintenanceEquipment @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@map("maintenance_service_logs")
+}
+
+model MaintenanceJobUsage {
+  id              String       @id @default(uuid())
+  organizationId  String       @map("organization_id")
+  estimateId      String?      @map("estimate_id")
+  openCellSets    Float        @default(0) @map("open_cell_sets")
+  closedCellSets  Float        @default(0) @map("closed_cell_sets")
+  totalSets       Float        @default(0) @map("total_sets")
+  operatingHours  Float        @default(0) @map("operating_hours")
+  jobDate         String       @map("job_date")
+  customerName    String       @default("") @map("customer_name")
+  notes           String       @default("")
+  applied         Boolean      @default(false)
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("maintenance_job_usage")
+}

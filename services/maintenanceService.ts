@@ -5,12 +5,9 @@
  * All maintenance is driven by total chemical sprayed (sets).
  * Each "set" = 1 proportioner cycle of open cell OR closed cell foam.
  * Every set represents pump, compressor, generator, and all spray equipment operation.
- * 
- * NOTE: The maintenance_* tables are not yet in the generated Supabase types.
- * We use `(supabase as any).from(...)` until types are regenerated.
  */
 
-import { supabase } from '../src/lib/supabase';
+import { insforge } from '../src/lib/insforge';
 import {
   MaintenanceEquipment,
   MaintenanceServiceItem,
@@ -18,8 +15,8 @@ import {
   MaintenanceJobUsage,
 } from '../types';
 
-// Typed helper — new tables aren't in the generated Database type yet
-const db = supabase as any;
+// Database helper
+const db = insforge.database as any;
 
 const isRetryableWriteError = (error: any): boolean => {
   if (!error) return false;

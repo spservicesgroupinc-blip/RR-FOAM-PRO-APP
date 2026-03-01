@@ -5,7 +5,7 @@
  * Integrates with the get_subscription_status RPC for server-side validated data.
  */
 
-import { supabase } from '../src/lib/supabase';
+import { insforge } from '../src/lib/insforge';
 import { SubscriptionInfo, SubscriptionPlan, PLAN_LIMITS } from '../types';
 
 // ─── FETCH SUBSCRIPTION STATUS ──────────────────────────────────────────────
@@ -16,7 +16,7 @@ import { SubscriptionInfo, SubscriptionPlan, PLAN_LIMITS } from '../types';
  */
 export const fetchSubscriptionStatus = async (orgId: string): Promise<SubscriptionInfo | null> => {
   try {
-    const { data, error } = await supabase.rpc('get_subscription_status', { p_org_id: orgId });
+    const { data, error } = await insforge.database.rpc('get_subscription_status', { p_org_id: orgId });
 
     if (error) {
       console.error('fetchSubscriptionStatus error:', error);
