@@ -119,15 +119,29 @@ router.post('/purchase-orders', async (req: Request, res: Response) => {
 
     // Create PO and adjust warehouse stock in a transaction if status is Received
     const result = await prisma.$transaction(async (tx) => {
-      const po = id
-        ? await tx.purchaseOrder.upsert({
+      let po;
+      if (id) {
+        // Verify org ownership before updating — prevents cross-tenant writes
+        const existing = await tx.purchaseOrder.findFirst({
+          where: { id, organizationId },
+          select: { id: true },
+        });
+
+        if (existing) {
+          po = await tx.purchaseOrder.update({
             where: { id },
-            update: { ...data, items: data.items as any },
-            create: { id, ...data, items: data.items as any, organizationId },
-          })
-        : await tx.purchaseOrder.create({
-            data: { ...data, items: data.items as any, organizationId },
+            data: { ...data, items: data.items as any },
           });
+        } else {
+          po = await tx.purchaseOrder.create({
+            data: { id, ...data, items: data.items as any, organizationId },
+          });
+        }
+      } else {
+        po = await tx.purchaseOrder.create({
+          data: { ...data, items: data.items as any, organizationId },
+        });
+      }
 
       // If PO is "Received", add quantities to warehouse
       if (data.status === 'Received') {
@@ -140,10 +154,17 @@ router.post('/purchase-orders', async (req: Request, res: Response) => {
           } else if (item.type === 'closed_cell') {
             addClosedCellSets += item.quantity;
           } else if (item.type === 'inventory' && item.inventoryId) {
-            await tx.warehouseItem.update({
-              where: { id: item.inventoryId },
-              data: { quantity: { increment: item.quantity } },
+            // Verify the warehouse item belongs to this org before adjusting
+            const whItem = await tx.warehouseItem.findFirst({
+              where: { id: item.inventoryId, organizationId },
+              select: { id: true },
             });
+            if (whItem) {
+              await tx.warehouseItem.update({
+                where: { id: item.inventoryId },
+                data: { quantity: { increment: item.quantity } },
+              });
+            }
           }
         }
 

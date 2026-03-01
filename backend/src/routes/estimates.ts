@@ -147,12 +147,24 @@ router.post('/', adminOnly, async (req: Request, res: Response) => {
 
     let estimate;
     if (id) {
-      estimate = await prisma.estimate.upsert({
-        where: { id },
-        update: dbData,
-        create: { id, ...dbData, organizationId },
-        include: { customer: true },
+      // Verify org ownership before updating — prevents cross-tenant writes
+      const existing = await prisma.estimate.findFirst({
+        where: { id, organizationId },
+        select: { id: true },
       });
+
+      if (existing) {
+        estimate = await prisma.estimate.update({
+          where: { id },
+          data: dbData,
+          include: { customer: true },
+        });
+      } else {
+        estimate = await prisma.estimate.create({
+          data: { id, ...dbData, organizationId },
+          include: { customer: true },
+        });
+      }
     } else {
       estimate = await prisma.estimate.create({
         data: { ...dbData, organizationId },

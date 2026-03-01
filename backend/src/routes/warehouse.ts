@@ -98,11 +98,22 @@ router.post('/items', adminOnly, async (req: Request, res: Response) => {
 
     let item;
     if (id) {
-      item = await prisma.warehouseItem.upsert({
-        where: { id },
-        update: { ...data },
-        create: { id, ...data, organizationId },
+      // Verify org ownership before updating — prevents cross-tenant writes
+      const existing = await prisma.warehouseItem.findFirst({
+        where: { id, organizationId },
+        select: { id: true },
       });
+
+      if (existing) {
+        item = await prisma.warehouseItem.update({
+          where: { id },
+          data: { ...data },
+        });
+      } else {
+        item = await prisma.warehouseItem.create({
+          data: { id, ...data, organizationId },
+        });
+      }
     } else {
       item = await prisma.warehouseItem.create({
         data: { ...data, organizationId },
@@ -136,20 +147,27 @@ router.post('/items/batch', adminOnly, async (req: Request, res: Response) => {
 
     const { organizationId } = req.auth!;
 
-    const results = await prisma.$transaction(
-      items.data.map(({ id, ...data }) => {
+    const results = await prisma.$transaction(async (tx) => {
+      const out = [];
+      for (const { id, ...data } of items.data) {
         if (id) {
-          return prisma.warehouseItem.upsert({
-            where: { id },
-            update: { ...data },
-            create: { id, ...data, organizationId },
+          // Verify org ownership before updating — prevents cross-tenant writes
+          const existing = await tx.warehouseItem.findFirst({
+            where: { id, organizationId },
+            select: { id: true },
           });
+
+          if (existing) {
+            out.push(await tx.warehouseItem.update({ where: { id }, data: { ...data } }));
+          } else {
+            out.push(await tx.warehouseItem.create({ data: { id, ...data, organizationId } }));
+          }
+        } else {
+          out.push(await tx.warehouseItem.create({ data: { ...data, organizationId } }));
         }
-        return prisma.warehouseItem.create({
-          data: { ...data, organizationId },
-        });
-      })
-    );
+      }
+      return out;
+    });
 
     broadcastToOrg(organizationId, 'warehouse:updated', {});
 

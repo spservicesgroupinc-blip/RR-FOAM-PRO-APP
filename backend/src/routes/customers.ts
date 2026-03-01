@@ -63,12 +63,22 @@ router.post('/', async (req: Request, res: Response) => {
 
     let customer;
     if (id) {
-      // Upsert — check org ownership
-      customer = await prisma.customer.upsert({
-        where: { id },
-        update: { ...data },
-        create: { id, ...data, organizationId },
+      // Verify org ownership before updating — prevents cross-tenant writes
+      const existing = await prisma.customer.findFirst({
+        where: { id, organizationId },
+        select: { id: true },
       });
+
+      if (existing) {
+        customer = await prisma.customer.update({
+          where: { id },
+          data: { ...data },
+        });
+      } else {
+        customer = await prisma.customer.create({
+          data: { id, ...data, organizationId },
+        });
+      }
     } else {
       customer = await prisma.customer.create({
         data: { ...data, organizationId },
@@ -107,20 +117,27 @@ router.post('/batch', async (req: Request, res: Response) => {
 
     const { organizationId } = req.auth!;
 
-    const results = await prisma.$transaction(
-      items.data.map(({ id, ...data }) => {
+    const results = await prisma.$transaction(async (tx) => {
+      const out = [];
+      for (const { id, ...data } of items.data) {
         if (id) {
-          return prisma.customer.upsert({
-            where: { id },
-            update: { ...data },
-            create: { id, ...data, organizationId },
+          // Verify org ownership before updating — prevents cross-tenant writes
+          const existing = await tx.customer.findFirst({
+            where: { id, organizationId },
+            select: { id: true },
           });
+
+          if (existing) {
+            out.push(await tx.customer.update({ where: { id }, data: { ...data } }));
+          } else {
+            out.push(await tx.customer.create({ data: { id, ...data, organizationId } }));
+          }
+        } else {
+          out.push(await tx.customer.create({ data: { ...data, organizationId } }));
         }
-        return prisma.customer.create({
-          data: { ...data, organizationId },
-        });
-      })
-    );
+      }
+      return out;
+    });
 
     broadcastToOrg(organizationId, 'customer:updated', { count: results.length });
 

@@ -55,11 +55,22 @@ router.post('/', adminOnly, async (req: Request, res: Response) => {
 
     let item;
     if (id) {
-      item = await prisma.equipment.upsert({
-        where: { id },
-        update: { ...data, status: dbStatus, lastSeen: data.lastSeen || undefined },
-        create: { id, ...data, status: dbStatus, lastSeen: data.lastSeen || undefined, organizationId },
+      // Verify org ownership before updating — prevents cross-tenant writes
+      const existing = await prisma.equipment.findFirst({
+        where: { id, organizationId },
+        select: { id: true },
       });
+
+      if (existing) {
+        item = await prisma.equipment.update({
+          where: { id },
+          data: { ...data, status: dbStatus, lastSeen: data.lastSeen || undefined },
+        });
+      } else {
+        item = await prisma.equipment.create({
+          data: { id, ...data, status: dbStatus, lastSeen: data.lastSeen || undefined, organizationId },
+        });
+      }
     } else {
       item = await prisma.equipment.create({
         data: { ...data, status: dbStatus, lastSeen: data.lastSeen || undefined, organizationId },
