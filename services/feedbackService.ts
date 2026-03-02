@@ -1,4 +1,5 @@
-import { FEEDBACK_SCRIPT_URL } from '../constants';
+// Feedback endpoint — set via environment variable or hardcode here
+const FEEDBACK_SCRIPT_URL = import.meta.env.VITE_FEEDBACK_SCRIPT_URL || '';
 
 export interface FeedbackPayload {
   area: string;

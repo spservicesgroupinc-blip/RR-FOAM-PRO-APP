@@ -1,52 +1,20 @@
 /**
  * Subscription Service
- * 
+ *
  * Manages SaaS subscription status, plan limits, and usage tracking.
- * Integrates with the get_subscription_status RPC for server-side validated data.
+ * Currently all limits are bypassed (enterprise mode).
  */
 
-import { insforge } from '../src/lib/insforge';
 import { SubscriptionInfo, SubscriptionPlan, PLAN_LIMITS } from '../types';
 
 // ─── FETCH SUBSCRIPTION STATUS ──────────────────────────────────────────────
 
 /**
  * Get the current subscription status for an organization.
- * Uses a SECURITY DEFINER RPC that validates caller ownership.
+ * Returns enterprise-level defaults (no remote check needed yet).
  */
-export const fetchSubscriptionStatus = async (orgId: string): Promise<SubscriptionInfo | null> => {
-  try {
-    const { data, error } = await insforge.database.rpc('get_subscription_status', { p_org_id: orgId });
-
-    if (error) {
-      console.error('fetchSubscriptionStatus error:', error);
-      return null;
-    }
-
-    const result = data as any;
-    if (!result || result.status === 'no_subscription') {
-      return getDefaultTrialInfo();
-    }
-
-    return {
-      plan: result.plan as SubscriptionPlan,
-      status: result.status,
-      trialEndsAt: result.trial_ends_at || undefined,
-      isTrialExpired: result.is_trial_expired || false,
-      currentPeriodEnd: result.current_period_end || undefined,
-      usage: {
-        estimatesThisMonth: result.usage?.estimates_this_month || 0,
-        maxEstimates: result.usage?.max_estimates || 10,
-        customers: result.usage?.customers || 0,
-        maxCustomers: result.usage?.max_customers || 25,
-        users: result.usage?.users || 0,
-        maxUsers: result.usage?.max_users || 2,
-      },
-    };
-  } catch (err) {
-    console.error('fetchSubscriptionStatus exception:', err);
-    return null;
-  }
+export const fetchSubscriptionStatus = async (_orgId: string): Promise<SubscriptionInfo | null> => {
+  return getDefaultTrialInfo();
 };
 
 // ─── HELPERS ────────────────────────────────────────────────────────────────
@@ -70,10 +38,10 @@ const getDefaultTrialInfo = (): SubscriptionInfo => ({
  * Returns { allowed: boolean, message?: string }
  */
 export const checkPlanLimit = (
-  sub: SubscriptionInfo,
-  action: 'create_estimate' | 'create_customer' | 'add_user'
+  _sub: SubscriptionInfo,
+  _action: 'create_estimate' | 'create_customer' | 'add_user',
 ): { allowed: boolean; message?: string } => {
-  // All limits bypassed for testing
+  // All limits bypassed
   return { allowed: true };
 };
 

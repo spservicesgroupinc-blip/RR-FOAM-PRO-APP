@@ -1,13 +1,11 @@
 /**
- * Equipment Maintenance Service
- * 
+ * Maintenance Service
+ *
  * CRUD operations for equipment maintenance tracking.
- * All maintenance is driven by total chemical sprayed (sets).
- * Each "set" = 1 proportioner cycle of open cell OR closed cell foam.
- * Every set represents pump, compressor, generator, and all spray equipment operation.
+ * Uses Express API via apiClient (replaces InsForge SDK).
  */
 
-import { insforge } from '../src/lib/insforge';
+import { api } from './apiClient';
 import {
   MaintenanceEquipment,
   MaintenanceServiceItem,
@@ -15,117 +13,7 @@ import {
   MaintenanceJobUsage,
 } from '../types';
 
-// Database helper
-const db = insforge.database as any;
-
-const isRetryableWriteError = (error: any): boolean => {
-  if (!error) return false;
-  const code = String(error.code || '');
-  const message = String(error.message || '').toLowerCase();
-  const status = Number(error.status || error.statusCode || 0);
-
-  if (status >= 500 || status === 408 || status === 429) return true;
-  if (['PGRST000', 'PGRST003', '57014'].includes(code)) return true;
-  if (message.includes('network') || message.includes('fetch') || message.includes('timeout') || message.includes('temporar')) return true;
-  return false;
-};
-
-const retryWrite = async <T>(
-  fn: () => PromiseLike<{ data: T; error: any }>,
-  label: string,
-  maxRetries = 3
-): Promise<{ data: T; error: any }> => {
-  let lastResult: { data: T; error: any } = { data: null as any, error: null };
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const result = await fn();
-      if (!result.error) return result;
-
-      lastResult = result;
-      if (!isRetryableWriteError(result.error) || attempt === maxRetries) {
-        return result;
-      }
-    } catch (err) {
-      lastResult = { data: null as any, error: err };
-      if (!isRetryableWriteError(err) || attempt === maxRetries) {
-        return lastResult;
-      }
-    }
-
-    const delay = Math.min(400 * Math.pow(2, attempt), 4000);
-    console.warn(`[${label}] write attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
-    await new Promise(r => setTimeout(r, delay));
-  }
-
-  return lastResult;
-};
-
-// ─── DB → APP CONVERTERS ────────────────────────────────────────────────────
-
-const dbToEquipment = (row: any): MaintenanceEquipment => ({
-  id: row.id,
-  organizationId: row.organization_id,
-  name: row.name || '',
-  description: row.description || '',
-  category: row.category || 'general',
-  totalSetsSprayed: Number(row.total_sets_sprayed) || 0,
-  totalHoursOperated: Number(row.total_hours_operated) || 0,
-  lifetimeSets: Number(row.lifetime_sets) || 0,
-  lifetimeHours: Number(row.lifetime_hours) || 0,
-  status: row.status || 'active',
-  lastServiceDate: row.last_service_date || null,
-  serviceItems: [], // populated separately
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-});
-
-const dbToServiceItem = (row: any): MaintenanceServiceItem => ({
-  id: row.id,
-  equipmentId: row.equipment_id,
-  organizationId: row.organization_id,
-  name: row.name || '',
-  description: row.description || '',
-  intervalSets: Number(row.interval_sets) || 0,
-  intervalHours: Number(row.interval_hours) || 0,
-  setsSinceLastService: Number(row.sets_since_last_service) || 0,
-  hoursSinceLastService: Number(row.hours_since_last_service) || 0,
-  lastServicedAt: row.last_serviced_at || null,
-  lastServicedBy: row.last_serviced_by || '',
-  isActive: row.is_active !== false,
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-});
-
-const dbToServiceLog = (row: any): MaintenanceServiceLog => ({
-  id: row.id,
-  organizationId: row.organization_id,
-  equipmentId: row.equipment_id,
-  serviceItemId: row.service_item_id || null,
-  serviceDate: row.service_date,
-  performedBy: row.performed_by || '',
-  notes: row.notes || '',
-  setsAtService: Number(row.sets_at_service) || 0,
-  hoursAtService: Number(row.hours_at_service) || 0,
-  createdAt: row.created_at,
-});
-
-const dbToJobUsage = (row: any): MaintenanceJobUsage => ({
-  id: row.id,
-  organizationId: row.organization_id,
-  estimateId: row.estimate_id || null,
-  openCellSets: Number(row.open_cell_sets) || 0,
-  closedCellSets: Number(row.closed_cell_sets) || 0,
-  totalSets: Number(row.total_sets) || 0,
-  operatingHours: Number(row.operating_hours) || 0,
-  jobDate: row.job_date,
-  customerName: row.customer_name || '',
-  notes: row.notes || '',
-  applied: row.applied || false,
-  createdAt: row.created_at,
-});
-
-// ─── FETCH ALL MAINTENANCE DATA ─────────────────────────────────────────────
+// ─── TYPES ──────────────────────────────────────────────────────────────────
 
 export interface MaintenanceData {
   equipment: MaintenanceEquipment[];
@@ -135,54 +23,32 @@ export interface MaintenanceData {
   totalSetsSprayed: number;
 }
 
-export const fetchMaintenanceData = async (orgId: string): Promise<MaintenanceData | null> => {
+// ─── FETCH ALL MAINTENANCE DATA ─────────────────────────────────────────────
+
+export const fetchMaintenanceData = async (_orgId: string): Promise<MaintenanceData | null> => {
   try {
-    // Fetch all tables in parallel
-    const [equipRes, itemsRes, logsRes, usageRes] = await Promise.all([
-      db
-        .from('maintenance_equipment')
-        .select('*')
-        .eq('organization_id', orgId)
-        .order('created_at', { ascending: true }),
-      db
-        .from('maintenance_service_items')
-        .select('*')
-        .eq('organization_id', orgId)
-        .order('created_at', { ascending: true }),
-      db
-        .from('maintenance_service_logs')
-        .select('*')
-        .eq('organization_id', orgId)
-        .order('service_date', { ascending: false })
-        .limit(200),
-      db
-        .from('maintenance_job_usage')
-        .select('*')
-        .eq('organization_id', orgId)
-        .order('job_date', { ascending: false }),
-    ]);
-
-    if (equipRes.error) throw equipRes.error;
-    if (itemsRes.error) throw itemsRes.error;
-    if (logsRes.error) throw logsRes.error;
-    if (usageRes.error) throw usageRes.error;
-
-    const equipment = (equipRes.data || []).map(dbToEquipment);
-    const serviceItems = (itemsRes.data || []).map(dbToServiceItem);
-    const serviceLogs = (logsRes.data || []).map(dbToServiceLog);
-    const jobUsage = (usageRes.data || []).map(dbToJobUsage);
-
-    // Nest service items under their equipment
-    for (const equip of equipment) {
-      equip.serviceItems = serviceItems.filter(si => si.equipmentId === equip.id);
+    const { data, error } = await api.get<MaintenanceData>('/api/maintenance');
+    if (error || !data) {
+      console.error('fetchMaintenanceData error:', error);
+      return null;
     }
 
-    // Calculate total sets across all jobs
-    const totalSetsSprayed = jobUsage.reduce((sum, j) => sum + j.totalSets, 0);
+    // Nest service items under their equipment
+    for (const equip of data.equipment) {
+      equip.serviceItems = (data.serviceItems || []).filter(
+        (si) => si.equipmentId === equip.id,
+      );
+    }
 
-    return { equipment, serviceItems, serviceLogs, jobUsage, totalSetsSprayed };
+    // Calculate total sets
+    data.totalSetsSprayed = (data.jobUsage || []).reduce(
+      (sum, j) => sum + (j.totalSets || 0),
+      0,
+    );
+
+    return data;
   } catch (err) {
-    console.error('fetchMaintenanceData error:', err);
+    console.error('fetchMaintenanceData exception:', err);
     return null;
   }
 };
@@ -191,347 +57,137 @@ export const fetchMaintenanceData = async (orgId: string): Promise<MaintenanceDa
 
 export const upsertMaintenanceEquipment = async (
   equip: Partial<MaintenanceEquipment>,
-  orgId: string
+  _orgId: string,
 ): Promise<MaintenanceEquipment | null> => {
-  const payload: any = {
-    organization_id: orgId,
-    name: equip.name,
-    description: equip.description || null,
-    category: equip.category || 'general',
-    status: equip.status || 'active',
-    total_sets_sprayed: equip.totalSetsSprayed || 0,
-    total_hours_operated: equip.totalHoursOperated || 0,
-    lifetime_sets: equip.lifetimeSets || 0,
-    lifetime_hours: equip.lifetimeHours || 0,
-    updated_at: new Date().toISOString(),
-  };
-
-  if (equip.id) payload.id = equip.id;
-
-  const { data, error } = await retryWrite(
-    () => db
-      .from('maintenance_equipment')
-      .upsert(payload, { onConflict: 'id' })
-      .select()
-      .single(),
-    'upsertMaintenanceEquipment'
-  );
-
-  if (error) {
-    console.error('upsertMaintenanceEquipment error:', error);
+  try {
+    const { data, error } = await api.post<MaintenanceEquipment>(
+      '/api/maintenance/equipment',
+      equip,
+    );
+    if (error) {
+      console.error('upsertMaintenanceEquipment error:', error);
+      return null;
+    }
+    return data;
+  } catch (err) {
+    console.error('upsertMaintenanceEquipment exception:', err);
     return null;
   }
-  return dbToEquipment(data);
 };
 
-export const deleteMaintenanceEquipment = async (id: string): Promise<boolean> => {
-  const { error } = await retryWrite(
-    () => db.from('maintenance_equipment').delete().eq('id', id),
-    'deleteMaintenanceEquipment'
-  );
-  if (error) {
-    console.error('deleteMaintenanceEquipment error:', error);
+export const deleteMaintenanceEquipment = async (
+  equipId: string,
+  _orgId: string,
+): Promise<boolean> => {
+  try {
+    const { error } = await api.delete(`/api/maintenance/equipment/${equipId}`);
+    if (error) {
+      console.error('deleteMaintenanceEquipment error:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('deleteMaintenanceEquipment exception:', err);
     return false;
   }
-  return true;
 };
 
-// ─── SERVICE ITEMS CRUD ─────────────────────────────────────────────────────
+// ─── SERVICE ITEMS ──────────────────────────────────────────────────────────
 
 export const upsertServiceItem = async (
   item: Partial<MaintenanceServiceItem>,
-  orgId: string
+  _orgId: string,
 ): Promise<MaintenanceServiceItem | null> => {
-  const payload: any = {
-    organization_id: orgId,
-    equipment_id: item.equipmentId,
-    name: item.name,
-    description: item.description || null,
-    interval_sets: item.intervalSets || 0,
-    interval_hours: item.intervalHours || 0,
-    sets_since_last_service: item.setsSinceLastService || 0,
-    hours_since_last_service: item.hoursSinceLastService || 0,
-    is_active: item.isActive !== false,
-    updated_at: new Date().toISOString(),
-  };
-
-  if (item.id) payload.id = item.id;
-  if (item.lastServicedAt) payload.last_serviced_at = item.lastServicedAt;
-  if (item.lastServicedBy) payload.last_serviced_by = item.lastServicedBy;
-
-  const { data, error } = await retryWrite(
-    () => db
-      .from('maintenance_service_items')
-      .upsert(payload, { onConflict: 'id' })
-      .select()
-      .single(),
-    'upsertServiceItem'
-  );
-
-  if (error) {
-    console.error('upsertServiceItem error:', error);
+  try {
+    const { data, error } = await api.post<MaintenanceServiceItem>(
+      '/api/maintenance/service-items',
+      item,
+    );
+    if (error) {
+      console.error('upsertServiceItem error:', error);
+      return null;
+    }
+    return data;
+  } catch (err) {
+    console.error('upsertServiceItem exception:', err);
     return null;
   }
-  return dbToServiceItem(data);
 };
 
-export const deleteServiceItem = async (id: string): Promise<boolean> => {
-  const { error } = await retryWrite(
-    () => db.from('maintenance_service_items').delete().eq('id', id),
-    'deleteServiceItem'
-  );
-  if (error) {
-    console.error('deleteServiceItem error:', error);
+export const deleteServiceItem = async (
+  itemId: string,
+  _orgId: string,
+): Promise<boolean> => {
+  try {
+    const { error } = await api.delete(`/api/maintenance/service-items/${itemId}`);
+    if (error) {
+      console.error('deleteServiceItem error:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('deleteServiceItem exception:', err);
     return false;
   }
-  return true;
 };
 
-// ─── SERVICE LOG ────────────────────────────────────────────────────────────
+// ─── SERVICE LOGGING ────────────────────────────────────────────────────────
 
 export const logService = async (
-  log: Partial<MaintenanceServiceLog>,
-  orgId: string
+  logData: Partial<MaintenanceServiceLog>,
+  _orgId: string,
 ): Promise<MaintenanceServiceLog | null> => {
-  const payload: any = {
-    organization_id: orgId,
-    equipment_id: log.equipmentId,
-    service_item_id: log.serviceItemId || null,
-    service_date: log.serviceDate || new Date().toISOString(),
-    performed_by: log.performedBy || '',
-    notes: log.notes || '',
-    sets_at_service: log.setsAtService || 0,
-    hours_at_service: log.hoursAtService || 0,
-  };
-
-  const { data, error } = await retryWrite(
-    () => db
-      .from('maintenance_service_logs')
-      .insert(payload)
-      .select()
-      .single(),
-    'logService'
-  );
-
-  if (error) {
-    console.error('logService error:', error);
+  try {
+    const { data, error } = await api.post<MaintenanceServiceLog>(
+      '/api/maintenance/service-logs',
+      logData,
+    );
+    if (error) {
+      console.error('logService error:', error);
+      return null;
+    }
+    return data;
+  } catch (err) {
+    console.error('logService exception:', err);
     return null;
   }
-
-  // Reset the service item's counter
-  if (log.serviceItemId) {
-    const { error: serviceItemResetErr } = await retryWrite(
-      () => db
-        .from('maintenance_service_items')
-        .update({
-          sets_since_last_service: 0,
-          hours_since_last_service: 0,
-          last_serviced_at: new Date().toISOString(),
-          last_serviced_by: log.performedBy || '',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', log.serviceItemId),
-      'logService.resetServiceItem'
-    );
-    if (serviceItemResetErr) {
-      console.error('logService reset service item error:', serviceItemResetErr);
-      return null;
-    }
-  }
-
-  // Update equipment's last_service_date
-  if (log.equipmentId) {
-    const { error: equipUpdateErr } = await retryWrite(
-      () => db
-        .from('maintenance_equipment')
-        .update({
-          last_service_date: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', log.equipmentId),
-      'logService.updateEquipmentDate'
-    );
-    if (equipUpdateErr) {
-      console.error('logService update equipment error:', equipUpdateErr);
-      return null;
-    }
-  }
-
-  return dbToServiceLog(data);
 };
 
 // ─── JOB USAGE ──────────────────────────────────────────────────────────────
 
-export const addJobUsage = async (
+export const recordJobUsage = async (
   usage: Partial<MaintenanceJobUsage>,
-  orgId: string
+  _orgId: string,
 ): Promise<MaintenanceJobUsage | null> => {
-  const payload: any = {
-    organization_id: orgId,
-    estimate_id: usage.estimateId || null,
-    open_cell_sets: usage.openCellSets || 0,
-    closed_cell_sets: usage.closedCellSets || 0,
-    operating_hours: usage.operatingHours || 0,
-    job_date: usage.jobDate || new Date().toISOString(),
-    customer_name: usage.customerName || '',
-    notes: usage.notes || '',
-    applied: false,
-  };
-
-  const { data, error } = await retryWrite(
-    () => db
-      .from('maintenance_job_usage')
-      .insert(payload)
-      .select()
-      .single(),
-    'addJobUsage'
-  );
-
-  if (error) {
-    console.error('addJobUsage error:', error);
+  try {
+    const { data, error } = await api.post<MaintenanceJobUsage>(
+      '/api/maintenance/job-usage',
+      usage,
+    );
+    if (error) {
+      console.error('recordJobUsage error:', error);
+      return null;
+    }
+    return data;
+  } catch (err) {
+    console.error('recordJobUsage exception:', err);
     return null;
   }
-  return dbToJobUsage(data);
 };
 
-/**
- * Apply unapplied job usage to all active equipment and their service items.
- * This increments sets_since_last_service on each service item by the total new sets.
- */
-export const applyPendingUsage = async (orgId: string): Promise<boolean> => {
+export const applyJobUsage = async (
+  usage: Partial<MaintenanceJobUsage>,
+  _orgId: string,
+): Promise<boolean> => {
   try {
-    // Get unapplied usage
-    const { data: pending, error: fetchErr } = await db
-      .from('maintenance_job_usage')
-      .select('*')
-      .eq('organization_id', orgId)
-      .eq('applied', false);
-
-    if (fetchErr) throw fetchErr;
-    if (!pending || pending.length === 0) return true;
-
-    const totalNewSets = pending.reduce((sum: number, row: any) => sum + Number(row.total_sets || 0), 0);
-    const totalNewHours = pending.reduce((sum: number, row: any) => sum + Number(row.operating_hours || 0), 0);
-
-    if (totalNewSets === 0 && totalNewHours === 0) return true;
-
-    // Get all active equipment
-    const { data: equipList, error: equipErr } = await db
-      .from('maintenance_equipment')
-      .select('id, total_sets_sprayed, total_hours_operated, lifetime_sets, lifetime_hours')
-      .eq('organization_id', orgId)
-      .eq('status', 'active');
-
-    if (equipErr) throw equipErr;
-
-    // Update each equipment's counters
-    for (const eq of (equipList || [])) {
-      const { error: updateEquipErr } = await retryWrite(
-        () => db
-          .from('maintenance_equipment')
-          .update({
-            total_sets_sprayed: Number(eq.total_sets_sprayed || 0) + totalNewSets,
-            total_hours_operated: Number(eq.total_hours_operated || 0) + totalNewHours,
-            lifetime_sets: Number(eq.lifetime_sets || 0) + totalNewSets,
-            lifetime_hours: Number(eq.lifetime_hours || 0) + totalNewHours,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', eq.id),
-        'applyPendingUsage.updateEquipment'
-      );
-      if (updateEquipErr) throw updateEquipErr;
+    const { error } = await api.post('/api/maintenance/apply-usage', usage);
+    if (error) {
+      console.error('applyJobUsage error:', error);
+      return false;
     }
-
-    // Update each active service item's counters
-    const { data: itemList, error: itemErr } = await db
-      .from('maintenance_service_items')
-      .select('id, sets_since_last_service, hours_since_last_service')
-      .eq('organization_id', orgId)
-      .eq('is_active', true);
-
-    if (itemErr) throw itemErr;
-
-    for (const si of (itemList || [])) {
-      const { error: updateItemErr } = await retryWrite(
-        () => db
-          .from('maintenance_service_items')
-          .update({
-            sets_since_last_service: Number(si.sets_since_last_service || 0) + totalNewSets,
-            hours_since_last_service: Number(si.hours_since_last_service || 0) + totalNewHours,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', si.id),
-        'applyPendingUsage.updateServiceItem'
-      );
-      if (updateItemErr) throw updateItemErr;
-    }
-
-    // Mark usage as applied
-    const pendingIds = pending.map((p: any) => p.id);
-    const { error: markAppliedErr } = await retryWrite(
-      () => db
-        .from('maintenance_job_usage')
-        .update({ applied: true })
-        .in('id', pendingIds),
-      'applyPendingUsage.markApplied'
-    );
-    if (markAppliedErr) throw markAppliedErr;
-
     return true;
   } catch (err) {
-    console.error('applyPendingUsage error:', err);
+    console.error('applyJobUsage exception:', err);
     return false;
-  }
-};
-
-/**
- * Sync sold jobs (Work Order or later) that don't have maintenance_job_usage entries yet.
- * This auto-creates usage records from estimates that have actuals.
- */
-export const syncJobsToMaintenance = async (
-  orgId: string, 
-  estimates: Array<{ id: string; status: string; actuals?: any; customer?: { name?: string }; date?: string }>
-): Promise<number> => {
-  try {
-    // Get existing usage estimate IDs
-    const { data: existing, error: existErr } = await db
-      .from('maintenance_job_usage')
-      .select('estimate_id')
-      .eq('organization_id', orgId);
-
-    if (existErr) throw existErr;
-    const existingIds = new Set((existing || []).map((e: any) => e.estimate_id));
-
-    // Filter to completed/sold jobs with actuals that aren't tracked yet
-    const soldJobs = estimates.filter(e => 
-      ['Work Order', 'Invoiced', 'Paid'].includes(e.status) &&
-      e.actuals &&
-      !existingIds.has(e.id)
-    );
-
-    let added = 0;
-    for (const job of soldJobs) {
-      const openSets = Number(job.actuals?.openCellSets) || 0;
-      const closedSets = Number(job.actuals?.closedCellSets) || 0;
-      if (openSets === 0 && closedSets === 0) continue;
-
-      const created = await addJobUsage({
-        estimateId: job.id,
-        openCellSets: openSets,
-        closedCellSets: closedSets,
-        operatingHours: Number(job.actuals?.laborHours) || 0,
-        customerName: job.customer?.name || '',
-        jobDate: job.date || new Date().toISOString(),
-      }, orgId);
-      if (!created) {
-        throw new Error(`Failed to add maintenance usage for estimate ${job.id}`);
-      }
-      added++;
-    }
-
-    return added;
-  } catch (err) {
-    console.error('syncJobsToMaintenance error:', err);
-    return 0;
   }
 };
