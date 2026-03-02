@@ -1,1025 +1,509 @@
+/**
+ * useSync — Master data synchronization hook
+ *
+ * Replaces the old Supabase-based sync with Express API + WebSocket.
+ * Handles:
+ *  - Cloud-first initialization via GET /api/org
+ *  - WebSocket realtime subscriptions
+ *  - Crew polling fallback (every 10s for work orders)
+ *  - Auto-sync (debounced 3s) for settings/profile (admin only)
+ *  - Inventory reconciliation for completed jobs
+ *  - Manual sync & force refresh
+ *  - iOS/visibility-change resume handling
+ *  - Warehouse hash tracking to prevent overwriting crew job adjustments
+ */
 
-import { useEffect, useRef, useCallback } from 'react';
-import { useCalculator, DEFAULT_STATE } from '../context/CalculatorContext';
-import { EstimateRecord, MaterialUsageLogEntry } from '../types';
-import { supabase } from '../src/lib/supabase';
-import {
-  fetchOrgData,
-  fetchCrewWorkOrders,
-  fetchWarehouseState,
-  syncAppDataToSupabase,
-  subscribeToOrgChanges,
-  subscribeToWorkOrderUpdates,
-  updateOrgSettings,
-  updateCompanyProfile,
-  updateWarehouseStock,
-  upsertInventoryItem,
-  upsertEquipment,
-  upsertEstimate,
-  upsertCustomer,
-  deleteEquipmentItem,
-  insertMaterialLogs,
-  markEstimateInventoryProcessed,
-  flushOfflineCrewQueue,
-  setCurrentOrgId,
-} from '../services/supabaseService';
-import { fetchSubscriptionStatus } from '../services/subscriptionService';
-import safeStorage from '../utils/safeStorage';
+import { useRef, useEffect, useCallback } from 'react';
+import { useCalculator } from '../context/CalculatorContext';
+import { api, getWsUrl, getAccessToken } from '../services/apiClient';
+import { EstimateRecord } from '../types';
 
-// Module-level guard: prevents the realtime subscription from overwriting
-// locally-deducted warehouse inventory while a background work-order sync
-// is writing updated quantities to Supabase one item at a time.
-// Uses a counter so multiple concurrent sync operations (e.g. auto-sync +
-// background work-order sync) don't prematurely release the lock.
-let _inventorySyncLockCount = 0;
-export const acquireInventorySyncLock = () => { _inventorySyncLockCount++; };
-export const releaseInventorySyncLock = () => { _inventorySyncLockCount = Math.max(0, _inventorySyncLockCount - 1); };
-export const isInventorySyncLocked = () => _inventorySyncLockCount > 0;
-// Backward-compat shim used by useEstimates
-export const setInventorySyncLock = (lock: boolean) => { 
-  if (lock) acquireInventorySyncLock(); 
-  else releaseInventorySyncLock(); 
-};
+// ─── Inventory Sync Lock ─────────────────────────────────────────────────────
+// Prevents realtime/polling overwrites during in-flight writes
+
+let _inventorySyncLock = false;
+
+export function acquireInventorySyncLock(): boolean {
+  if (_inventorySyncLock) return false;
+  _inventorySyncLock = true;
+  return true;
+}
+
+export function releaseInventorySyncLock(): void {
+  _inventorySyncLock = false;
+}
+
+export function isInventorySyncLocked(): boolean {
+  return _inventorySyncLock;
+}
+
+export function setInventorySyncLock(locked: boolean): void {
+  _inventorySyncLock = locked;
+}
+
+// ─── Warehouse hash for change detection ─────────────────────────────────────
+
+function hashWarehouse(warehouse: any): string {
+  if (!warehouse) return '';
+  try {
+    const canonical = {
+      oc: warehouse.openCellSets,
+      cc: warehouse.closedCellSets,
+      items: (warehouse.items || [])
+        .map((i: any) => ({ id: i.id, n: i.name, q: i.quantity }))
+        .sort((a: any, b: any) => (a.id || a.n || '').localeCompare(b.id || b.n || '')),
+    };
+    return JSON.stringify(canonical);
+  } catch {
+    return '';
+  }
+}
+
+function buildSyncHash(appData: any): string {
+  try {
+    return JSON.stringify({
+      y: appData.yields,
+      c: appData.costs,
+      pm: appData.pricingMode,
+      sr: appData.sqFtRates,
+      lu: appData.lifetimeUsage,
+      cp: appData.companyProfile,
+    });
+  } catch {
+    return '';
+  }
+}
+
+// ─── useSync hook ────────────────────────────────────────────────────────────
 
 export const useSync = () => {
   const { state, dispatch } = useCalculator();
-  const { session, appData, ui } = state;
-  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSyncedHashRef = useRef<string>('');
-  const unsubscribeRef = useRef<(() => void) | null>(null);
-  const crewPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const crewLastPollHashRef = useRef<string>('');
+  const { appData, session } = state;
 
-  // Always-current appData ref so event handlers (visibilitychange, pageshow,
-  // online) can access the latest estimates without being re-registered on
-  // every appData change (which would cause excessive subscription churn).
-  const appDataRef = useRef(appData);
-  appDataRef.current = appData;
+  const wsRef = useRef<WebSocket | null>(null);
+  const crewPollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSyncHashRef = useRef<string>('');
+  const warehouseHashRef = useRef<string>('');
+  const initializedRef = useRef(false);
+  const mountedRef = useRef(true);
 
-  // ── Warehouse sync tracking ──────────────────────────────────────────────
-  // Tracks the last warehouse state synced from/to the server. This prevents
-  // the auto-sync from blindly overwriting crew_update_job warehouse adjustments
-  // when only non-warehouse data (estimates, settings, etc.) triggered the sync.
-  const lastSyncedWarehouseRef = useRef<string>('');
-  // Set when a realtime warehouse update was blocked by the inventory sync lock.
-  // After the lock is released, a deferred warehouse refresh is performed.
-  const pendingWarehouseRefreshRef = useRef(false);
+  // ─── Cloud initialization ──────────────────────────────────────────────────
 
-  const computeWarehouseHash = useCallback((warehouse: any): string => {
-    if (!warehouse) return '';
+  const loadOrgData = useCallback(async () => {
+    if (!session?.organizationId) return;
+
     try {
-      return JSON.stringify({
-        oc: warehouse.openCellSets,
-        cc: warehouse.closedCellSets,
-        items: (warehouse.items || []).map((i: any) => ({ id: i.id, name: i.name, qty: i.quantity })),
-      });
-    } catch { return ''; }
-  }, []);
-
-  // ─── INVENTORY RECONCILIATION (Client-side safety net) ───────────────────
-  // When crew completes a job, the updated crew_update_job SQL function adjusts
-  // warehouse inventory atomically in Supabase. This client-side function is a
-  // safety net that catches any completed jobs where inventoryProcessed is still
-  // false (e.g., if the SQL function hasn't been re-deployed yet).
-  const reconcileCompletedJobs = useCallback(async (
-    estimates: EstimateRecord[],
-    warehouse: any,
-    orgId: string
-  ) => {
-    const unprocessed = estimates.filter(e =>
-      e.executionStatus === 'Completed' &&
-      e.actuals &&
-      !e.inventoryProcessed
-    );
-
-    if (unprocessed.length === 0) return null;
-
-    // SAFETY CHECK: Verify these jobs weren't already processed server-side
-    // by crew_update_job. If the DB has inventory_processed = true but the
-    // local state lost it (e.g., stale cache), re-fetch to confirm.
-    // This prevents double-adjusting warehouse inventory.
-    console.log(`[Inventory Reconcile] Found ${unprocessed.length} potentially unprocessed completed job(s). Verifying against server...`);
-    
-    // Quick DB check: fetch inventory_processed status for these estimates
-    try {
-      const { data: dbEstimates } = await supabase
-        .from('estimates')
-        .select('id, inventory_processed')
-        .in('id', unprocessed.map(e => e.id));
-      
-      if (dbEstimates) {
-        const alreadyProcessedIds = new Set(
-          dbEstimates.filter(e => e.inventory_processed === true).map(e => e.id)
-        );
-        
-        if (alreadyProcessedIds.size > 0) {
-          console.log(`[Inventory Reconcile] ${alreadyProcessedIds.size} job(s) already processed server-side (crew_update_job). Skipping those and updating local state.`);
-          // Fix local state for already-processed estimates
-          const fixedEstimates = estimates.map(e =>
-            alreadyProcessedIds.has(e.id) ? { ...e, inventoryProcessed: true } : e
-          );
-          dispatch({ type: 'UPDATE_DATA', payload: { savedEstimates: fixedEstimates } });
-          
-          // Remove already-processed from unprocessed list
-          const reallyUnprocessed = unprocessed.filter(e => !alreadyProcessedIds.has(e.id));
-          if (reallyUnprocessed.length === 0) {
-            console.log('[Inventory Reconcile] All jobs were already processed server-side. No reconciliation needed.');
-            return null;
-          }
-          // Continue with only truly unprocessed jobs
-          unprocessed.length = 0;
-          unprocessed.push(...reallyUnprocessed);
-        }
-      }
-    } catch (err) {
-      console.warn('[Inventory Reconcile] Could not verify server state, proceeding with caution:', err);
-    }
-
-    console.log(`[Inventory Reconcile] Reconciling ${unprocessed.length} unprocessed completed job(s)...`);
-
-    const newWarehouse = {
-      ...warehouse,
-      items: warehouse.items ? [...warehouse.items.map((i: any) => ({ ...i }))] : [],
-    };
-    const updatedEstimateIds: string[] = [];
-    const allLogEntries: MaterialUsageLogEntry[] = [];
-    const normalizeName = (name?: string) => (name || '').trim().toLowerCase();
-
-    for (const job of unprocessed) {
-      const estOC = job.materials?.openCellSets || 0;
-      const estCC = job.materials?.closedCellSets || 0;
-      const actOC = job.actuals!.openCellSets || 0;
-      const actCC = job.actuals!.closedCellSets || 0;
-
-      // Foam adjustment: estimated was already deducted at work-order time.
-      // Positive diff = crew used less → return stock; negative = used more → deduct more.
-      newWarehouse.openCellSets = (newWarehouse.openCellSets || 0) + (estOC - actOC);
-      newWarehouse.closedCellSets = (newWarehouse.closedCellSets || 0) + (estCC - actCC);
-
-      // Non-chemical inventory item adjustments
-      const estInv = job.materials?.inventory || [];
-      const actInv = job.actuals!.inventory || [];
-
-      for (const estItem of estInv) {
-        const matchKey = estItem.warehouseItemId || estItem.id;
-        const matchActual = actInv.find((a: any) =>
-          (a.warehouseItemId || a.id) === matchKey ||
-          normalizeName(a.name) === normalizeName(estItem.name)
-        );
-        const diff = (estItem.quantity || 0) - (matchActual?.quantity || 0);
-        if (diff !== 0) {
-          newWarehouse.items = newWarehouse.items.map((wh: any) => {
-            if (wh.id === matchKey || normalizeName(wh.name) === normalizeName(estItem.name)) {
-              return { ...wh, quantity: (wh.quantity || 0) + diff };
-            }
-            return wh;
-          });
-        }
-      }
-
-      // Handle extra items crew used that weren't in the estimate
-      for (const actItem of actInv) {
-        const wasEstimated = estInv.find((e: any) =>
-          (e.warehouseItemId || e.id) === (actItem.warehouseItemId || actItem.id) ||
-          normalizeName(e.name) === normalizeName(actItem.name)
-        );
-        if (!wasEstimated && (actItem.quantity || 0) > 0) {
-          const whKey = actItem.warehouseItemId || actItem.id;
-          newWarehouse.items = newWarehouse.items.map((wh: any) => {
-            if (wh.id === whKey || normalizeName(wh.name) === normalizeName(actItem.name)) {
-              return { ...wh, quantity: (wh.quantity || 0) - actItem.quantity };
-            }
-            return wh;
-          });
-        }
-      }
-
-      // Create actual material usage log entries
-      const logDate = job.actuals!.completionDate || new Date().toISOString();
-      const loggedBy = job.actuals!.completedBy || 'Crew';
-      if (actOC > 0) allLogEntries.push({ date: logDate, jobId: job.id, customerName: job.customer?.name || '', materialName: 'Open Cell Foam', quantity: actOC, unit: 'sets', loggedBy, logType: 'actual' });
-      if (actCC > 0) allLogEntries.push({ date: logDate, jobId: job.id, customerName: job.customer?.name || '', materialName: 'Closed Cell Foam', quantity: actCC, unit: 'sets', loggedBy, logType: 'actual' });
-      for (const item of actInv) {
-        if ((item.quantity || 0) > 0) {
-          allLogEntries.push({ date: logDate, jobId: job.id, customerName: job.customer?.name || '', materialName: item.name, quantity: item.quantity, unit: item.unit || 'ea', loggedBy, logType: 'actual' });
-        }
-      }
-
-      updatedEstimateIds.push(job.id);
-    }
-
-    // Apply locally
-    const reconciledEstimates = estimates.map(e =>
-      updatedEstimateIds.includes(e.id) ? { ...e, inventoryProcessed: true } : e
-    );
-    dispatch({ type: 'UPDATE_DATA', payload: { warehouse: newWarehouse, savedEstimates: reconciledEstimates } });
-
-    // Persist to Supabase in background (lock to prevent realtime overwrite)
-    acquireInventorySyncLock();
-    try {
-      const stockUpdated = await updateWarehouseStock(orgId, newWarehouse.openCellSets, newWarehouse.closedCellSets);
-      if (!stockUpdated) {
-        throw new Error('Supabase updateWarehouseStock returned false during reconciliation');
-      }
-
-      for (const item of newWarehouse.items) {
-        const savedInventory = await upsertInventoryItem(item, orgId);
-        if (!savedInventory) {
-          throw new Error(`Supabase upsertInventoryItem failed for ${item.id || item.name}`);
-        }
-      }
-
-      if (allLogEntries.length > 0) {
-        const logsInserted = await insertMaterialLogs(allLogEntries, orgId);
-        if (!logsInserted) {
-          throw new Error('Supabase insertMaterialLogs returned false during reconciliation');
-        }
-      }
-
-      for (const id of updatedEstimateIds) {
-        const marked = await markEstimateInventoryProcessed(id);
-        if (!marked) {
-          throw new Error(`Supabase markEstimateInventoryProcessed failed for estimate ${id}`);
-        }
-      }
-      console.log(`[Inventory Reconcile] Successfully processed ${unprocessed.length} job(s).`);
-      dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: `Inventory updated for ${unprocessed.length} completed job(s)` } });
-    } catch (err) {
-      console.error('[Inventory Reconcile] Supabase persist error:', err);
-    } finally {
-      releaseInventorySyncLock();
-    }
-    // Re-apply the correct warehouse state after unlock
-    dispatch({ type: 'UPDATE_DATA', payload: { warehouse: newWarehouse, savedEstimates: reconciledEstimates } });
-    lastSyncedWarehouseRef.current = computeWarehouseHash(newWarehouse);
-  }, [dispatch, computeWarehouseHash]);
-
-  // Hash to detect changes without deep comparison.
-  // Includes estimate statuses, execution statuses, and lastModified timestamps
-  // so that workflow transitions (Draft→Work Order→Invoiced→Paid) and crew
-  // completion updates are detected and synced reliably.
-  const computeHash = useCallback((data: any): string => {
-    try {
-      return JSON.stringify({
-        estimates: data.savedEstimates?.length,
-        customers: data.customers?.length,
-        warehouse: data.warehouse,
-        equipment: data.equipment?.length,
-        yields: data.yields,
-        costs: data.costs,
-        companyProfile: data.companyProfile,
-        _ts: data.savedEstimates?.map((e: any) => e.lastModified || e.date).join(','),
-        _st: data.savedEstimates?.map((e: any) => `${e.id}:${e.status}:${e.executionStatus}:${e.totalValue}`).join(','),
-        _cust: data.customers?.map((c: any) => `${c.id}:${c.name}:${c.status}`).join(','),
-      });
-    } catch {
-      return '';
-    }
-  }, []);
-
-  // 1. SESSION RECOVERY
-  useEffect(() => {
-    if (!session) {
-      dispatch({ type: 'SET_LOADING', payload: false });
-    }
-  }, [session, dispatch]);
-
-  // 2. CLOUD-FIRST INITIALIZATION — fetch all org data from Supabase
-  useEffect(() => {
-    if (!session) return;
-
-    // Validate organizationId — empty/missing means the admin-crew link is broken
-    if (!session.organizationId) {
-      console.error('[Sync] CRITICAL: session.organizationId is empty. Work orders will NOT sync to Supabase.');
-      dispatch({ type: 'SET_LOADING', payload: false });
-      dispatch({ type: 'SET_INITIALIZED', payload: true });
-      dispatch({ type: 'SET_NOTIFICATION', payload: {
-        type: 'error',
-        message: session.role === 'admin'
-          ? 'Account not linked to a company. Please log out, then log back in to fix this automatically.'
-          : 'Crew session invalid. Please log out and re-enter your company name and PIN.'
-      }});
-      return;
-    }
-
-    const initializeApp = async () => {
-      dispatch({ type: 'SET_LOADING', payload: true });
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
-      setCurrentOrgId(session.organizationId);
 
-      try {
-        // Use crew-specific RPC if crew role (no auth.uid() available)
-        console.log(`[Sync] Initializing for role=${session.role}, org=${session.organizationId}`);
-        const cloudData = session.role === 'crew'
-          ? await fetchCrewWorkOrders(session.organizationId)
-          : await fetchOrgData(session.organizationId);
-
-        // Fetch subscription status for admin users
-        if (session.role === 'admin') {
-          fetchSubscriptionStatus(session.organizationId).then(sub => {
-            if (sub) dispatch({ type: 'SET_SUBSCRIPTION', payload: sub });
-          }).catch(err => console.warn('[Sync] Subscription fetch failed:', err));
-        }
-
-        if (cloudData) {
-          // Merge cloud data with defaults (cloud wins for persisted fields)
-          const merged = { ...DEFAULT_STATE };
-          for (const key of Object.keys(cloudData) as (keyof typeof cloudData)[]) {
-            if (cloudData[key] !== undefined && cloudData[key] !== null) {
-              (merged as any)[key] = cloudData[key];
-            }
-          }
-          const estimateCount = merged.savedEstimates?.length || 0;
-          console.log(`[Sync] Loaded ${estimateCount} estimates from cloud`);
-          
-          dispatch({ type: 'LOAD_DATA', payload: merged });
-          dispatch({ type: 'SET_INITIALIZED', payload: true });
-          lastSyncedHashRef.current = computeHash(merged);
-          lastSyncedWarehouseRef.current = computeWarehouseHash(merged.warehouse);
-          dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
-          setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 2000);
-
-          // Admin: reconcile completed jobs that haven't had inventory processed
-          if (session.role === 'admin' && merged.savedEstimates && merged.warehouse) {
-            reconcileCompletedJobs(merged.savedEstimates, merged.warehouse, session.organizationId);
-          }
-
-          // Warn crew if zero work orders came back
-          if (session.role === 'crew' && estimateCount === 0) {
-            dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'No work orders found. If jobs exist, ask admin to check Supabase RPC setup.' } });
-          }
-        } else {
-          // No cloud data — either first time, empty org, or RPC missing
-          console.warn('[Sync] Cloud data returned null');
-          dispatch({ type: 'SET_INITIALIZED', payload: true });
-          dispatch({ type: 'SET_SYNC_STATUS', payload: session.role === 'crew' ? 'error' : 'idle' });
-          if (session.role === 'crew') {
-            dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Failed to load work orders. Check connection or ask admin to run database setup.' } });
-          }
-        }
-      } catch (e) {
-        console.error('Cloud sync failed:', e);
-        dispatch({ type: 'SET_INITIALIZED', payload: true });
+      const { data, error } = await api.get<any>('/api/org');
+      if (error || !data) {
+        console.error('[Sync] Org data fetch failed:', error);
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
-      } finally {
-        dispatch({ type: 'SET_LOADING', payload: false });
+        return;
       }
-    };
 
-    initializeApp();
-  }, [session?.organizationId, session?.username, dispatch, computeHash]);
+      const payload: Record<string, any> = {
+        yields: data.yields || {},
+        costs: data.costs || {},
+        pricingMode: data.pricingMode || 'level_pricing',
+        sqFtRates: data.sqFtRates || {},
+        lifetimeUsage: data.lifetimeUsage || {},
+        warehouse: data.warehouse || { openCellSets: 0, closedCellSets: 0, items: [] },
+        equipment: data.equipment || [],
+        companyProfile: data.companyProfile || {},
+        savedEstimates: data.savedEstimates || [],
+      };
 
-  // 3. REALTIME SUBSCRIPTIONS — live updates from admin↔crew
-  // Extracted into a callable function so visibility-change handler can
-  // re-establish the connection after iOS kills the WebSocket in background.
-  const setupRealtimeSubscription = useCallback(() => {
-    if (!session?.organizationId || !ui.isInitialized) return;
+      if (data.customers) payload.customers = data.customers;
+      if (data.purchaseOrders) payload.purchaseOrders = data.purchaseOrders;
+      if (data.materialLogs) payload.materialLogs = data.materialLogs;
 
-    // Tear down any existing subscription first
-    if (unsubscribeRef.current) {
-      unsubscribeRef.current();
-      unsubscribeRef.current = null;
+      dispatch({ type: 'UPDATE_DATA', payload });
+
+      // Track warehouse hash for change detection
+      warehouseHashRef.current = hashWarehouse(payload.warehouse);
+      lastSyncHashRef.current = buildSyncHash(payload);
+
+      dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
+      setTimeout(() => {
+        if (mountedRef.current) dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' });
+      }, 2000);
+
+      if (!initializedRef.current) {
+        initializedRef.current = true;
+        dispatch({ type: 'SET_INITIALIZED', payload: true });
+      }
+    } catch (err) {
+      console.error('[Sync] loadOrgData exception:', err);
+      dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
     }
+  }, [session?.organizationId, dispatch]);
 
-    if (session.role === 'crew') {
-      // Track existing WO IDs so we can detect NEW arrivals vs updates
-      const existingWOIds = new Set(
-        (appDataRef.current.savedEstimates || [])
-          .filter((e: EstimateRecord) => e.status === 'Work Order')
-          .map((e: EstimateRecord) => e.id)
-      );
+  // ─── Partial refresh helpers ───────────────────────────────────────────────
 
-      const unsubscribe = subscribeToWorkOrderUpdates(
-        session.organizationId,
-        async (source) => {
-          console.log(`[Crew Realtime] Work order update via ${source} — refreshing...`);
-          try {
-            const cloudData = await fetchCrewWorkOrders(session.organizationId);
-            if (cloudData?.savedEstimates !== undefined) {
-              // Detect new work orders that weren't in the previous state
-              const newWOs = cloudData.savedEstimates.filter(
-                (e: EstimateRecord) =>
-                  e.status === 'Work Order' &&
-                  e.executionStatus !== 'Completed' &&
-                  !existingWOIds.has(e.id)
-              );
-
-              dispatch({ type: 'UPDATE_DATA', payload: { savedEstimates: cloudData.savedEstimates } });
-
-              // Update tracking set with new IDs
-              cloudData.savedEstimates.forEach((e: EstimateRecord) => {
-                if (e.status === 'Work Order') existingWOIds.add(e.id);
-              });
-
-              // Notify crew of new work order(s)
-              if (newWOs.length > 0) {
-                const customerNames = newWOs
-                  .map((e: EstimateRecord) => e.customer?.name || 'Unknown')
-                  .join(', ');
-                dispatch({
-                  type: 'SET_NOTIFICATION',
-                  payload: {
-                    type: 'success',
-                    message: newWOs.length === 1
-                      ? `New Work Order: ${customerNames}`
-                      : `${newWOs.length} New Work Orders: ${customerNames}`,
-                  },
-                });
-
-                // Play an audio alert (catches attention on crew tablets)
-                try {
-                  const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAGAACAgICAgICAgICAgICAgICBgYKCg4OEhIWFhoaHh4iIiYmJiYqKioqKiomJiYmIiIeHhoaFhYSEg4OCgoGBgICAgICAgICAgH9/f39/f39/f39/f39/f3+AgICBgYKCg4SEhYaGh4iIiYqKi4uMjI2Njo6Ojo+Pj4+Pj4+Pjo6OjY2NjIyMi4uKiomJiIiHh4aGhYWEhIODgoKBgYCAgH9/fn5+fn19fX19fX19fn5+f3+AgIGBgoKDhISFhoeHiImKi4yMjY6Oj5CQkZGRkZKSkpKSkpKSkZGRkZCQj4+OjY2MjIuKiomIh4eGhYSEg4KBgYB/f35+fX19fHx8fHx8fHx8fX1+fn9/gIGBgoOEhIWGh4iJiouMjY6PkJCRkpKTk5SUlJSVlZWVlJSUlJOTk5KSkZGQj4+OjYyLioqJiIeGhYSEgoKBgH9/fn59fXx8fHx7e3t7e3t8fHx9fn5/gICBgoOEhYaHiImKi4yNjo+QkZKSk5SVlZaWl5eXl5eXl5eXlpaWlZWUk5OSkZCQj46NjIuKiYiHhoWEg4KBgIB/fn59fXx8e3t7e3t7e3t7fHx9fX5/gIGCg4SFhoeIiouMjY6PkJGSk5SVlpeXmJiZmZmZmZmZmZiYmJeXlpWUk5KRkI+OjYyLiomIh4aFhIOCgYB/f359fHx7e3t6enp6enp7e3t8fH1+f4CBgoOEhoeIiYqMjY6PkJGSk5SVlpeYmJmZmpqampqamZmZmJiXlpWUk5KRkI+OjYuKiYiHhoWEg4KBgH9+fXx8e3t6enp6enp6ent7fHx9fn+AgYKDhYaHiImKjI2Oj5CRkpOUlZaXmJmZmpqbm5ubm5uampmZmJeWlZSUkpGQj46NjIuKiIeGhYSDgoGAf359fHt7enp6eXl5eXp6ent7fH1+f4CCg4SFhoeJiouMjY+QkZKTlJWWl5iZmpqbm5ycnJycm5ubmpmYl5aVlJOSkZCPjo2Mi4qJh4aFhIOCgYB/fn18e3t6enl5eXl5eXp6e3t8fX5/gIGDhIWGiImKi42Oj5CRkpOUlZeXmJmam5ucnJ2dnZ2dnJycm5qZmJeWlZOSkZCPjo2Mi4qJiIeGhYOCgYB/fn18e3p6eXl5eXl5eXp6e3x8fX9/gIKDhIaHiImKjI2Oj5GSkpOUlZaXmJmam5ucnJ2dnp6enZ2cnJuamZiXlpWUk5KRj46NjIuKiYiHhoWEg4KAf359fHt6enl5eHh4eHl5enp7fH1+gIGCg4WGh4mKi4yNj5CRkpOUlZaXmJmam5ycnZ2enp6enZ2dnJuamZiXlpSUkpGQj46NjIuKiYeGhYSDoYB/fn18e3p6eXl4eHh4eHl5ent8fX5/gIGDhIWHiImKjI2Oj5CRk5SUlZaXmJmam5ycnZ6enp6fn56dnZycm5qZmJeWlZSTkpCPjo2MiomIh4aFhIOCgYB/fXx7enp5eXh4eHh4eXl6e3x9fn+AgYOEhoeIiouMjo+QkZKTlJWWl5iZmZucnJ2dnp6fn5+fnp6dnJybmpkA');
-                  audio.volume = 0.5;
-                  audio.play().catch(() => { /* user gesture not available */ });
-                } catch { /* ignore audio errors */ }
-              }
-            }
-          } catch (e) {
-            console.error('[Crew Realtime] Refresh failed:', e);
-          }
-        }
-      );
-      unsubscribeRef.current = unsubscribe;
-      return;
+  const refreshEstimates = useCallback(async () => {
+    const { data } = await api.get<any[]>('/api/estimates');
+    if (data && mountedRef.current) {
+      dispatch({ type: 'UPDATE_DATA', payload: { savedEstimates: data } });
     }
+  }, [dispatch]);
 
-    unsubscribeRef.current = subscribeToOrgChanges(
-      session.organizationId,
-      // Estimate changes — also refresh warehouse since crew_update_job adjusts
-      // warehouse_stock atomically in the same transaction as the estimate update.
-      (payload) => {
-        if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
-          fetchOrgData(session.organizationId).then(data => {
-            if (data) {
-              const updatePayload: any = {};
-              if (data.savedEstimates) updatePayload.savedEstimates = data.savedEstimates;
-              if (data.warehouse && !isInventorySyncLocked()) {
-                updatePayload.warehouse = data.warehouse;
-                lastSyncedWarehouseRef.current = computeWarehouseHash(data.warehouse);
-              } else if (data.warehouse) {
-                pendingWarehouseRefreshRef.current = true;
-              }
-              if (Object.keys(updatePayload).length > 0) {
-                dispatch({ type: 'UPDATE_DATA', payload: updatePayload });
-              }
-            }
-          });
-        }
-      },
-      // Customer changes
-      (payload) => {
-        if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
-          fetchOrgData(session.organizationId).then(data => {
-            if (data?.customers) {
-              dispatch({ type: 'UPDATE_DATA', payload: { customers: data.customers } });
-            }
-          });
-        }
-      },
-      // Inventory changes
-      (payload) => {
-        if (isInventorySyncLocked()) {
-          pendingWarehouseRefreshRef.current = true;
+  const refreshCustomers = useCallback(async () => {
+    if (session?.role !== 'admin') return;
+    const { data } = await api.get<any[]>('/api/customers');
+    if (data && mountedRef.current) {
+      dispatch({ type: 'UPDATE_DATA', payload: { customers: data } });
+    }
+  }, [dispatch, session?.role]);
+
+  const refreshWarehouse = useCallback(async () => {
+    if (isInventorySyncLocked()) return;
+    const { data } = await api.get<any>('/api/warehouse');
+    if (data && mountedRef.current) {
+      dispatch({ type: 'UPDATE_DATA', payload: { warehouse: data } });
+      warehouseHashRef.current = hashWarehouse(data);
+    }
+  }, [dispatch]);
+
+  const refreshEquipment = useCallback(async () => {
+    const { data } = await api.get<any[]>('/api/equipment');
+    if (data && mountedRef.current) {
+      dispatch({ type: 'UPDATE_DATA', payload: { equipment: data } });
+    }
+  }, [dispatch]);
+
+  // ─── WebSocket event handler ───────────────────────────────────────────────
+
+  const handleWsEvent = useCallback(
+    (msg: { type: string; data?: any }) => {
+      if (isInventorySyncLocked()) {
+        if (['warehouse:updated', 'estimate:updated', 'equipment:updated'].includes(msg.type)) {
+          console.log('[WS] Skipping event during sync lock:', msg.type);
           return;
         }
-        if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
-          fetchOrgData(session.organizationId).then(data => {
-            if (isInventorySyncLocked()) {
-              pendingWarehouseRefreshRef.current = true;
-              return;
-            }
-            if (data?.warehouse) {
-              dispatch({ type: 'UPDATE_DATA', payload: { warehouse: data.warehouse } });
-              lastSyncedWarehouseRef.current = computeWarehouseHash(data.warehouse);
-            }
-          });
+      }
+
+      switch (msg.type) {
+        case 'connected':
+          console.log('[WS] Authenticated for org:', msg.data);
+          break;
+        case 'estimate:updated':
+        case 'workorder:broadcast':
+          refreshEstimates();
+          break;
+        case 'customer:updated':
+          refreshCustomers();
+          break;
+        case 'warehouse:updated':
+          refreshWarehouse();
+          break;
+        case 'equipment:updated':
+          refreshEquipment();
+          break;
+        case 'message:new':
+        case 'maintenance:updated':
+        case 'pong':
+          // Handled by their respective components or ignored
+          break;
+        default:
+          console.log('[WS] Unknown event:', msg.type);
+      }
+    },
+    [refreshEstimates, refreshCustomers, refreshWarehouse, refreshEquipment],
+  );
+
+  // ─── WebSocket connection ──────────────────────────────────────────────────
+
+  const connectWebSocket = useCallback(() => {
+    if (!session?.organizationId || !getAccessToken()) return;
+
+    // Close existing connection
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
+    try {
+      const ws = new WebSocket(getWsUrl());
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('[WS] Connected');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data as string);
+          handleWsEvent(msg);
+        } catch {
+          // Ignore malformed messages
         }
-      }
-    );
-  }, [session?.organizationId, session?.role, ui.isInitialized, dispatch, computeWarehouseHash]);
+      };
 
-  // Initial realtime subscription setup
-  useEffect(() => {
-    if (!session?.organizationId || !ui.isInitialized) return;
-    setupRealtimeSubscription();
-    return () => {
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
-      }
-    };
-  }, [session?.organizationId, ui.isInitialized, setupRealtimeSubscription]);
+      ws.onclose = (event) => {
+        console.log('[WS] Disconnected:', event.code, event.reason);
+        wsRef.current = null;
 
-  // 3b. CREW POLLING FALLBACK — reliable work order sync every 10 seconds
-  // Because crew users have NO auth session (anon role), Supabase Realtime
-  // Postgres Changes won't deliver events (RLS blocks anon SELECT on estimates).
-  // The broadcast channel is ephemeral and unreliable. This polling interval
-  // is the CRITICAL mechanism that ensures crew always gets fresh work orders.
-  useEffect(() => {
-    if (!session?.organizationId || !ui.isInitialized || session.role !== 'crew') return;
+        // Auto-reconnect after 5s unless intentionally closed
+        if (mountedRef.current && event.code !== 1000) {
+          setTimeout(() => {
+            if (mountedRef.current && session?.organizationId) {
+              connectWebSocket();
+            }
+          }, 5000);
+        }
+      };
 
-    // Track existing WO IDs so we can detect NEW arrivals
-    const existingWOIds = new Set(
-      (appDataRef.current.savedEstimates || [])
-        .filter((e: EstimateRecord) => e.status === 'Work Order')
-        .map((e: EstimateRecord) => e.id)
-    );
+      ws.onerror = (err) => {
+        console.error('[WS] Error:', err);
+      };
+    } catch (err) {
+      console.error('[WS] Failed to connect:', err);
+    }
+  }, [session?.organizationId, handleWsEvent]);
 
-    const pollCrewWorkOrders = async () => {
+  // ─── Crew polling fallback ─────────────────────────────────────────────────
+  // Polls every 10s for work order updates (critical for crew on mobile)
+
+  const startCrewPolling = useCallback(() => {
+    if (crewPollTimerRef.current) return;
+    if (session?.role !== 'crew') return;
+
+    crewPollTimerRef.current = setInterval(async () => {
+      if (!mountedRef.current) return;
       try {
-        console.log('[Crew Poll] Fetching work orders for org:', session.organizationId);
-        const cloudData = await fetchCrewWorkOrders(session.organizationId);
-        if (!cloudData?.savedEstimates) {
-          console.warn('[Crew Poll] fetchCrewWorkOrders returned null/empty — RPC may be missing');
-          return;
+        const { data } = await api.get<any[]>('/api/estimates');
+        if (data && mountedRef.current) {
+          dispatch({ type: 'UPDATE_DATA', payload: { savedEstimates: data } });
         }
+      } catch (err) {
+        console.warn('[Crew Poll] Failed:', err);
+      }
+    }, 10000);
+  }, [session?.role, dispatch]);
 
-        // Build a hash of the cloud estimates to avoid unnecessary re-renders
-        const cloudHash = JSON.stringify(
-          cloudData.savedEstimates.map((e: EstimateRecord) =>
-            `${e.id}:${e.status}:${e.executionStatus}:${e.lastModified}`
-          ).sort()
-        );
+  const stopCrewPolling = useCallback(() => {
+    if (crewPollTimerRef.current) {
+      clearInterval(crewPollTimerRef.current);
+      crewPollTimerRef.current = null;
+    }
+  }, []);
 
-        if (cloudHash === crewLastPollHashRef.current) return; // No changes
-        crewLastPollHashRef.current = cloudHash;
+  // ─── Auto-sync (debounced 3s, admin only) ─────────────────────────────────
+  // Detects changes in settings/profile via hash comparison, pushes to server
 
-        // Detect new work orders
-        const newWOs = cloudData.savedEstimates.filter(
-          (e: EstimateRecord) =>
-            e.status === 'Work Order' &&
-            e.executionStatus !== 'Completed' &&
-            !existingWOIds.has(e.id)
-        );
+  const scheduleAutoSync = useCallback(() => {
+    if (!session?.organizationId || session.role !== 'admin') return;
 
-        console.log(`[Crew Poll] Fetched ${cloudData.savedEstimates.length} work orders (${newWOs.length} new)`);
+    if (autoSyncTimerRef.current) {
+      clearTimeout(autoSyncTimerRef.current);
+    }
 
-        // Single dispatch with ALL crew-relevant data in one payload
-        const updatePayload: any = { savedEstimates: cloudData.savedEstimates };
-        if (cloudData.companyProfile) updatePayload.companyProfile = cloudData.companyProfile;
-        if (cloudData.yields) updatePayload.yields = cloudData.yields;
-        if (cloudData.costs) updatePayload.costs = cloudData.costs;
-        if (cloudData.customers) updatePayload.customers = cloudData.customers;
-        dispatch({ type: 'UPDATE_DATA', payload: updatePayload });
+    autoSyncTimerRef.current = setTimeout(async () => {
+      if (!mountedRef.current || !session?.organizationId) return;
 
-        // Update tracking set
-        cloudData.savedEstimates.forEach((e: EstimateRecord) => {
-          if (e.status === 'Work Order') existingWOIds.add(e.id);
+      const currentHash = buildSyncHash(appData);
+      if (currentHash === lastSyncHashRef.current) return;
+
+      try {
+        dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
+
+        // Sync settings
+        await api.patch('/api/org/settings', {
+          yields: appData.yields,
+          costs: appData.costs,
+          pricingMode: appData.pricingMode,
+          sqFtRates: appData.sqFtRates,
+          lifetimeUsage: appData.lifetimeUsage,
         });
 
-        // Notify crew of new work orders
-        if (newWOs.length > 0) {
-          const customerNames = newWOs
-            .map((e: EstimateRecord) => e.customer?.name || 'Unknown')
-            .join(', ');
-          dispatch({
-            type: 'SET_NOTIFICATION',
-            payload: {
-              type: 'success',
-              message: newWOs.length === 1
-                ? `New Work Order: ${customerNames}`
-                : `${newWOs.length} New Work Orders: ${customerNames}`,
-            },
+        // Sync profile
+        if (appData.companyProfile) {
+          await api.patch('/api/org/profile', appData.companyProfile);
+        }
+
+        // Sync warehouse stock only if changed and not locked
+        const currentWarehouseHash = hashWarehouse(appData.warehouse);
+        if (currentWarehouseHash !== warehouseHashRef.current && !isInventorySyncLocked()) {
+          await api.patch('/api/warehouse/stock', {
+            openCellSets: appData.warehouse?.openCellSets || 0,
+            closedCellSets: appData.warehouse?.closedCellSets || 0,
           });
-
-          // Play audio alert for new work orders
-          try {
-            const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAGAACAgICAgICAgICAgICAgICBgYKCg4OEhIWFhoaHh4iIiYmJiYqKioqKiomJiYmIiIeHhoaFhYSEg4OCgoGBgICAgICAgICAgH9/f39/f39/f39/f39/f3+AgICBgYKCg4SEhYaGh4iIiYqKi4uMjI2Njo6Ojo+Pj4+Pj4+Pjo6OjY2NjIyMi4uKiomJiIiHh4aGhYWEhIODgoKBgYCAgH9/fn5+fn19fX19fX19fn5+f3+AgIGBgoKDhISFhoeHiImKi4yMjY6Oj5CQkZGRkZKSkpKSkpKSkZGRkZCQj4+OjY2MjIuKiomIh4eGhYSEg4KBgYB/f35+fX19fHx8fHx8fHx8fX1+fn9/gIGBgoOEhIWGh4iJiouMjY6PkJCRkpKTk5SUlJSVlZWVlJSUlJOTk5KSkZGQj4+OjYyLioqJiIeGhYSEgoKBgH9/fn59fXx8fHx7e3t7e3t8fHx9fn5/gICBgoOEhYaHiImKi4yNjo+QkZKSk5SVlZaWl5eXl5eXl5eXlpaWlZWUk5OSkZCQj46NjIuKiYiHhoWEg4KBgIB/fn59fXx8e3t7e3t7e3t7fHx9fX5/gIGCg4SFhoeIiouMjY6PkJGSk5SVlpeXmJiZmZmZmZmZmZiYmJeXlpWUk5KRkI+OjYyLiomIh4aFhIOCgYB/f359fHx7e3t6enp6enp7e3t8fH1+f4CBgoOEhoeIiYqMjY6PkJGSk5SVlpeYmJmZmpqampqamZmZmJiXlpWUk5KRkI+OjYuKiYiHhoWEg4KBgH9+fXx8e3t6enp6enp6ent7fHx9fn+AgYKDhYaHiImKjI2Oj5CRkpOUlZaXmJmZmpqbm5ubm5uampmZmJeWlZSUkpGQj46NjIuKiIeGhYSDgoGAf359fHt7enp6eXl5eXp6ent7fH1+f4CCg4SFhoeJiouMjY+QkZKTlJWWl5iZmpqbm5ycnJycm5ubmpmYl5aVlJOSkZCPjo2Mi4qJh4aFhIOCgYB/fn18e3t6enl5eXl5eXp6e3t8fX5/gIGDhIWGiImKi42Oj5CRkpOUlZeXmJmam5ucnJ2dnZ2dnJycm5qZmJeWlZOSkZCPjo2Mi4qJiIeGhYOCgYB/fn18e3p6eXl5eXl5eXp6e3x8fX9/gIKDhIaHiImKjI2Oj5GSkpOUlZaXmJmam5ucnJ2dnp6enZ2cnJuamZiXlpWUk5KRj46NjIuKiYiHhoWEg4KAf359fHt6enl5eHh4eHl5enp7fH1+gIGCg4WGh4mKi4yNj5CRkpOUlZaXmJmam5ycnZ2enp6enZ2dnJuamZiXlpSUkpGQj46NjIuKiYeGhYSDoYB/fn18e3p6eXl4eHh4eHl5ent8fX5/gIGDhIWHiImKjI2Oj5CRk5SUlZaXmJmam5ycnZ6enp6fn56dnZycm5qZmJeWlZSTkpCPjo2MiomIh4aFhIOCgYB/fXx7enp5eXh4eHh4eXl6e3x9fn+AgYOEhoeIiouMjo+QkZKTlJWWl5iZmZucnJ2dnp6fn5+fnp6dnJybmpkA');
-            audio.volume = 0.5;
-            audio.play().catch(() => { /* user gesture not available */ });
-          } catch { /* ignore audio errors */ }
-        }
-      } catch (e) {
-        console.warn('[Crew Poll] Failed:', e);
-      }
-    };
-
-    // Initial poll immediately (catches anything missed during app startup)
-    const initialPollTimeout = setTimeout(pollCrewWorkOrders, 2000);
-
-    // Then poll every 10 seconds (reduced from 15s for faster sync)
-    crewPollRef.current = setInterval(pollCrewWorkOrders, 10000);
-    console.log('[Crew Poll] Started polling every 10 seconds for org:', session.organizationId);
-
-    return () => {
-      clearTimeout(initialPollTimeout);
-      if (crewPollRef.current) {
-        clearInterval(crewPollRef.current);
-        crewPollRef.current = null;
-      }
-    };
-  }, [session?.organizationId, session?.role, ui.isInitialized, dispatch]);
-
-  // 4. AUTO-SYNC (debounced write to Supabase) — admin only
-  useEffect(() => {
-    if (ui.isLoading || !ui.isInitialized || !session?.organizationId) return;
-    if (session.role === 'crew') return;
-
-    const currentHash = computeHash(appData);
-
-    // Always backup to localStorage
-    try {
-      safeStorage.setItem(`foamProState_${session.username}`, JSON.stringify(appData));
-    } catch { /* quota exceeded — ignore */ }
-
-    if (currentHash === lastSyncedHashRef.current) return;
-
-    dispatch({ type: 'SET_SYNC_STATUS', payload: 'pending' });
-    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-
-    syncTimerRef.current = setTimeout(async () => {
-      dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
-      try {
-        // Determine if warehouse actually changed locally (admin action) vs
-        // just being carried along by an unrelated data change (estimate
-        // timestamp update, settings tweak, etc.).  Only write warehouse
-        // when it was the admin who changed it — this prevents the auto-sync
-        // from blindly overwriting crew_update_job warehouse adjustments.
-        const warehouseNeedsSync = computeWarehouseHash(appData.warehouse) !== lastSyncedWarehouseRef.current;
-
-        acquireInventorySyncLock();
-        try {
-          // Always sync settings (website lives here too, not in updateCompanyProfile)
-          const settingsUpdated = await updateOrgSettings(session.organizationId, {
-            yields: appData.yields,
-            costs: appData.costs,
-            pricingMode: appData.pricingMode,
-            sqFtRates: appData.sqFtRates,
-            lifetimeUsage: appData.lifetimeUsage,
-            website: appData.companyProfile?.website || '',
-          });
-          if (!settingsUpdated) {
-            throw new Error('Supabase updateOrgSettings returned false');
-          }
-
-          // Always sync company profile (name, address, logo, etc.)
-          const profileUpdated = await updateCompanyProfile(session.organizationId, appData.companyProfile);
-          if (!profileUpdated) {
-            throw new Error('Supabase updateCompanyProfile returned false');
-          }
-
-          // Always sync equipment items
-          if (appData.equipment?.length > 0) {
-            await Promise.all(
-              appData.equipment.map(item =>
-                upsertEquipment(item, session.organizationId).then(saved => {
-                  if (!saved) {
-                    throw new Error(`Supabase upsertEquipment failed for ${item.id || item.name}`);
-                  }
-                  return saved;
-                })
-              )
-            );
-          }
-
-          // Sync estimates — continue processing all records, then fail the
-          // sync pass if any individual row fails so status reflects reality.
-          if (appData.savedEstimates?.length > 0) {
-            const estimateResults = await Promise.allSettled(
-              appData.savedEstimates.map(estimate =>
-                upsertEstimate(estimate, session.organizationId).then(saved => {
-                  if (!saved) throw new Error(`Supabase upsertEstimate returned null for ${estimate.id}`);
-                  return saved;
-                })
-              )
-            );
-            const estimateFailures = estimateResults.filter(r => r.status === 'rejected');
-            if (estimateFailures.length > 0) {
-              throw new Error(`${estimateFailures.length} estimate(s) failed to sync to Supabase`);
-            }
-          }
-
-          // Sync customers — continue processing all records, then fail the
-          // sync pass if any individual row fails.
-          if (appData.customers?.length > 0) {
-            const customerResults = await Promise.allSettled(
-              appData.customers.map(customer =>
-                upsertCustomer(customer, session.organizationId).then(saved => {
-                  if (!saved) throw new Error(`Supabase upsertCustomer returned null for ${customer.id || customer.name}`);
-                  return saved;
-                })
-              )
-            );
-            const customerFailures = customerResults.filter(r => r.status === 'rejected');
-            if (customerFailures.length > 0) {
-              throw new Error(`${customerFailures.length} customer(s) failed to sync to Supabase`);
-            }
-          }
-
-          // Only sync warehouse when it actually changed locally
-          if (warehouseNeedsSync) {
-            console.log('[Auto-Sync] Warehouse changed locally — syncing to server');
-            const warehouseResults = await Promise.all([
-              updateWarehouseStock(
-                session.organizationId,
-                appData.warehouse.openCellSets,
-                appData.warehouse.closedCellSets
-              ),
-              ...appData.warehouse.items.map(item =>
-                upsertInventoryItem(item, session.organizationId)
-              ),
-            ]);
-
-            const stockSaved = warehouseResults[0] as boolean;
-            if (!stockSaved) {
-              throw new Error('Supabase updateWarehouseStock returned false');
-            }
-
-            const failedInventory = warehouseResults.slice(1).find((saved: any) => !saved);
-            if (failedInventory) {
-              throw new Error('One or more warehouse inventory items failed to sync to Supabase');
-            }
-
-            // Backfill Supabase UUIDs for any warehouse items that had local IDs.
-            // The first result is warehouse stock; the rest are inventory items.
-            const inventorySaved = warehouseResults.slice(1);
-            let needsIdUpdate = false;
-            const updatedItems = appData.warehouse.items.map((item, idx) => {
-              const saved = inventorySaved[idx] as any;
-              if (saved && saved.id && saved.id !== item.id) {
-                needsIdUpdate = true;
-                return { ...item, id: saved.id };
-              }
-              return item;
-            });
-            if (needsIdUpdate) {
-              const newWarehouse = { ...appData.warehouse, items: updatedItems };
-              dispatch({ type: 'UPDATE_DATA', payload: { warehouse: newWarehouse } });
-              lastSyncedWarehouseRef.current = computeWarehouseHash(newWarehouse);
-            } else {
-              lastSyncedWarehouseRef.current = computeWarehouseHash(appData.warehouse);
-            }
-          }
-        } finally {
-          releaseInventorySyncLock();
+          warehouseHashRef.current = currentWarehouseHash;
         }
 
-        // After releasing the lock, check if any warehouse updates were
-        // deferred during the sync window (realtime events blocked by lock).
-        // Fetch fresh warehouse from server to pick up crew_update_job adjustments.
-        if (pendingWarehouseRefreshRef.current) {
-          pendingWarehouseRefreshRef.current = false;
-          try {
-            const freshWarehouse = await fetchWarehouseState(session.organizationId);
-            if (freshWarehouse) {
-              console.log('[Auto-Sync] Deferred warehouse refresh — applying server state');
-              dispatch({ type: 'UPDATE_DATA', payload: { warehouse: freshWarehouse } });
-              lastSyncedWarehouseRef.current = computeWarehouseHash(freshWarehouse);
-            }
-          } catch (e) {
-            console.error('[Auto-Sync] Deferred warehouse refresh failed:', e);
-          }
-        }
-
-        lastSyncedHashRef.current = currentHash;
+        lastSyncHashRef.current = currentHash;
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
-        setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 2000);
+        setTimeout(() => {
+          if (mountedRef.current) dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' });
+        }, 2000);
       } catch (err) {
-        console.error('Auto-sync error:', err);
+        console.error('[AutoSync] Failed:', err);
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
       }
     }, 3000);
+  }, [session?.organizationId, session?.role, appData, dispatch]);
 
-    return () => {
-      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-    };
-  }, [appData, ui.isLoading, ui.isInitialized, session, dispatch, computeHash]);
+  // ─── Inventory reconciliation ──────────────────────────────────────────────
+  // Client-side safety net: mark completed jobs where inventoryProcessed=false
 
-  // 5. MANUAL FORCE SYNC (Push entire state)
-  const handleManualSync = async () => {
-    if (!session?.organizationId) return;
-    dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
-
-    try {
-      const success = await syncAppDataToSupabase(appData, session.organizationId);
-
-      if (success) {
-        lastSyncedHashRef.current = computeHash(appData);
-        dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
-        dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Cloud Sync Complete' } });
-        setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 3000);
-      } else {
-        throw new Error('Sync returned false');
-      }
-    } catch {
-      dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
-      dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Sync Failed. Check Internet.' } });
-    }
-  };
-
-  // 6. FORCE REFRESH (Pull from Supabase) — for crew dashboard & manual refresh
-  // For admin: pushes local data first so nothing is lost, then pulls fresh state.
-  // Wrapped in useCallback with STABLE deps (no appData!) so downstream components
-  // (CrewDashboard, auto-sync intervals) don't see a new function reference on
-  // every render. Uses appDataRef for current data access.
-  const forceRefresh = useCallback(async () => {
-    if (!session?.organizationId) return;
-    dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
-
-    try {
-      // Admin: push local data to Supabase FIRST so the pull doesn't wipe
-      // any estimates/work orders that haven't been synced yet.
-      if (session.role === 'admin') {
-        console.log('[Refresh] Admin — pushing local data before pulling...');
-        try {
-          await syncAppDataToSupabase(appDataRef.current, session.organizationId);
-        } catch (pushErr) {
-          console.warn('[Refresh] Push failed, continuing with pull:', pushErr);
-        }
-      }
-
-      // Use crew-specific RPC if crew role
-      console.log(`[Refresh] Pulling data for role=${session.role}...`);
-      const cloudData = session.role === 'crew'
-        ? await fetchCrewWorkOrders(session.organizationId)
-        : await fetchOrgData(session.organizationId);
-      if (cloudData) {
-        if (session.role === 'crew') {
-          // Crew: use UPDATE_DATA (merge) instead of LOAD_DATA (replace).
-          // This prevents clobbering local UI state (yields, costs defaults)
-          // with undefined values from the partial crew payload.
-          const updatePayload: any = {};
-          if (cloudData.savedEstimates !== undefined) updatePayload.savedEstimates = cloudData.savedEstimates;
-          if (cloudData.customers) updatePayload.customers = cloudData.customers;
-          if (cloudData.companyProfile) updatePayload.companyProfile = cloudData.companyProfile;
-          if (cloudData.yields) updatePayload.yields = cloudData.yields;
-          if (cloudData.costs) updatePayload.costs = cloudData.costs;
-
-          const estimateCount = (cloudData.savedEstimates || []).length;
-          console.log(`[Refresh] Crew got ${estimateCount} work orders`);
-          dispatch({ type: 'UPDATE_DATA', payload: updatePayload });
-          lastSyncedHashRef.current = computeHash({ ...appDataRef.current, ...updatePayload });
-        } else {
-          // Admin: full merge with LOAD_DATA as before
-          const currentData = appDataRef.current;
-          const mergedState = { ...currentData };
-          for (const key of Object.keys(cloudData) as (keyof typeof cloudData)[]) {
-            if ((cloudData as any)[key] !== undefined && (cloudData as any)[key] !== null) {
-              (mergedState as any)[key] = (cloudData as any)[key];
-            }
-          }
-          const estimateCount = mergedState.savedEstimates?.length || 0;
-          console.log(`[Refresh] Admin got ${estimateCount} estimates`);
-          dispatch({ type: 'LOAD_DATA', payload: mergedState });
-          lastSyncedHashRef.current = computeHash(mergedState);
-          lastSyncedWarehouseRef.current = computeWarehouseHash(mergedState.warehouse);
-
-          // Admin: reconcile any newly completed jobs
-          if (mergedState.savedEstimates && mergedState.warehouse) {
-            reconcileCompletedJobs(mergedState.savedEstimates, mergedState.warehouse, session.organizationId);
-          }
-        }
-
-        dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
-        setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 3000);
-      } else {
-        console.warn('[Refresh] No data returned');
-        dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
-        dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Refresh failed — no data returned. Check Supabase connection.' } });
-      }
-    } catch (e) {
-      console.error('[Refresh] Error:', e);
-      dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
-      dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Refresh Failed.' } });
-    }
-  }, [session?.organizationId, session?.role, dispatch, computeHash, computeWarehouseHash, reconcileCompletedJobs]);
-
-  // 7. REFRESH SUBSCRIPTION STATUS
-  const refreshSubscription = async () => {
+  const reconcileInventory = useCallback(async () => {
     if (!session?.organizationId || session.role !== 'admin') return;
-    const sub = await fetchSubscriptionStatus(session.organizationId);
-    if (sub) dispatch({ type: 'SET_SUBSCRIPTION', payload: sub });
-  };
 
-  // 8. iOS VISIBILITY CHANGE — re-fetch data when app comes back to foreground
-  // iOS Safari/WebKit freezes JS execution when the app is backgrounded.
-  // When the user returns, stale data is displayed. This listener re-syncs
-  // immediately on resume, and also flushes any queued offline crew updates.
+    const unprocessed = (appData.savedEstimates || []).filter(
+      (e: EstimateRecord) =>
+        (e.status === 'Work Order' || e.status === 'Invoiced' || e.status === 'Paid') &&
+        !e.inventoryProcessed,
+    );
+
+    for (const estimate of unprocessed) {
+      try {
+        await api.patch(`/api/estimates/${estimate.id}/inventory-processed`, {});
+        console.log(`[Reconcile] Marked ${estimate.id} as inventoryProcessed`);
+      } catch (err) {
+        console.warn(`[Reconcile] Failed for ${estimate.id}:`, err);
+      }
+    }
+  }, [session?.organizationId, session?.role, appData.savedEstimates]);
+
+  // ─── Manual Sync (user-triggered) ─────────────────────────────────────────
+
+  const handleManualSync = useCallback(async () => {
+    if (!session?.organizationId) return;
+    dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
+
+    try {
+      // Push local settings first (admin only)
+      if (session.role === 'admin') {
+        await api.patch('/api/org/settings', {
+          yields: appData.yields,
+          costs: appData.costs,
+          pricingMode: appData.pricingMode,
+          sqFtRates: appData.sqFtRates,
+          lifetimeUsage: appData.lifetimeUsage,
+        });
+
+        if (appData.companyProfile) {
+          await api.patch('/api/org/profile', appData.companyProfile);
+        }
+      }
+
+      // Then pull fresh data from server
+      await loadOrgData();
+
+      dispatch({
+        type: 'SET_NOTIFICATION',
+        payload: { type: 'success', message: 'Sync Complete!' },
+      });
+    } catch (err) {
+      console.error('[ManualSync] Failed:', err);
+      dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
+      dispatch({
+        type: 'SET_NOTIFICATION',
+        payload: { type: 'error', message: 'Sync failed. Please try again.' },
+      });
+    }
+  }, [session, appData, dispatch, loadOrgData]);
+
+  // ─── Force Refresh (pull-only, used by crew and iOS resume) ────────────────
+
+  const forceRefresh = useCallback(async () => {
+    await loadOrgData();
+  }, [loadOrgData]);
+
+  // ─── Refresh subscription (reconnect WS) ──────────────────────────────────
+
+  const refreshSubscription = useCallback(() => {
+    connectWebSocket();
+  }, [connectWebSocket]);
+
+  // ─── iOS / Visibility change handler ───────────────────────────────────────
+
   useEffect(() => {
-    if (!session?.organizationId || !ui.isInitialized) return;
-
     const handleVisibilityChange = async () => {
       if (document.visibilityState !== 'visible') return;
+      if (!session?.organizationId || !mountedRef.current) return;
 
-      console.log('[iOS Resume] App became visible — re-syncing...');
+      console.log('[Visibility] App resumed — refreshing...');
 
-      // For admin users: proactively refresh the Supabase JWT before any data fetch.
-      // iOS can suspend the app for hours, allowing the access token to expire.
-      // autoRefreshToken only fires on a timer which doesn't run while suspended.
-      if (session.role === 'admin') {
-        try {
-          const { error: refreshError } = await supabase.auth.refreshSession();
-          if (refreshError) {
-            console.warn('[iOS Resume] Session refresh failed:', refreshError.message);
-            // Token is unrecoverable — surface a re-login prompt
-            dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Session expired. Please log in again.' } });
-            safeStorage.removeItem('foamProSession');
-            dispatch({ type: 'LOGOUT' });
-            return; // Skip data re-fetch — user must re-authenticate
-          } else {
-            console.log('[iOS Resume] Auth session refreshed successfully');
-          }
-        } catch (e) {
-          console.warn('[iOS Resume] Session refresh error:', e);
-          dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'error', message: 'Session expired. Please log in again.' } });
-          safeStorage.removeItem('foamProSession');
-          dispatch({ type: 'LOGOUT' });
-          return;
-        }
-      }
+      // Re-fetch data
+      await forceRefresh();
 
-      // Flush any queued offline crew updates first
-      try {
-        const flushed = await flushOfflineCrewQueue();
-        if (flushed > 0) {
-          dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: `Synced ${flushed} queued update(s)` } });
-        }
-      } catch (e) {
-        console.warn('[iOS Resume] Offline queue flush error:', e);
-      }
-
-      // Re-fetch fresh data from server
-      try {
-        dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
-        const cloudData = session.role === 'crew'
-          ? await fetchCrewWorkOrders(session.organizationId)
-          : await fetchOrgData(session.organizationId);
-
-        if (cloudData) {
-          const updatePayload: any = {};
-          if (cloudData.savedEstimates) {
-            // Merge cloud estimates with any local-only estimates that may not
-            // have reached Supabase yet (e.g. network request cancelled by iOS
-            // when app was backgrounded right after the estimate was created).
-            // Cloud version is authoritative for estimates present in both;
-            // local-only estimates (not yet confirmed in Supabase) are preserved
-            // so the auto-sync can retry uploading them.
-            const currentLocal = appDataRef.current.savedEstimates || [];
-            if (currentLocal.length > 0) {
-              const cloudIds = new Set(cloudData.savedEstimates.map((e: any) => e.id));
-              const localOnly = currentLocal.filter(e => !cloudIds.has(e.id));
-              updatePayload.savedEstimates = localOnly.length > 0
-                ? [...cloudData.savedEstimates, ...localOnly]
-                : cloudData.savedEstimates;
-            } else {
-              updatePayload.savedEstimates = cloudData.savedEstimates;
-            }
-          }
-          if (cloudData.customers) updatePayload.customers = cloudData.customers;
-          if (cloudData.warehouse && !isInventorySyncLocked()) {
-            updatePayload.warehouse = cloudData.warehouse;
-            lastSyncedWarehouseRef.current = computeWarehouseHash(cloudData.warehouse);
-          }
-          if (Object.keys(updatePayload).length > 0) {
-            dispatch({ type: 'UPDATE_DATA', payload: updatePayload });
-            lastSyncedHashRef.current = computeHash({ ...appDataRef.current, ...updatePayload });
-          }
-          dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
-          setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 2000);
-          console.log('[iOS Resume] Data refreshed successfully');
-        } else {
-          dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' });
-        }
-      } catch (e) {
-        console.warn('[iOS Resume] Re-sync failed:', e);
-        dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
-      }
-
-      // Re-establish Realtime subscription — iOS kills WebSockets when
-      // the app is backgrounded, so the existing channel is dead.
-      console.log('[iOS Resume] Re-establishing Realtime subscription...');
-      setupRealtimeSubscription();
-    };
-
-    // Also handle the iOS-specific pageshow event (fires on back/forward cache restore)
-    const handlePageShow = (e: PageTransitionEvent) => {
-      if (e.persisted) {
-        console.log('[iOS Resume] Page restored from bfcache — re-syncing...');
-        handleVisibilityChange();
+      // Reconnect WebSocket if disconnected
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        connectWebSocket();
       }
     };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('pageshow', handlePageShow);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [session?.organizationId, forceRefresh, connectWebSocket]);
 
-    // Also listen for online events — iOS can lose connectivity silently
-    const handleOnline = () => {
-      console.log('[iOS Resume] Device came online — flushing queue...');
-      flushOfflineCrewQueue().then(flushed => {
-        if (flushed > 0) {
-          dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: `Synced ${flushed} queued update(s)` } });
-          // Also pull fresh data
-          handleVisibilityChange();
-        }
-      });
-    };
-    window.addEventListener('online', handleOnline);
+  // ─── Init effect: load data, connect WS, start polling ────────────────────
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    if (!session?.organizationId) return;
+
+    // Load initial data
+    loadOrgData();
+
+    // Connect WebSocket
+    connectWebSocket();
+
+    // Start crew polling if crew role
+    if (session.role === 'crew') {
+      startCrewPolling();
+    }
 
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('pageshow', handlePageShow);
-      window.removeEventListener('online', handleOnline);
-    };
-  }, [session?.organizationId, session?.role, ui.isInitialized, dispatch, computeHash, computeWarehouseHash, setupRealtimeSubscription]);
+      mountedRef.current = false;
 
-  return { handleManualSync, forceRefresh, refreshSubscription };
+      // Close WebSocket
+      if (wsRef.current) {
+        wsRef.current.close(1000, 'Component unmount');
+        wsRef.current = null;
+      }
+
+      // Stop crew polling
+      stopCrewPolling();
+
+      // Clear auto-sync timer
+      if (autoSyncTimerRef.current) {
+        clearTimeout(autoSyncTimerRef.current);
+        autoSyncTimerRef.current = null;
+      }
+    };
+  }, [session?.organizationId, session?.role]);
+
+  // ─── Auto-sync trigger on appData changes (admin only, debounced) ──────────
+
+  useEffect(() => {
+    if (session?.role === 'admin' && initializedRef.current) {
+      scheduleAutoSync();
+    }
+  }, [
+    appData.yields,
+    appData.costs,
+    appData.pricingMode,
+    appData.sqFtRates,
+    appData.lifetimeUsage,
+    appData.companyProfile,
+  ]);
+
+  // ─── Run inventory reconciliation after initial load ───────────────────────
+
+  useEffect(() => {
+    if (initializedRef.current && session?.role === 'admin') {
+      reconcileInventory();
+    }
+  }, [initializedRef.current, session?.role]);
+
+  return {
+    handleManualSync,
+    forceRefresh,
+    refreshSubscription,
+  };
 };

@@ -14,6 +14,8 @@ import estimateRoutes from './routes/estimates.js';
 import warehouseRoutes from './routes/warehouse.js';
 import equipmentRoutes from './routes/equipment.js';
 import materialRoutes from './routes/materials.js';
+import maintenanceRoutes from './routes/maintenance.js';
+import messageRoutes from './routes/messages.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -49,6 +51,8 @@ app.use('/api/estimates', estimateRoutes);
 app.use('/api/warehouse', warehouseRoutes);
 app.use('/api/equipment', equipmentRoutes);
 app.use('/api/materials', materialRoutes);
+app.use('/api/maintenance', maintenanceRoutes);
+app.use('/api/messages', messageRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {
