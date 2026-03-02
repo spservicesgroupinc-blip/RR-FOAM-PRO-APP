@@ -5,6 +5,7 @@
 1. [Google Cloud SDK (`gcloud`)](https://cloud.google.com/sdk/docs/install) installed
 2. A GCP project with billing enabled
 3. Docker installed (for local builds) — or use Cloud Build for remote builds
+4. Supabase project configured with proper redirect URLs (see [Supabase Configuration](#supabase-configuration))
 
 ## Quick Setup
 
@@ -72,6 +73,49 @@ Cloud Run
 - **Static SPA** — Nginx serves the built assets with SPA fallback routing
 - **Health check** — `GET /healthz` returns `200 ok` (used by Cloud Run)
 
+## Supabase Configuration
+
+After deploying to Cloud Run, you **must** configure the deployment URL in your Supabase project for authentication to work properly.
+
+### Current Production URL
+
+The production deployment is currently running at:
+```
+https://rr-foam-pro-app-737284866566.us-east5.run.app
+```
+
+### Steps to Configure Supabase
+
+1. Go to your Supabase project dashboard: https://app.supabase.com
+2. Navigate to **Authentication** → **URL Configuration**
+3. Add your deployment URL to the following fields:
+
+   **Site URL:**
+   ```
+   https://rr-foam-pro-app-737284866566.us-east5.run.app
+   ```
+   
+   For other deployments, use your Cloud Run service URL (format: `https://SERVICE-NAME-PROJECT-ID.REGION.run.app`)
+
+   **Redirect URLs:** (add to the allowed list)
+   ```
+   https://rr-foam-pro-app-737284866566.us-east5.run.app/**
+   ```
+   
+   > The `**` is Supabase's wildcard pattern that matches all paths under your domain (e.g., `/auth/callback`, `/dashboard`, etc.)
+   
+   For other deployments, use: `https://YOUR-SERVICE-URL/**`
+
+4. Click **Save** to apply the changes
+
+> **Note**: Without this configuration, authentication will fail because Supabase will reject OAuth callbacks from unregistered URLs. This is a security feature to prevent unauthorized redirects.
+
+### For New Deployments
+
+If you deploy to a different region or with a different service name, make sure to:
+1. Get your Cloud Run service URL: `gcloud run services describe rr-foam-pro --region YOUR_REGION --format='value(status.url)'`
+2. Add that URL to Supabase's allowed redirect URLs following the steps above
+
 ## Custom Domain
 
 ```bash
@@ -82,6 +126,8 @@ gcloud run domain-mappings create \
 ```
 
 Follow the DNS verification instructions printed by the command.
+
+> **Important**: If you configure a custom domain, remember to add it to Supabase's redirect URLs as well!
 
 ## Cost Optimization
 
