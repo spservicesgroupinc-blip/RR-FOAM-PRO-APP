@@ -191,3 +191,66 @@ export const applyJobUsage = async (
     return false;
   }
 };
+
+// ─── ADD JOB USAGE (manual entry) ───────────────────────────────────────────
+
+export const addJobUsage = async (
+  usage: Partial<MaintenanceJobUsage>,
+  _orgId: string,
+): Promise<MaintenanceJobUsage | null> => {
+  try {
+    const { data, error } = await api.post<MaintenanceJobUsage>(
+      '/api/maintenance/job-usage',
+      usage,
+    );
+    if (error) {
+      console.error('addJobUsage error:', error);
+      return null;
+    }
+    return data;
+  } catch (err) {
+    console.error('addJobUsage exception:', err);
+    return null;
+  }
+};
+
+// ─── APPLY PENDING USAGE ─────────────────────────────────────────────────────
+
+export const applyPendingUsage = async (_orgId: string): Promise<boolean> => {
+  try {
+    const { error } = await api.post('/api/maintenance/apply-pending', {});
+    if (error) {
+      console.error('applyPendingUsage error:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('applyPendingUsage exception:', err);
+    return false;
+  }
+};
+
+// ─── SYNC JOBS TO MAINTENANCE ────────────────────────────────────────────────
+
+export const syncJobsToMaintenance = async (
+  _orgId: string,
+  estimates: Array<{ id: string; status: string; results?: { openCellSets?: number; closedCellSets?: number }; customerProfile?: { name: string }; updatedAt?: string }>,
+): Promise<number> => {
+  try {
+    const soldJobs = estimates.filter((e) => e.status === 'Sold' || e.status === 'Invoiced' || e.status === 'Paid');
+    if (soldJobs.length === 0) return 0;
+
+    const { data, error } = await api.post<{ added: number }>(
+      '/api/maintenance/sync-jobs',
+      { jobs: soldJobs },
+    );
+    if (error) {
+      console.error('syncJobsToMaintenance error:', error);
+      return 0;
+    }
+    return data?.added ?? 0;
+  } catch (err) {
+    console.error('syncJobsToMaintenance exception:', err);
+    return 0;
+  }
+};

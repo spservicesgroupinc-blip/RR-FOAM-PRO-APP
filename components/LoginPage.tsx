@@ -15,6 +15,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, installPrompt, on
   const [isSignup, setIsSignup] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signupConfirmation, setSignupConfirmation] = useState(false);
 
   const [formData, setFormData] = useState({
     email: '',
@@ -38,13 +39,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, installPrompt, on
           return;
         }
         const session = await signInCrew(formData.crewCompany, formData.crewPin);
-        // Store crew session in both keys for iOS resilience.
-        // iOS WebKit can evict localStorage entries under memory pressure;
-        // storing in both keys gives us a fallback.
-        try {
-          localStorage.setItem('foamProCrewSession', JSON.stringify(session));
-          localStorage.setItem('foamProSession', JSON.stringify(session));
-        } catch { /* iOS storage quota — session still works in memory */ }
+        // signInCrew already persists via safeStorage; nothing more needed here.
         onLoginSuccess(session);
       } else {
         if (isSignup) {
@@ -69,6 +64,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, installPrompt, on
             formData.fullName,
             formData.companyName
           );
+          // If the session has no organizationId, Supabase requires email confirmation
+          if (!session.organizationId) {
+            setSignupConfirmation(true);
+            setIsLoading(false);
+            return;
+          }
           onLoginSuccess(session);
         } else {
           const session = await signInAdmin(formData.email, formData.password);
@@ -114,14 +115,14 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, installPrompt, on
         {/* Tab Switcher */}
         <div className="flex border-b border-slate-100">
           <button
-            onClick={() => { setActiveTab('admin'); setError(null); }}
+            onClick={() => { setActiveTab('admin'); setError(null); setSignupConfirmation(false); }}
             className={`flex-1 py-4 text-sm font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-2 ${activeTab === 'admin' ? 'text-brand border-b-2 border-brand' : 'text-slate-400 hover:text-slate-600'}`}
           >
             <ShieldCheck className="w-4 h-4" />
             Admin Access
           </button>
           <button
-            onClick={() => { setActiveTab('crew'); setError(null); setIsSignup(false); }}
+            onClick={() => { setActiveTab('crew'); setError(null); setIsSignup(false); setSignupConfirmation(false); }}
             className={`flex-1 py-4 text-sm font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-2 ${activeTab === 'crew' ? 'text-brand border-b-2 border-brand' : 'text-slate-400 hover:text-slate-600'}`}
           >
             <HardHat className="w-4 h-4" />
@@ -150,6 +151,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, installPrompt, on
             <div className="mb-6 p-3 bg-red-50 text-red-600 text-sm rounded-lg flex items-center gap-2 border border-red-100">
               <AlertCircle className="w-4 h-4 shrink-0" />
               {error}
+            </div>
+          )}
+
+          {signupConfirmation && (
+            <div className="mb-6 p-4 bg-emerald-50 text-emerald-700 text-sm rounded-lg border border-emerald-200">
+              <p className="font-bold mb-1">Check your email!</p>
+              <p>We sent a confirmation link to <strong>{formData.email}</strong>. Click it to activate your account, then sign in.</p>
             </div>
           )}
 
@@ -295,6 +303,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, installPrompt, on
                 onClick={() => {
                   setIsSignup(!isSignup);
                   setError(null);
+                  setSignupConfirmation(false);
                 }}
                 className="text-sm text-slate-500 hover:text-brand font-medium transition-colors"
               >
