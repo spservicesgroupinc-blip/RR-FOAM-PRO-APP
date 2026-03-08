@@ -2,13 +2,17 @@
 # Usage: gcloud builds submit --config cloudbuild.yaml .
 #
 # Required substitutions (set via --substitution-args or trigger config):
-#   _REGION          – Cloud Run region  (default: us-central1)
-#   _SERVICE_NAME    – Cloud Run service (default: rr-foam-pro)
-#   _GEMINI_API_KEY  – (optional) Gemini API key baked into the build
+#   _REGION               – Cloud Run region  (default: us-central1)
+#   _SERVICE_NAME         – Cloud Run service (default: rr-foam-pro)
+#   _VITE_SUPABASE_URL    – Supabase project URL (baked into JS bundle)
+#   _VITE_SUPABASE_ANON_KEY – Supabase anon key (baked into JS bundle)
+#   _GEMINI_API_KEY       – (optional) Gemini API key baked into the build
 
 substitutions:
   _REGION: us-central1
   _SERVICE_NAME: rr-foam-pro
+  _VITE_SUPABASE_URL: ""
+  _VITE_SUPABASE_ANON_KEY: ""
   _GEMINI_API_KEY: ""
 
 steps:
@@ -16,6 +20,10 @@ steps:
   - name: "gcr.io/cloud-builders/docker"
     args:
       - "build"
+      - "--build-arg"
+      - "VITE_SUPABASE_URL=${_VITE_SUPABASE_URL}"
+      - "--build-arg"
+      - "VITE_SUPABASE_ANON_KEY=${_VITE_SUPABASE_ANON_KEY}"
       - "--build-arg"
       - "GEMINI_API_KEY=${_GEMINI_API_KEY}"
       - "-t"
