@@ -1,0 +1,90 @@
+name: Deploy to Google Cloud Run
+
+# Trigger on every push to main, or manually via the Actions tab.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# ── Shared environment ────────────────────────────────────────────────────────
+env:
+  REGION: us-central1
+  SERVICE_NAME: rr-foam-pro
+
+# ── Job ───────────────────────────────────────────────────────────────────────
+jobs:
+  build-and-deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    # id-token: write is required for Workload Identity Federation (keyless auth).
+    # If you are using a service-account JSON key instead, remove this permission
+    # and replace the auth step below with the credentials_json variant.
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      # ── 1. Source ───────────────────────────────────────────────────────────
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      # ── 2. Authenticate to Google Cloud ────────────────────────────────────
+      # Option A (recommended): Workload Identity Federation — no long-lived key.
+      # Requires GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_SERVICE_ACCOUNT secrets.
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      # Option B: Service-account key JSON. Replace the step above with:
+      #   uses: google-github-actions/auth@v2
+      #   with:
+      #     credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      # ── 3. Set up gcloud SDK ────────────────────────────────────────────────
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      # ── 4. Authorize Docker to push to GCR ──────────────────────────────────
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker --quiet
+
+      # ── 5. Build ────────────────────────────────────────────────────────────
+      - name: Build Docker image
+        run: |
+          docker build \
+            --build-arg VITE_SUPABASE_URL="${{ secrets.VITE_SUPABASE_URL }}" \
+            --build-arg VITE_SUPABASE_ANON_KEY="${{ secrets.VITE_SUPABASE_ANON_KEY }}" \
+            --build-arg GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
+            -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+            -t gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest \
+            .
+
+      # ── 6. Push ─────────────────────────────────────────────────────────────
+      - name: Push Docker image
+        run: |
+          docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          docker push gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
+
+      # ── 7. Deploy ───────────────────────────────────────────────────────────
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          image: gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }}
+          region: ${{ env.REGION }}
+          flags: >-
+            --allow-unauthenticated
+            --port=8080
+            --memory=256Mi
+            --cpu=1
+            --min-instances=0
+            --max-instances=3
+            --concurrency=80
+
+      # ── 8. Summary ──────────────────────────────────────────────────────────
+      - name: Print service URL
+        run: echo "✅ Deployed to ${{ steps.deploy.outputs.url }}"

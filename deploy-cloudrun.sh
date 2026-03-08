@@ -10,6 +10,10 @@ REGION="${GCP_REGION:-us-central1}"
 SERVICE_NAME="${SERVICE_NAME:-rr-foam-pro}"
 IMAGE="gcr.io/${PROJECT_ID}/${SERVICE_NAME}"
 
+# Build-time env vars baked into the Vite JS bundle
+VITE_SUPABASE_URL="${VITE_SUPABASE_URL:?Set VITE_SUPABASE_URL}"
+VITE_SUPABASE_ANON_KEY="${VITE_SUPABASE_ANON_KEY:?Set VITE_SUPABASE_ANON_KEY}"
+
 # Optional build-time env var
 GEMINI_API_KEY="${GEMINI_API_KEY:-}"
 
@@ -22,6 +26,8 @@ echo "════════════════════════�
 # ── 1. Build ─────────────────────────────────────────────────────────────────
 echo "→ Building container image..."
 docker build \
+  --build-arg VITE_SUPABASE_URL="${VITE_SUPABASE_URL}" \
+  --build-arg VITE_SUPABASE_ANON_KEY="${VITE_SUPABASE_ANON_KEY}" \
   --build-arg GEMINI_API_KEY="${GEMINI_API_KEY}" \
   -t "${IMAGE}:latest" \
   .

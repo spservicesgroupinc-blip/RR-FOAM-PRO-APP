@@ -20,14 +20,102 @@ gcloud services enable \
   containerregistry.googleapis.com
 ```
 
-## Deploy
+## Continuous Deployment via GitHub Actions (Recommended)
 
-### Option A — Using Cloud Build (recommended for CI/CD)
+Every push to `main` automatically builds the container and deploys it to Cloud Run.
+
+### 1. Create a GCP Service Account
+
+```bash
+PROJECT_ID=your-project-id
+SA_NAME=github-cloudrun-deployer
+
+gcloud iam service-accounts create $SA_NAME \
+  --display-name="GitHub Actions Cloud Run Deployer"
+
+# Grant required roles
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/run.admin"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/storage.admin"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
+```
+
+### 2. Set up Workload Identity Federation (keyless auth)
+
+```bash
+POOL_NAME=github-actions-pool
+PROVIDER_NAME=github-provider
+REPO=your-github-org/your-repo-name
+
+# Create pool
+gcloud iam workload-identity-pools create $POOL_NAME \
+  --location="global" \
+  --display-name="GitHub Actions Pool"
+
+POOL_ID=$(gcloud iam workload-identity-pools describe $POOL_NAME \
+  --location="global" --format="value(name)")
+
+# Create provider
+gcloud iam workload-identity-pools providers create-oidc $PROVIDER_NAME \
+  --location="global" \
+  --workload-identity-pool=$POOL_NAME \
+  --display-name="GitHub OIDC Provider" \
+  --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
+  --issuer-uri="https://token.actions.githubusercontent.com"
+
+# Allow the GitHub repo to impersonate the service account
+gcloud iam service-accounts add-iam-policy-binding \
+  "${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com" \
+  --role="roles/iam.workloadIdentityUser" \
+  --member="principalSet://iam.googleapis.com/${POOL_ID}/attribute.repository/${REPO}"
+
+# Print the provider resource name (needed for the GitHub secret below)
+gcloud iam workload-identity-pools providers describe $PROVIDER_NAME \
+  --location="global" \
+  --workload-identity-pool=$POOL_NAME \
+  --format="value(name)"
+```
+
+### 3. Add GitHub Actions Secrets
+
+Go to **Settings → Secrets and variables → Actions** in your GitHub repository and add:
+
+| Secret | Value |
+|---|---|
+| `GCP_PROJECT_ID` | Your GCP project ID |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | Output of the `describe` command above |
+| `GCP_SERVICE_ACCOUNT` | `github-cloudrun-deployer@YOUR_PROJECT_ID.iam.gserviceaccount.com` |
+| `VITE_SUPABASE_URL` | Your Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | Your Supabase anon/public key |
+| `GEMINI_API_KEY` | *(Optional)* Your Gemini API key |
+
+> **Alternative auth**: If you prefer a service-account key JSON instead of WIF, store the key JSON in `GCP_SA_KEY` and update the auth step in `.github/workflows/deploy.yml` to use `credentials_json: ${{ secrets.GCP_SA_KEY }}`.
+
+### 4. Push to main
+
+```bash
+git push origin main
+```
+
+The workflow in `.github/workflows/deploy.yml` runs automatically and prints the live URL when done.
+
+---
+
+## Manual Deploy Options
+
+### Option A — Using Cloud Build
 
 ```bash
 gcloud builds submit \
   --config cloudbuild.yaml \
-  --substitutions=_GEMINI_API_KEY="your-key-here" \
+  --substitutions _VITE_SUPABASE_URL="https://your-project.supabase.co",_VITE_SUPABASE_ANON_KEY="your-anon-key",_GEMINI_API_KEY="your-key-here" \
   .
 ```
 
@@ -35,6 +123,8 @@ gcloud builds submit \
 
 ```bash
 export GCP_PROJECT_ID=your-project-id
+export VITE_SUPABASE_URL=https://your-project.supabase.co
+export VITE_SUPABASE_ANON_KEY=your-anon-key
 export GEMINI_API_KEY=your-key-here   # optional
 bash deploy-cloudrun.sh
 ```
@@ -50,22 +140,31 @@ gcloud run deploy rr-foam-pro \
 
 This auto-detects the Dockerfile and builds via Cloud Build.
 
+---
+
 ## Environment Variables
 
 | Variable | Type | Purpose |
 |---|---|---|
+| `VITE_SUPABASE_URL` | Build-time | Supabase project URL — baked into JS bundle |
+| `VITE_SUPABASE_ANON_KEY` | Build-time | Supabase anon key — baked into JS bundle |
+| `GEMINI_API_KEY` | Build-time | Gemini API key — baked into JS bundle (optional) |
 | `PORT` | Runtime (auto) | Injected by Cloud Run — nginx reads it automatically |
-| `GEMINI_API_KEY` | Build-time | Baked into the JS bundle via Vite `define` |
 
-> **Note**: Supabase URL and anon key are currently hardcoded in `src/lib/supabase.ts`. For multi-environment setups, consider moving them to Vite env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) and passing them as build args.
+> See `.env.example` for a template of local development values.
 
 ## Architecture
 
 ```
-Cloud Run
-  └── nginx (listens on $PORT = 8080)
-       └── serves /dist (SPA)
-            └── Client-side JS talks to Supabase directly
+GitHub push to main
+  └── GitHub Actions (.github/workflows/deploy.yml)
+       ├── docker build  (Vite SPA + nginx)
+       ├── docker push   (gcr.io)
+       └── gcloud run deploy
+            └── Cloud Run
+                 └── nginx (listens on $PORT = 8080)
+                      └── serves /dist (SPA)
+                           └── Client-side JS talks to Supabase directly
 ```
 
 - **No backend server** — all API calls go directly from the browser to Supabase
@@ -92,3 +191,4 @@ The deployment is configured with:
 - **concurrency: 80** — nginx handles many concurrent requests per instance
 
 Estimated cost for low-traffic: **~$0/month** (free tier covers 2M requests/month).
+

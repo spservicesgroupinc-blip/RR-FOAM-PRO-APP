@@ -10,8 +10,12 @@ RUN npm ci
 # Copy source & build the Vite SPA
 COPY . .
 
-# Accept optional build-time env vars (e.g. GEMINI_API_KEY)
+# Accept build-time env vars baked into the Vite bundle
+ARG VITE_SUPABASE_URL=""
+ARG VITE_SUPABASE_ANON_KEY=""
 ARG GEMINI_API_KEY=""
+ENV VITE_SUPABASE_URL=${VITE_SUPABASE_URL}
+ENV VITE_SUPABASE_ANON_KEY=${VITE_SUPABASE_ANON_KEY}
 ENV GEMINI_API_KEY=${GEMINI_API_KEY}
 
 RUN npm run build
